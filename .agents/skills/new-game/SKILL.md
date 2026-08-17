@@ -18,6 +18,7 @@ Ask the user for:
 2. **Do NOT modify:**
    - The `<script type="importmap">` block or import paths (`three`, `cannon-es`, `engine/`).
    - The `Simulation` initialization code.
+   - You MAY add named imports for engine modules (e.g. `createMaterial` from `engine/materials.js`, a composite from `engine/components.js`) as needed by `setup(sim)`.
 3. **Customize:**
    - Update `<title>`, `#title` text, and `#instructions` text to reflect the user's prompt.
    - Inject the user's requested mechanics inside a `setup(sim)` function.
