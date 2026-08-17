@@ -145,3 +145,93 @@ export function createRailSegment(sim, opts = {}) {
   seg.segment = segment;
   return seg;
 }
+
+// A simple steam locomotive composite. Travels along its local +X axis (matching
+// the spine direction used by createRailSegment, so local +X is "forward").
+// Built from plain Three meshes with no physics body — it is driven analytically
+// by the game (set entity.mesh.position / rotation each frame).
+export function createTrain(sim, opts = {}) {
+  const {
+    position = [0, 0, 0],
+    bodyColor = 0xc23b2e,
+    cabColor = 0x8a2b22,
+    accentColor = 0x334455,
+    trimColor = 0x222b33,
+    wheelColor = 0x1a1a1a,
+  } = opts;
+
+  const group = new THREE.Group();
+  group.position.set(position[0], position[1], position[2]);
+
+  const addMesh = (geometry, color, x, y, z, rotation = [0, 0, 0]) => {
+    const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color }));
+    mesh.position.set(x, y, z);
+    mesh.rotation.set(rotation[0], rotation[1], rotation[2]);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    group.add(mesh);
+    return mesh;
+  };
+
+  const railY = 0.5;
+  const wheelR = 0.42;
+  const axleY = railY + wheelR;
+  const halfGauge = 0.75;
+
+  // Horizontal spans (local +X = forward): cab [-3.8,-1.4] (len 2.4),
+  // hood [-1.4,0.0] (len 1.4), boiler [0.0,3.6] (len 3.6) — each starts
+  // exactly where the previous ends, so the body is seamless.
+  // Chassis box running the length of the locomotive.
+  addMesh(new THREE.BoxGeometry(7.2, 0.5, 1.8), trimColor, 0.6, railY + 0.45, 0);
+
+  // Boiler: horizontal cylinder along +X (cylinder axis is Y by default).
+  const boiler = addMesh(
+    new THREE.CylinderGeometry(0.68, 0.68, 3.6, 20),
+    bodyColor,
+    1.8,
+    railY + 0.45 + 0.68,
+    0,
+    [0, 0, Math.PI / 2],
+  );
+
+  // Firebox / hood in front of the cab.
+  addMesh(new THREE.BoxGeometry(1.4, 1.2, 1.6), bodyColor, -0.7, railY + 0.45 + 1.0, 0);
+
+  // Cab at the rear.
+  addMesh(new THREE.BoxGeometry(2.4, 2.1, 1.9), cabColor, -2.6, railY + 0.45 + 1.9, 0);
+
+  // Cab roof.
+  addMesh(new THREE.BoxGeometry(2.6, 0.16, 2.1), trimColor, -2.6, railY + 0.45 + 3.05, 0);
+
+  // Smokestack on the front of the boiler.
+  addMesh(new THREE.CylinderGeometry(0.24, 0.3, 1.0, 14), trimColor, 3.55, railY + 0.45 + 0.68 + 1.1, 0);
+
+  // Steam dome / sand dome on top of the boiler.
+  addMesh(new THREE.CylinderGeometry(0.22, 0.24, 0.7, 14), accentColor, 1.6, railY + 0.45 + 0.68 + 0.85, 0);
+
+  // Cowcatcher at the front, angled.
+  const cowcatcher = addMesh(
+    new THREE.BoxGeometry(0.7, 0.7, 1.7),
+    trimColor,
+    3.95,
+    railY + 0.45 + 0.35,
+    0,
+    [0, 0, -Math.PI / 4],
+  );
+
+  // Wheels: three axles, two sides.
+  const wheelGeo = new THREE.CylinderGeometry(wheelR, wheelR, 0.18, 16);
+  const wheelMat = new THREE.MeshStandardMaterial({ color: wheelColor });
+  for (const x of [-2.6, -0.7, 1.5]) {
+    for (const side of [-1, 1]) {
+      const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+      wheel.position.set(x, axleY, side * (halfGauge + 0.05));
+      wheel.rotation.x = Math.PI / 2;
+      wheel.castShadow = true;
+      wheel.receiveShadow = true;
+      group.add(wheel);
+    }
+  }
+
+  return sim.addEntity(group, null, null);
+}

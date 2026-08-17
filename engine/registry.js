@@ -16,7 +16,11 @@ import {
   createPlayer,
 } from "./primitives.js";
 
-import { createGrass, createRailSegment } from "./components.js";
+import {
+  createGrass,
+  createRailSegment,
+  createTrain,
+} from "./components.js";
 
 export const ENTRIES = [
   {
@@ -123,6 +127,19 @@ export const ENTRIES = [
       { key: "tieSpacing", label: "Tie Spacing", type: "number", default: 5, min: 1, max: 20, step: 1 },
       { key: "railColor", label: "Rail Color", type: "color", default: "0x9aa0a6" },
       { key: "tieColor", label: "Tie Color", type: "color", default: "0x6b4a32" },
+      { key: "position", label: "Position [x,y,z]", type: "vector", default: [0, 0, 0] },
+    ],
+  },
+  {
+    category: "component",
+    key: "train",
+    label: "Train",
+    desc: "A steam locomotive composite (no physics)",
+    fn: createTrain,
+    opts: [
+      { key: "bodyColor", label: "Body Color", type: "color", default: "0xc23b2e" },
+      { key: "cabColor", label: "Cab Color", type: "color", default: "0x8a2b22" },
+      { key: "accentColor", label: "Accent Color", type: "color", default: "0x334455" },
       { key: "position", label: "Position [x,y,z]", type: "vector", default: [0, 0, 0] },
     ],
   },
