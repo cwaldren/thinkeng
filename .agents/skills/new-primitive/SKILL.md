@@ -25,14 +25,18 @@ sphere `radius`), so the visual mesh and the collision body line up.
 Do not try to generalize right off the bat - the user is responsible for this; simply implement what they asked
 and no more.
 
-## Register the primitive in the gallery
+## Register the entity in the registry
 
-After implementing the primitive in engine/primitives.js, register it in the gallery at `primitives.html`:
+After implementing the primitive in engine/primitives.js (or a composite in engine/components.js), register it
+in the shared registry at `engine/registry.js`. This is the single source of truth that drives the gallery
+(`entities.html`). Do NOT edit `entities.html` itself - it renders every `ENTRIES` entry generically.
 
-1. **Read `primitives.html`** and locate the `PRIMITIVES` array in the module script.
-2. **Add a new entry** matching the existing structure:
+1. **Read `engine/registry.js`** and add the new function's import alongside the others, e.g.
+   `import { createMyPrim } from "./primitives.js";`
+2. **Add a new entry** to the `ENTRIES` array matching the existing structure:
    ```js
    {
+     category: "primitive",
      key: "myprim",
      label: "My Prim",
      desc: "One-line description",
@@ -44,11 +48,11 @@ After implementing the primitive in engine/primitives.js, register it in the gal
      ],
    }
    ```
-   - Currently import the new function from engine/primitives.js in the page's import block too.
+   - Set `category` to `"primitive"` for a primitive, or `"component"` for a composite.
 3. Supported `opts` field types (the gallery builds controls generically from these):
    - `number` - `<input type=number>` with `min`, `max`, `step`.
    - `color` - color picker; value hex string, e.g. `"0xff5533"`.
    - `vector` - comma-separated numbers mapped to an array (for `position`, `rotation`, etc.).
    - Omitting a field from `opts` simply means it uses its default and has no control.
 4. Insert the entry alongside the others. Match each field's `default` to the destructured default in
-   `engine/primitives.js` so the gallery and the code agree.
+   `engine/primitives.js` (or `engine/components.js`) so the gallery and the code agree.

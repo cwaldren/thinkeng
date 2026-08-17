@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Primitives Gallery</title>
+    <title>Entities Gallery</title>
     <style>
       body {
         margin: 0;
@@ -18,7 +18,7 @@
         inset: 0;
       }
 
-      /* Sidebar: card list of primitives */
+      /* Sidebar: card list of entities */
       #list {
         position: fixed;
         top: 0;
@@ -36,6 +36,30 @@
         margin: 0 0 12px;
         font-size: 1.1rem;
         opacity: 0.8;
+      }
+
+      #filter {
+        width: 100%;
+        margin-bottom: 12px;
+        background: #1a1a20;
+        border: 1px solid #2a2a33;
+        border-radius: 8px;
+      }
+
+      #filter a {
+        display: inline-block;
+        padding: 6px 10px;
+        color: #fff;
+        text-decoration: none;
+        font-size: 0.8rem;
+        opacity: 0.6;
+        border-radius: 6px;
+      }
+
+      #filter a.active {
+        opacity: 1;
+        background: #4caf50;
+        color: #111;
       }
 
       .card {
@@ -75,7 +99,27 @@
         opacity: 0.6;
       }
 
-      /* Right panel: live controls for the active primitive */
+      .badge {
+        display: inline-block;
+        margin-left: 6px;
+        padding: 1px 6px;
+        border-radius: 10px;
+        font-size: 0.6rem;
+        vertical-align: middle;
+        text-transform: uppercase;
+        background: #2a2a33;
+        opacity: 0.85;
+      }
+
+      .badge.primitive {
+        color: #88cc55;
+      }
+
+      .badge.component {
+        color: #33aaff;
+      }
+
+      /* Right panel: live controls for the active entity */
       #controls {
         position: fixed;
         top: 0;
@@ -148,7 +192,12 @@
     <div id="viewport"></div>
 
     <aside id="list">
-      <h2>Primitives</h2>
+      <h2>Entities</h2>
+      <div id="filter">
+        <a href="?" data-type="">All</a
+        ><a href="?type=primitive" data-type="primitive">Primitives</a
+        ><a href="?type=component" data-type="component">Components</a>
+      </div>
     </aside>
 
     <aside id="controls">
@@ -158,99 +207,25 @@
 
     <script type="module">
       import { Simulation } from "engine/core.js";
-      import {
-        createGround,
-        createBox,
-        createSphere,
-        createCylinder,
-        createPlayer,
-      } from "engine/primitives.js";
+      import { ENTRIES } from "engine/registry.js";
 
       // ------------------------------------------------------------------
-      // Generic schema.
-      // New primitives just add an entry here - no custom controls needed.
+      // Registry-driven UI. `ENTRIES` (engine/registry.js) is the single
+      // source of truth: entries carry { category, key, label, desc, fn, opts }.
       // Control field types:
       //   number: <input type=number> with min/max/step
       //   color:  <input type=color>  (value hex, converts to int 0xRRGGBB)
       //   vector: <input type=text>   (comma-separated numbers -> array)
       // ------------------------------------------------------------------
-      const PRIMITIVES = [
-        {
-          key: "ground",
-          label: "Ground",
-          desc: "Static planar platform",
-          fn: createGround,
-          opts: [
-            { key: "size", label: "Size", type: "number", default: 6, min: 1, max: 30, step: 1 },
-            { key: "height", label: "Height", type: "number", default: 1, min: 0.2, max: 5, step: 0.1 },
-            { key: "color", label: "Color", type: "color", default: "0x222233" },
-            { key: "friction", label: "Friction", type: "number", default: 0.3, min: 0, max: 1, step: 0.05 },
-            { key: "position", label: "Position [x,y,z]", type: "vector", default: [0, 0, 0] },
-          ],
-        },
-        {
-          key: "box",
-          label: "Box",
-          desc: "Interactable cube",
-          fn: createBox,
-          opts: [
-            { key: "size", label: "Size", type: "number", default: 1, min: 0.1, max: 5, step: 0.1 },
-            { key: "color", label: "Color", type: "color", default: "0xff5533" },
-            { key: "mass", label: "Mass", type: "number", default: 1, min: 0, max: 50, step: 1 },
-            { key: "friction", label: "Friction", type: "number", default: 0.3, min: 0, max: 1, step: 0.05 },
-            { key: "position", label: "Position [x,y,z]", type: "vector", default: [0, 0, 0] },
-            { key: "rotation", label: "Rotation [x,y,z]", type: "vector", default: [0, 0, 0] },
-          ],
-        },
-        {
-          key: "sphere",
-          label: "Sphere",
-          desc: "Rollable ball",
-          fn: createSphere,
-          opts: [
-            { key: "radius", label: "Radius", type: "number", default: 0.5, min: 0.1, max: 5, step: 0.1 },
-            { key: "color", label: "Color", type: "color", default: "0x33aaff" },
-            { key: "mass", label: "Mass", type: "number", default: 1, min: 0, max: 50, step: 1 },
-            { key: "friction", label: "Friction", type: "number", default: 0.3, min: 0, max: 1, step: 0.05 },
-            { key: "position", label: "Position [x,y,z]", type: "vector", default: [0, 0, 0] },
-          ],
-        },
-        {
-          key: "cylinder",
-          label: "Cylinder",
-          desc: "Tapered column",
-          fn: createCylinder,
-          opts: [
-            { key: "radiusTop", label: "Radius Top", type: "number", default: 1, min: 0, max: 5, step: 0.1 },
-            { key: "radiusBottom", label: "Radius Bottom", type: "number", default: 1, min: 0, max: 5, step: 0.1 },
-            { key: "height", label: "Height", type: "number", default: 1, min: 0.1, max: 5, step: 0.1 },
-            { key: "radialSegments", label: "Radial Segments", type: "number", default: 8, min: 3, max: 32, step: 1 },
-            { key: "color", label: "Color", type: "color", default: "0x88cc55" },
-            { key: "mass", label: "Mass", type: "number", default: 1, min: 0, max: 50, step: 1 },
-            { key: "friction", label: "Friction", type: "number", default: 0.3, min: 0, max: 1, step: 0.05 },
-            { key: "position", label: "Position [x,y,z]", type: "vector", default: [0, 0, 0] },
-            { key: "rotation", label: "Rotation [x,y,z]", type: "vector", default: [0, 0, 0] },
-          ],
-        },
-        {
-          key: "player",
-          label: "Player",
-          desc: "Keyboard-controlled (WASD/Space)",
-          fn: createPlayer,
-          opts: [
-            { key: "size", label: "Size", type: "number", default: 1, min: 0.1, max: 5, step: 0.1 },
-            { key: "color", label: "Color", type: "color", default: "0x22ff88" },
-            { key: "mass", label: "Mass", type: "number", default: 5, min: 0, max: 50, step: 1 },
-            { key: "speed", label: "Speed", type: "number", default: 10, min: 1, max: 40, step: 1 },
-            { key: "jumpForce", label: "Jump Force", type: "number", default: 8, min: 1, max: 30, step: 1 },
-            { key: "position", label: "Position [x,y,z]", type: "vector", default: [0, 0, 0] },
-          ],
-        },
-      ];
 
-      // ------------------------------------------------------------------
-      // Build the simulation & UI
-      // ------------------------------------------------------------------
+      const CATEGORIES = { primitive: "Primitives", component: "Components" };
+
+      // Read ?type= from the URL; empty/unknown => combined All view.
+      const urlType = new URLSearchParams(location.search).get("type");
+      const type = CATEGORIES[urlType] ? urlType : "";
+      const entries =
+        type === "" ? ENTRIES : ENTRIES.filter((e) => e.category === type);
+
       const sim = new Simulation({
         container: document.getElementById("viewport"),
         clearColor: 0x111116,
@@ -263,6 +238,20 @@
       const listEl = document.getElementById("list");
       const controlsPanel = document.getElementById("controls");
       const controlsForm = document.getElementById("controls-form");
+
+      // Highlight the active filter link. Intercept clicks so we update the
+      // URL in-place (replaceState) instead of pushing a new history entry;
+      // otherwise the browser back button cycles through every filter you
+      // touched instead of returning to index.html.
+      for (const link of document.querySelectorAll("#filter a")) {
+        link.classList.toggle("active", link.dataset.type === type);
+        link.addEventListener("click", (e) => {
+          e.preventDefault();
+          if (link.dataset.type === type) return;
+          history.replaceState(null, "", link.getAttribute("href"));
+          location.reload();
+        });
+      }
 
       let active = null; // { entry, values }
       let liveEntity = null;
@@ -356,16 +345,23 @@
         liveEntity = active.entry.fn(sim, { ...active.values });
       }
 
-      // Populate the side list
-      for (const entry of PRIMITIVES) {
+      // Populate the side list (tagged by category in the All view)
+      for (const entry of entries) {
         const card = document.createElement("button");
         card.className = "card";
         card.dataset.key = entry.key;
+        const tag =
+          type === ""
+            ? `<span class="badge ${entry.category}">${entry.category}</span>`
+            : "";
         card.innerHTML =
-          "<h3>" + entry.label + "</h3><p>" + entry.desc + "</p>";
+          `<h3>${entry.label}${tag}</h3><p>${entry.desc}</p>`;
         card.addEventListener("click", () => setActive(entry));
         listEl.appendChild(card);
       }
+
+      // Auto-select the first entry so the view is never empty on load.
+      if (entries.length) setActive(entries[0]);
 
       sim.start();
     </script>
