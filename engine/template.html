@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Simulation Name</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: #111116;
+        font-family: sans-serif;
+      }
+      #ui {
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        color: #fff;
+        pointer-events: none;
+      }
+    </style>
+
+    <!-- 1. Import Map (Constant Across All Games) -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "/vendor/three.module.js",
+          "cannon-es": "/vendor/cannon-es.js",
+          "engine/": "/engine/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="ui">
+      <h1 style="margin: 0; font-size: 1.2rem; opacity: 0.8">
+        Simulation Title
+      </h1>
+      <p style="margin: 4px 0 0; font-size: 0.85rem; opacity: 0.5">
+        Click / Drag to interact
+      </p>
+    </div>
+
+    <script type="module">
+      import { Simulation } from "engine/core.js";
+      import {
+        createGround,
+        createBox,
+        createSphere,
+      } from "engine/primitives.js";
+
+      // 2. Initialize Core Engine with Options
+      const sim = new Simulation({
+        gravity: [0, -9.81, 0],
+        clearColor: 0x111116,
+        enableShadows: true,
+      });
+
+      // 3. Game-Specific Setup (The LLM focus area)
+      function setup(sim) {
+        // Default Environment
+        createGround(sim, { size: [30, 30], color: 0x222233 });
+
+        // LLM-Generated Entities & Game Logic
+        // ...
+      }
+
+      // Run
+      setup(sim);
+      sim.start();
+    </script>
+  </body>
+</html>

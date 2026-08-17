@@ -21,15 +21,10 @@ All dependencies are vendor-hosted locally within the Git repository. External C
 ```text
 my-web-sims/
 ├── vendor/                   # Static external libraries (committed to Git)
-│   ├── three.module.js       # 3D Renderer
+│   ├── three.core.js         # 3D Renderer core (base library)
+│   ├── three.module.js       # 3D Renderer (core + addons; imports three.core.js)
 │   └── cannon-es.js          # Physics Engine
 ├── engine/                   # Core system & human-crafted primitives
 │   ├── core.js               # Main game loop, scene manager, physics syncer
-│   ├── components.js         # Custom Web Components (<sim-body>, <sim-light>, etc.)
 │   └── primitives.js         # Standard mesh generators & behaviors (Boids, Controls)
-├── docs/
-│   └── API_CONTEXT.md        # System prompt cheat sheet for LLM generation
-├── index.html                # Main portal / scene switcher
-└── games/                    # Individual LLM-generated simulations
-    ├── 01-boid-flock.html
-    └── 02-physics-sandbox.html
+└── index.html                # Main portal / scene switcher
