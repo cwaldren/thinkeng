@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Zero-Toolchain Sandbox</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./vendor/three.module.js",
+          "cannon-es": "./vendor/cannon-es.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <script type="module">
+      import * as THREE from "three";
+      import * as CANNON from "cannon-es";
+
+      console.log("Three.js version:", THREE.REVISION);
+      console.log("Cannon-es initialized:", CANNON);
+    </script>
+  </body>
+</html>
