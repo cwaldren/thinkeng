@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Infinite Train</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: #111116;
+        font-family: sans-serif;
+      }
+      #ui {
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        color: #fff;
+        pointer-events: none;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+      }
+      #ui p {
+        margin: 4px 0 0;
+      }
+      #speed {
+        font-size: 0.85rem;
+        opacity: 0.7;
+      }
+    </style>
+
+    <!-- 1. Import Map (Constant Across All Games) -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "/vendor/three.module.js",
+          "cannon-es": "/vendor/cannon-es.js",
+          "engine/": "/engine/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="ui">
+      <h1 style="margin: 0; font-size: 1.2rem; opacity: 0.9">Infinite Train</h1>
+      <p id="speed" style="font-size: 0.85rem; opacity: 0.7">0 km/h</p>
+      <p style="margin: 8px 0 0; font-size: 0.85rem; opacity: 0.5">
+        W / &#8593; accelerate &#8212; S / &#8595; brake
+      </p>
+    </div>
+
+    <script type="module">
+      import { Simulation } from "engine/core.js";
+      import { createRailSegment, createTrain } from "engine/components.js";
+      import * as THREE from "three";
+
+      // Deterministic PRNG per segment index (mulberry32).
+      function mulberry32(seed) {
+        let a = seed >>> 0;
+        return function () {
+          a |= 0;
+          a = (a + 0x6d2b79f5) | 0;
+          let t = Math.imul(a ^ (a >>> 15), 1 | a);
+          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+
+      // TrackWorld: a small sliding window of chained segments. Coordinates stay
+      // near the origin because every time the train leaves a segment the whole
+      // window is rebased so the new front segment sits at (0,0,0).
+      class TrackWorld {
+        constructor(sim) {
+          this.sim = sim;
+          this.SEG = 50;
+          this.COUNT = 20;
+          this.baseIdx = 0;
+          this.segs = [];
+          this.s = 0; // distance traveled into the current segment (segs[0])
+          this.speed = 0;
+          this.MAX_SPEED = 40;
+          this.ACCEL = 18;
+          this.BRAKE = 45;
+
+          this.keys = new Set();
+          this.onKeyDown = (e) => this.keys.add(e.code);
+          this.onKeyUp = (e) => this.keys.delete(e.code);
+          window.addEventListener("keydown", this.onKeyDown);
+          window.addEventListener("keyup", this.onKeyUp);
+
+          this.train = createTrain(sim);
+          this.train.mesh.position.set(0, -0.05, 0);
+
+          this.firstFrame = true;
+          this.UP = new THREE.Vector3(0, 1, 0);
+          this._samp = { x: 0, z: 0, fx: 1, fz: 0 };
+          this._fwd = new THREE.Vector3();
+
+          for (let i = 0; i < this.COUNT; i++) {
+            this.spawn(this.baseIdx + i);
+          }
+
+          sim.addEntity(null, null, (dt) => this.update(dt));
+        }
+
+        curveFor(index) {
+          const rng = mulberry32(index);
+          const r = rng();
+          return r < 0.45 ? 0 : r < 0.75 ? 60 : -60;
+        }
+
+        spawn(index) {
+          const prev = this.segs.length
+            ? this.segs[this.segs.length - 1].segment.exitPose
+            : { point: [0, 0, 0], heading: 0 };
+          const radius = this.curveFor(index);
+          this.segs.push(
+            createRailSegment(this.sim, {
+              length: this.SEG,
+              radius,
+              position: prev.point,
+              entryHeading: prev.heading,
+            }),
+          );
+        }
+
+        // Bring the new front segment back to the origin and shift the whole
+        // window along with it (floating origin). Rotation R_y(+a) undoes the
+        // inherited heading so coordinates never grow.
+        rebase() {
+          const s0 = this.segs[0].segment;
+          const [px, , pz] = s0.entryPose.point;
+          const a = s0.entryPose.heading;
+          const ca = Math.cos(a);
+          const sa = Math.sin(a);
+          const t = (p) => [p[0] * ca + p[2] * sa, 0, -p[0] * sa + p[2] * ca];
+          for (const seg of this.segs) {
+            const m = seg.segment;
+            m.entryPose.point = t([m.entryPose.point[0] - px, 0, m.entryPose.point[2] - pz]);
+            m.entryPose.heading -= a;
+            m.exitPose.point = t([m.exitPose.point[0] - px, 0, m.exitPose.point[2] - pz]);
+            m.exitPose.heading -= a;
+            seg.mesh.position.set(m.entryPose.point[0], seg.mesh.position.y, m.entryPose.point[2]);
+            seg.mesh.rotation.y += a;
+          }
+          const cp = this.sim.camera.position;
+          const ncp = t([cp.x - px, 0, cp.z - pz]);
+          cp.set(ncp[0], cp.y, ncp[2]);
+        }
+
+        advance() {
+          this.s -= this.SEG;
+          this.sim.removeEntity(this.segs[0]);
+          this.segs.shift();
+          this.baseIdx++;
+          this.rebase();
+          this.spawn(this.baseIdx + this.COUNT - 1);
+        }
+
+        // Sample the current segment's spine at arc length `s`, returning world
+        // position + forward direction (based on rotation.y = -entryHeading).
+        sample() {
+          const seg = this.segs[0].segment;
+          const spine = seg.spine;
+          const n = spine.length - 1;
+          const ds = seg.length / n;
+          const f = Math.min(n, this.s / ds);
+          const i = Math.min(n - 1, Math.floor(f));
+          const t = f - i;
+          const pa = spine[i];
+          const pb = spine[i + 1];
+          const lx = pa.x + (pb.x - pa.x) * t;
+          const lz = pa.z + (pb.z - pa.z) * t;
+          const lh = pa.heading + (pb.heading - pa.heading) * t;
+          const a = seg.entryPose.heading;
+          const [ex, , ez] = seg.entryPose.point;
+          const rc = Math.cos(a);
+          const rs = Math.sin(a);
+          const h = lh + a;
+          this._samp.x = ex + lx * rc - lz * rs;
+          this._samp.z = ez + lx * rs + lz * rc;
+          this._samp.fx = Math.cos(h);
+          this._samp.fz = Math.sin(h);
+          return this._samp;
+        }
+
+        update(dt) {
+          if (dt > 0.1) dt = 0.1;
+          const accel = this.keys.has("KeyW") || this.keys.has("ArrowUp") ? 1 : 0;
+          const brake = this.keys.has("KeyS") || this.keys.has("ArrowDown") ? 1 : 0;
+          this.speed += (accel * this.ACCEL - brake * this.BRAKE) * dt;
+          this.speed = Math.max(0, Math.min(this.MAX_SPEED, this.speed));
+
+          this.s += this.speed * dt;
+          while (this.s >= this.SEG) this.advance();
+          if (this.s < 0) {
+            this.s = 0;
+            this.speed = 0;
+          }
+
+          const pos = this.sample();
+
+          this._fwd.set(pos.fx, 0, pos.fz).normalize();
+          this.train.mesh.position.set(pos.x, this.train.mesh.position.y, pos.z);
+          this.train.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), this._fwd);
+
+          document.getElementById("speed").textContent =
+            Math.round(this.speed * 3.6) + " km/h";
+
+          // Driver's-eye camera, mounted just above the engine nose so it
+          // never sits inside a solid part of the model (which would cull away
+          // every face and show only the sky).
+          const cab = new THREE.Vector3(pos.x, 3.2, pos.z)
+            .addScaledVector(this._fwd, 4.0);
+          const look = cab.clone().addScaledVector(this._fwd, 50).addScaledVector(this.UP, 0.6);
+          if (this.firstFrame) {
+            this.sim.camera.position.copy(cab);
+            this.firstFrame = false;
+          } else {
+            const k = 1 - Math.exp(-dt * 3);
+            this.sim.camera.position.lerp(cab, k);
+          }
+          this.sim.camera.lookAt(look);
+        }
+      }
+
+      const sim = new Simulation({
+        gravity: [0, -9.81, 0],
+        clearColor: 0x87ceeb,
+        enableShadows: true,
+      });
+
+      function setup(sim) {
+        // Slight directional light so the rails/trees read clearly.
+        const dir = new THREE.DirectionalLight(0xffffff, 1.0);
+        dir.position.set(5, 12, 6);
+        sim.scene.add(dir);
+        new TrackWorld(sim);
+      }
+
+      setup(sim);
+      sim.start();
+    </script>
+  </body>
+</html>

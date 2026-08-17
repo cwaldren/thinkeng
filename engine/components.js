@@ -3,7 +3,7 @@
 // Track any created primitives so they can be removed together via sim.removeEntity(entity).
 
 import * as THREE from "three";
-import { createBox, createCylinder } from "./primitives.js";
+import { createCylinder } from "./primitives.js";
 
 export function createGrass(sim, opts = {}) {
   const {
@@ -51,8 +51,8 @@ export function createGrass(sim, opts = {}) {
 
 // A single train-track chunk: a pair of rails + ties laid out along a spine of
 // arc-length `length`. `radius` controls the bend (0 => straight, huge => nearly
-// straight, sign flips the turn direction). Composed purely from createBox so it
-// cleans up as one composite via sim.removeEntity(entity).
+// straight, sign flips the turn direction). Built from plain Three meshes (no
+// physics bodies) so it cleans up as one composite via sim.removeEntity(entity).
 export function createRailSegment(sim, opts = {}) {
   const {
     length = 50,
@@ -66,12 +66,26 @@ export function createRailSegment(sim, opts = {}) {
     railThickness = 0.2,
     tieThickness = 0.12,
     position = [0, 0, 0],
+    entryHeading = 0,
     step = 3,
   } = opts;
 
   const group = new THREE.Group();
   group.position.set(position[0], position[1], position[2]);
-  const children = [];
+  group.rotation.y = -entryHeading;
+
+  const railMat = new THREE.MeshStandardMaterial({ color: railColor });
+  const tieMat = new THREE.MeshStandardMaterial({ color: tieColor });
+
+  // Plain mesh helper: an oriented box lying along the X-Y plane.
+  const addBar = (w, h, d, x, y, z, ry, mat) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    mesh.position.set(x, y, z);
+    mesh.rotation.y = ry;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    group.add(mesh);
+  };
 
   const n = Math.max(1, Math.round(length / step));
   const ds = length / n;
@@ -81,8 +95,7 @@ export function createRailSegment(sim, opts = {}) {
   let z = 0;
   let heading = 0;
   for (let i = 0; i <= n; i++) {
-    const s = (i / n) * length;
-    heading = radius === 0 ? 0 : s / radius;
+    heading = radius === 0 ? 0 : (i / n) * length / radius;
     pts.push({ x, z, heading });
     x += Math.cos(heading) * ds;
     z += Math.sin(heading) * ds;
@@ -103,15 +116,7 @@ export function createRailSegment(sim, opts = {}) {
       const z2 = b.z + p2.z * (gauge / 2) * side;
       const len = Math.hypot(x2 - x1, z2 - z1);
       const ang = Math.atan2(z2 - z1, x2 - x1);
-      const entity = createBox(sim, {
-        size: [len, railThickness, railWidth],
-        color: railColor,
-        mass: 0,
-        position: [(x1 + x2) / 2, railY, (z1 + z2) / 2],
-        rotation: [0, -ang, 0],
-      });
-      group.add(entity.mesh);
-      children.push(entity);
+      addBar(len, railThickness, railWidth, (x1 + x2) / 2, railY, (z1 + z2) / 2, -ang, railMat);
     }
   }
 
@@ -121,27 +126,25 @@ export function createRailSegment(sim, opts = {}) {
     const p = pts[i];
     const pc = perp(p.heading);
     const tieLen = gauge + 0.8;
-    const entity = createBox(sim, {
-      size: [tieLen, tieThickness, 0.35],
-      color: tieColor,
-      mass: 0,
-      position: [p.x, tieThickness / 2, p.z],
-      rotation: [0, -Math.atan2(pc.z, pc.x), 0],
-    });
-    group.add(entity.mesh);
-    children.push(entity);
+    addBar(tieLen, tieThickness, 0.35, p.x, tieThickness / 2, p.z, -Math.atan2(pc.z, pc.x), tieMat);
   }
 
   const pe = pts[n];
+  const a = entryHeading;
+  const ca = Math.cos(a);
+  const sa = Math.sin(a);
   const segment = {
     curve: radius,
     length,
-    entryPose: { point: [0, 0, 0], heading: 0, bank: 0 },
-    exitPose: { point: [pe.x, 0, pe.z], heading: pe.heading, bank: 0 },
+    spine: pts,
+    entryPose: { point: [position[0], 0, position[2]], heading: a },
+    exitPose: {
+      point: [position[0] + pe.x * ca - pe.z * sa, 0, position[2] + pe.x * sa + pe.z * ca],
+      heading: a + pe.heading,
+    },
   };
 
   const seg = sim.addEntity(group, null, null);
-  seg.children = children;
   seg.segment = segment;
   return seg;
 }
