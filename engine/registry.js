@@ -16,7 +16,7 @@ import {
   createPlayer,
 } from "./primitives.js";
 
-import { createGrass } from "./components.js";
+import { createGrass, createRailSegment } from "./components.js";
 
 export const ENTRIES = [
   {
@@ -107,6 +107,22 @@ export const ENTRIES = [
       { key: "count", label: "Blade Count", type: "number", default: 200, min: 1, max: 500, step: 10 },
       { key: "color", label: "Color", type: "color", default: "0x44aa55" },
       { key: "height", label: "Height", type: "number", default: 1, min: 0.2, max: 4, step: 0.1 },
+      { key: "position", label: "Position [x,y,z]", type: "vector", default: [0, 0, 0] },
+    ],
+  },
+  {
+    category: "component",
+    key: "railsegment",
+    label: "Rail Segment",
+    desc: "A train-track chunk (rails + ties)",
+    fn: createRailSegment,
+    opts: [
+      { key: "length", label: "Length", type: "number", default: 50, min: 10, max: 200, step: 5 },
+      { key: "radius", label: "Radius (0=straight)", type: "number", default: 0, min: -50, max: 50, step: 1 },
+      { key: "gauge", label: "Gauge", type: "number", default: 1.5, min: 0.5, max: 5, step: 0.1 },
+      { key: "tieSpacing", label: "Tie Spacing", type: "number", default: 5, min: 1, max: 20, step: 1 },
+      { key: "railColor", label: "Rail Color", type: "color", default: "0x9aa0a6" },
+      { key: "tieColor", label: "Tie Color", type: "color", default: "0x6b4a32" },
       { key: "position", label: "Position [x,y,z]", type: "vector", default: [0, 0, 0] },
     ],
   },
