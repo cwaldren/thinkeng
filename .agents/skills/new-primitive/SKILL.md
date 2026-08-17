@@ -24,3 +24,31 @@ sphere `radius`), so the visual mesh and the collision body line up.
 
 Do not try to generalize right off the bat - the user is responsible for this; simply implement what they asked
 and no more.
+
+## Register the primitive in the gallery
+
+After implementing the primitive in engine/primitives.js, register it in the gallery at `primitives.html`:
+
+1. **Read `primitives.html`** and locate the `PRIMITIVES` array in the module script.
+2. **Add a new entry** matching the existing structure:
+   ```js
+   {
+     key: "myprim",
+     label: "My Prim",
+     desc: "One-line description",
+     fn: createMyPrim,
+     opts: [
+       { key: "size", label: "Size", type: "number", default: 1, min: 0.1, max: 5, step: 0.1 },
+       { key: "color", label: "Color", type: "color", default: "0x88cc55" },
+       { key: "position", label: "Position [x,y,z]", type: "vector", default: [0, 0, 0] },
+     ],
+   }
+   ```
+   - Currently import the new function from engine/primitives.js in the page's import block too.
+3. Supported `opts` field types (the gallery builds controls generically from these):
+   - `number` - `<input type=number>` with `min`, `max`, `step`.
+   - `color` - color picker; value hex string, e.g. `"0xff5533"`.
+   - `vector` - comma-separated numbers mapped to an array (for `position`, `rotation`, etc.).
+   - Omitting a field from `opts` simply means it uses its default and has no control.
+4. Insert the entry alongside the others. Match each field's `default` to the destructured default in
+   `engine/primitives.js` so the gallery and the code agree.

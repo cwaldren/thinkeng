@@ -138,6 +138,15 @@ export class Simulation {
       this.world.removeBody(entity.body);
     }
 
+    if (Array.isArray(entity.children)) {
+      for (const child of entity.children) {
+        this.entities.delete(child);
+        if (child.body) {
+          this.world.removeBody(child.body);
+        }
+      }
+    }
+
     this.entities.delete(entity);
   }
 

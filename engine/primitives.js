@@ -65,6 +65,44 @@ export function createBox(sim, opts = {}) {
   return sim.addEntity(mesh, body);
 }
 
+export function createCylinder(sim, opts = {}) {
+  const {
+    radiusTop = 1,
+    radiusBottom = 1,
+    height = 1,
+    color = 0x88cc55,
+    mass = 1,
+    position = [0, 0, 0],
+    rotation = [0, 0, 0],
+    radialSegments = 8,
+    friction = 0.3,
+  } = opts;
+
+  const geometry = new THREE.CylinderGeometry(
+    radiusTop,
+    radiusBottom,
+    height,
+    radialSegments,
+  );
+  const material = new THREE.MeshStandardMaterial({ color });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.position.set(position[0], position[1], position[2]);
+  mesh.rotation.set(rotation[0], rotation[1], rotation[2]);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+
+  const body = new CANNON.Body({
+    mass,
+    shape: new CANNON.Cylinder(radiusBottom, radiusTop, height, radialSegments),
+  });
+  body.position.set(position[0], position[1], position[2]);
+  body.quaternion.setFromEuler(rotation[0], rotation[1], rotation[2]);
+  body.material = new CANNON.Material("cylinder");
+  body.updateMassProperties();
+
+  return sim.addEntity(mesh, body);
+}
+
 export function createSphere(sim, opts = {}) {
   const {
     radius = 0.5,
