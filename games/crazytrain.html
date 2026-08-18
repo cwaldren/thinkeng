@@ -669,11 +669,12 @@ import {
         // Dynamite: a renewable consumable ($50 each, unlimited purchases).
         const DYNAMITE_COST = 50;
         let dynamiteCount = 0;
+        let dynamiteUnlocked = false;
 
-        // Renewable purchase pill appended to the powerup panel (never removed).
+        // Renewable purchase pill appended to the powerup panel (revealed once $50 is reached).
         const dynamiteBuy = document.createElement("div");
         Object.assign(dynamiteBuy.style, {
-          display: "flex",
+          display: "none",
           alignItems: "center",
           gap: "10px",
           padding: "12px 20px",
@@ -730,6 +731,7 @@ import {
         // Throw button pinned to the left of the throttle gauge, shows inventory.
         const dynamiteBtn = document.createElement("button");
         Object.assign(dynamiteBtn.style, {
+          display: "none",
           position: "fixed",
           bottom: "24px",
           left: "max(12px, calc(50% - 195px))",
@@ -761,6 +763,11 @@ import {
           dynamiteBtn.textContent = `💣 ${dynamiteCount} dynamite`;
           dynamiteBtn.style.opacity = dynamiteCount > 0 ? "1" : "0.4";
           dynamiteBtn.style.cursor = dynamiteCount > 0 ? "pointer" : "default";
+          if (dynamiteUnlocked || dynamiteCount > 0) {
+            dynamiteBtn.style.display = "block";
+          } else {
+            dynamiteBtn.style.display = "none";
+          }
         }
         updateDynamiteCounter();
 
@@ -785,14 +792,30 @@ import {
           body.quaternion.setFromEuler(Math.random() * Math.PI, Math.random() * Math.PI, 0);
 
           const fwd = follower.forwardAxis.clone().applyQuaternion(train.mesh.quaternion);
-          // Inherit the train's current velocity, then add extra launch speed so
-          // the dynamite flies ahead in a forward arc.
-          const trainVel = fwd.clone().multiplyScalar(follower.speed);
-          const extra = fwd.clone().multiplyScalar(18);
+
+          // Aim at the point on the track 2 segments ahead of the train
+          const targetPose = track.getPoseAt(follower.s + 2 * segmentLen);
+          const targetPos = targetPose
+            ? targetPose.position
+            : spawn.clone().addScaledVector(fwd, 2 * segmentLen);
+
+          const aimDir = new THREE.Vector3(
+            targetPos.x - spawn.x,
+            0,
+            targetPos.z - spawn.z,
+          );
+          if (aimDir.lengthSq() > 0.001) {
+            aimDir.normalize();
+          } else {
+            aimDir.copy(fwd);
+          }
+
+          // Launch with a low, fast trajectory toward the track target ahead
+          const launchSpeed = follower.speed + 35;
           body.velocity.set(
-            trainVel.x + extra.x,
-            18,
-            trainVel.z + extra.z,
+            aimDir.x * launchSpeed,
+            5,
+            aimDir.z * launchSpeed,
           );
           body.angularVelocity.set(
             (Math.random() - 0.5) * 8,
@@ -878,7 +901,7 @@ import {
 
         // Spawns an expanding orange explosion sphere for 200ms and shatters nearby Megaliths
         function spawnExplosion(pos) {
-          const maxRadius = 6.0;
+          const maxRadius = 9.0;
           const duration = 0.2; // 200ms
           const geo = new THREE.SphereGeometry(1, 24, 18);
           const mat = new THREE.MeshStandardMaterial({
@@ -910,7 +933,7 @@ import {
                 if (!obs.hit && obs.mesh.parent && obs.type === "giant-boulder") {
                   const obsWorldPos = new THREE.Vector3();
                   obs.mesh.getWorldPosition(obsWorldPos);
-                  if (mesh.position.distanceTo(obsWorldPos) <= maxRadius + 2.0) {
+                  if (mesh.position.distanceTo(obsWorldPos) <= maxRadius + 3.0) {
                     obs.hit = true;
                     obs.mesh.parent.remove(obs.mesh);
                     shatterMegalith(obsWorldPos, fwdDir, Math.max(16, follower.speed * 0.5));
@@ -928,6 +951,11 @@ import {
         }
         // Award any powerup whose grant condition is now met (each only once).
         function grantPowerups() {
+          if (!dynamiteUnlocked && (money >= DYNAMITE_COST || dynamiteCount > 0)) {
+            dynamiteUnlocked = true;
+            dynamiteBuy.style.display = "flex";
+            updateDynamiteCounter();
+          }
           for (const def of POWERUPS) {
             if (grantedPowerups.has(def.id)) continue;
             if (def.requires && !purchasedPowerups.has(def.requires)) continue;
@@ -1129,6 +1157,23 @@ import {
             );
             if (dyn.body.position.y <= 0.3) {
               dyn.landed = true;
+            } else {
+              // Check in-flight direct collision / proximity with Megaliths
+              for (const sSeg of track.segments) {
+                if (sSeg.obstacles) {
+                  for (const obs of sSeg.obstacles) {
+                    if (!obs.hit && obs.mesh.parent && obs.type === "giant-boulder") {
+                      const obsWorldPos = new THREE.Vector3();
+                      obs.mesh.getWorldPosition(obsWorldPos);
+                      if (dyn.mesh.position.distanceTo(obsWorldPos) < 4.0) {
+                        dyn.landed = true;
+                        break;
+                      }
+                    }
+                  }
+                }
+                if (dyn.landed) break;
+              }
             }
             if (dyn.landed) {
               spawnExplosion(dyn.body.position);
