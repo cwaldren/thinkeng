@@ -51,14 +51,15 @@
         createSphere,
         createRock,
       } from "engine/primitives.js";
-      import {
-        createTrain,
-        createRailSegment,
-        InfiniteTrack,
-        TrackFollower,
-        getLocalSpinePose,
-        createFPSCounter,
-      } from "engine/components.js";
+import {
+    createTrain,
+    createRailSegment,
+    createDynamite,
+    InfiniteTrack,
+    TrackFollower,
+    getLocalSpinePose,
+    createFPSCounter,
+  } from "engine/components.js";
       import {} from "engine/materials.js";
       import { Input } from "engine/input.js";
       import { createCameraControls } from "engine/cameraControls.js";
@@ -112,6 +113,12 @@
       // Active flying obstacles launched by collisions
       const activeFlyers = new Set();
 
+      // Dynamite sticks thrown by the player (spawned in-cab, flown in an arc)
+      const thrownDynamites = new Set();
+
+      // Active explosion spheres that rapidly expand and despawn
+      const activeExplosions = new Set();
+
       function rebaseActiveFlyers(origin, heading) {
         const ca = Math.cos(heading);
         const sa = Math.sin(heading);
@@ -133,6 +140,44 @@
 
           flyer.mesh.position.set(b.position.x, b.position.y, b.position.z);
           flyer.mesh.quaternion.set(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w);
+        }
+      }
+
+      // Rebase floating dynamite sticks the same way so they track with the train.
+      function rebaseThrownDynamites(origin, heading) {
+        const ca = Math.cos(heading);
+        const sa = Math.sin(heading);
+        const qRebase = new CANNON.Quaternion();
+        qRebase.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), -heading);
+
+        for (const dyn of thrownDynamites) {
+          const b = dyn.body;
+          const dx = b.position.x - origin.x;
+          const dz = b.position.z - origin.z;
+          b.position.x = dx * ca + dz * sa;
+          b.position.z = -dx * sa + dz * ca;
+          b.quaternion = qRebase.mult(b.quaternion);
+
+          const vx = b.velocity.x;
+          const vz = b.velocity.z;
+          b.velocity.x = vx * ca + vz * sa;
+          b.velocity.z = -vx * sa + vz * ca;
+
+          dyn.mesh.position.set(b.position.x, b.position.y, b.position.z);
+          dyn.mesh.quaternion.set(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w);
+        }
+      }
+
+      // Rebase active explosions the same way so they track with the train.
+      function rebaseActiveExplosions(origin, heading) {
+        const ca = Math.cos(heading);
+        const sa = Math.sin(heading);
+
+        for (const expl of activeExplosions) {
+          const dx = expl.mesh.position.x - origin.x;
+          const dz = expl.mesh.position.z - origin.z;
+          expl.mesh.position.x = dx * ca + dz * sa;
+          expl.mesh.position.z = -dx * sa + dz * ca;
         }
       }
 
@@ -621,6 +666,261 @@
           if (def.onBuy) def.onBuy();
         });
 
+        // Dynamite: a renewable consumable ($50 each, unlimited purchases).
+        const DYNAMITE_COST = 50;
+        let dynamiteCount = 0;
+
+        // Renewable purchase pill appended to the powerup panel (never removed).
+        const dynamiteBuy = document.createElement("div");
+        Object.assign(dynamiteBuy.style, {
+          display: "flex",
+          alignItems: "center",
+          gap: "10px",
+          padding: "12px 20px",
+          background: "rgba(20, 22, 28, 0.78)",
+          border: "1px solid rgba(217, 58, 43, 0.45)",
+          borderRadius: "24px",
+          cursor: "pointer",
+          backdropFilter: "blur(4px)",
+          transition: "background 0.15s, transform 0.05s",
+          fontSize: "1.05rem",
+          color: "#fff",
+          touchAction: "manipulation",
+          webkitTapHighlightColor: "transparent",
+        });
+        const dynamiteBuyIcon = document.createElement("span");
+        dynamiteBuyIcon.textContent = "💣";
+        dynamiteBuyIcon.style.fontSize = "1.3rem";
+        dynamiteBuyIcon.style.lineHeight = "1";
+        dynamiteBuyIcon.style.width = "1.2em";
+        dynamiteBuyIcon.style.textAlign = "center";
+        dynamiteBuy.appendChild(dynamiteBuyIcon);
+        const dynamiteBuyLabel = document.createElement("span");
+        dynamiteBuyLabel.textContent = "Buy Dynamite";
+        dynamiteBuy.appendChild(dynamiteBuyLabel);
+        const dynamiteBuyCost = document.createElement("span");
+        dynamiteBuyCost.textContent = `$${DYNAMITE_COST}`;
+        Object.assign(dynamiteBuyCost.style, {
+          marginLeft: "6px",
+          padding: "2px 10px",
+          background: "rgba(231, 217, 132, 0.16)",
+          border: "1px solid rgba(231, 217, 132, 0.4)",
+          borderRadius: "14px",
+          color: "#e7d984",
+          fontSize: "0.95rem",
+        });
+        dynamiteBuy.appendChild(dynamiteBuyCost);
+        powerups.panel.appendChild(dynamiteBuy);
+
+        dynamiteBuy.addEventListener("mouseenter", () => (dynamiteBuy.style.background = "rgba(40, 44, 54, 0.85)"));
+        dynamiteBuy.addEventListener("mouseleave", () => (dynamiteBuy.style.background = "rgba(20, 22, 28, 0.78)"));
+        dynamiteBuy.addEventListener("mousedown", () => (dynamiteBuy.style.transform = "scale(0.96)"));
+        dynamiteBuy.addEventListener("mouseup", () => (dynamiteBuy.style.transform = "scale(1)"));
+        dynamiteBuy.addEventListener("touchstart", () => (dynamiteBuy.style.transform = "scale(0.96)"), { passive: true });
+        dynamiteBuy.addEventListener("touchend", () => (dynamiteBuy.style.transform = "scale(1)"), { passive: true });
+        dynamiteBuy.addEventListener("touchcancel", () => (dynamiteBuy.style.transform = "scale(1)"), { passive: true });
+        dynamiteBuy.addEventListener("click", () => {
+          if (money < DYNAMITE_COST) return;
+          money -= DYNAMITE_COST;
+          moneyCounter.setValue(money);
+          dynamiteCount++;
+          updateDynamiteCounter();
+        });
+
+        // Throw button pinned to the left of the throttle gauge, shows inventory.
+        const dynamiteBtn = document.createElement("button");
+        Object.assign(dynamiteBtn.style, {
+          position: "fixed",
+          bottom: "24px",
+          left: "max(12px, calc(50% - 195px))",
+          padding: "10px 16px",
+          background: "rgba(20, 22, 28, 0.85)",
+          color: "#fff",
+          border: "1px solid rgba(255, 255, 255, 0.25)",
+          borderRadius: "26px",
+          cursor: "pointer",
+          fontFamily: 'monospace, sans-serif',
+          fontSize: "1rem",
+          fontWeight: "900",
+          backdropFilter: "blur(4px)",
+          userSelect: "none",
+          zIndex: "100",
+          touchAction: "manipulation",
+          webkitTapHighlightColor: "transparent",
+          transition: "background 0.15s, transform 0.05s",
+        });
+        dynamiteBtn.addEventListener("mousedown", () => (dynamiteBtn.style.transform = "scale(0.96)"));
+        dynamiteBtn.addEventListener("mouseup", () => (dynamiteBtn.style.transform = "scale(1)"));
+        dynamiteBtn.addEventListener("touchstart", () => (dynamiteBtn.style.transform = "scale(0.96)"), { passive: true });
+        dynamiteBtn.addEventListener("touchend", () => (dynamiteBtn.style.transform = "scale(1)"), { passive: true });
+        dynamiteBtn.addEventListener("touchcancel", () => (dynamiteBtn.style.transform = "scale(1)"), { passive: true });
+        dynamiteBtn.addEventListener("click", throwDynamite);
+        document.body.appendChild(dynamiteBtn);
+
+        function updateDynamiteCounter() {
+          dynamiteBtn.textContent = `💣 ${dynamiteCount} dynamite`;
+          dynamiteBtn.style.opacity = dynamiteCount > 0 ? "1" : "0.4";
+          dynamiteBtn.style.cursor = dynamiteCount > 0 ? "pointer" : "default";
+        }
+        updateDynamiteCounter();
+
+        // Spawn a dynamite in the cab and launch it forward in an arc. It flies
+        // until it touches the ground, then despawns.
+        function throwDynamite() {
+          if (dynamiteCount <= 0) return;
+          dynamiteCount--;
+          updateDynamiteCounter();
+
+          const ent = createDynamite(sim, {
+            length: 2.4,
+            position: [0, 0, 0],
+            mass: 2,
+          });
+          const mesh = ent.mesh;
+          const body = ent.body;
+
+          const spawn = new THREE.Vector3(-2.6, 4.0, 0).applyMatrix4(train.mesh.matrixWorld);
+          mesh.position.copy(spawn);
+          body.position.copy(spawn);
+          body.quaternion.setFromEuler(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+
+          const fwd = follower.forwardAxis.clone().applyQuaternion(train.mesh.quaternion);
+          // Inherit the train's current velocity, then add extra launch speed so
+          // the dynamite flies ahead in a forward arc.
+          const trainVel = fwd.clone().multiplyScalar(follower.speed);
+          const extra = fwd.clone().multiplyScalar(18);
+          body.velocity.set(
+            trainVel.x + extra.x,
+            18,
+            trainVel.z + extra.z,
+          );
+          body.angularVelocity.set(
+            (Math.random() - 0.5) * 8,
+            (Math.random() - 0.5) * 8,
+            (Math.random() - 0.5) * 8,
+          );
+
+          const dyn = { mesh, body, ent, landed: false };
+          body.addEventListener("collide", () => {
+            dyn.landed = true;
+          });
+          thrownDynamites.add(dyn);
+        }
+
+        // Shatters a Giant Megalith Boulder into smaller rock fragments
+        function shatterMegalith(obsWorldPos, baseFwdDir, baseSpeed = 15) {
+          const shatterMat = new THREE.MeshStandardMaterial({ color: 0x2a2d30, roughness: 0.95 });
+          const shardOffsets = [
+            [-1.2, 1.0, 0.4],
+            [1.2, 1.0, -0.4],
+            [-0.4, 0.6, 1.2],
+            [0.4, 0.6, -1.2],
+          ];
+
+          for (const offset of shardOffsets) {
+            const rockMesh = new THREE.Mesh(
+              new THREE.DodecahedronGeometry(0.9, 0),
+              shatterMat,
+            );
+            rockMesh.scale.set(
+              0.9 + Math.random() * 0.4,
+              0.8 + Math.random() * 0.3,
+              0.9 + Math.random() * 0.4,
+            );
+            rockMesh.position.set(
+              obsWorldPos.x + offset[0],
+              obsWorldPos.y + offset[1],
+              obsWorldPos.z + offset[2],
+            );
+            rockMesh.rotation.set(
+              Math.random() * Math.PI,
+              Math.random() * Math.PI,
+              Math.random() * Math.PI,
+            );
+            rockMesh.castShadow = true;
+            rockMesh.receiveShadow = true;
+            sim.scene.add(rockMesh);
+
+            const rockBody = new CANNON.Body({
+              mass: 600,
+              shape: new CANNON.Sphere(0.8),
+              linearDamping: 0.3,
+              angularDamping: 0.4,
+            });
+            rockBody.position.copy(rockMesh.position);
+
+            // Fan the shards outward and upward from the impact point
+            const shardDir = new CANNON.Vec3(
+              baseFwdDir.x + offset[0] * 0.4,
+              2.0 + Math.random() * 2.5,
+              baseFwdDir.z + offset[2] * 0.4,
+            );
+            shardDir.normalize();
+            rockBody.velocity.set(
+              shardDir.x * baseSpeed + baseFwdDir.z * (Math.random() - 0.5) * 10,
+              follower.speed * 0.3 + 1.5 + Math.random() * 2,
+              shardDir.z * baseSpeed - baseFwdDir.x * (Math.random() - 0.5) * 10,
+            );
+            rockBody.angularVelocity.set(
+              (Math.random() - 0.5) * 14,
+              (Math.random() - 0.5) * 14,
+              (Math.random() - 0.5) * 14,
+            );
+
+            sim.world.addBody(rockBody);
+            activeFlyers.add({
+              mesh: rockMesh,
+              body: rockBody,
+              lifetime: 2.8,
+            });
+          }
+        }
+
+        // Spawns an expanding orange explosion sphere for 200ms and shatters nearby Megaliths
+        function spawnExplosion(pos) {
+          const maxRadius = 6.0;
+          const duration = 0.2; // 200ms
+          const geo = new THREE.SphereGeometry(1, 24, 18);
+          const mat = new THREE.MeshStandardMaterial({
+            color: 0xff6600,
+            emissive: 0xff4400,
+            emissiveIntensity: 0.9,
+            roughness: 0.4,
+            transparent: true,
+            opacity: 0.9,
+          });
+          const mesh = new THREE.Mesh(geo, mat);
+          mesh.position.set(pos.x, Math.max(pos.y, 0.5), pos.z);
+          mesh.scale.setScalar(0.1);
+          sim.scene.add(mesh);
+
+          const expl = {
+            mesh,
+            age: 0,
+            duration,
+            maxRadius,
+          };
+          activeExplosions.add(expl);
+
+          // Check for Megaliths in blast radius
+          const fwdDir = follower.forwardAxis.clone().applyQuaternion(train.mesh.quaternion);
+          for (const sSeg of track.segments) {
+            if (sSeg.obstacles) {
+              for (const obs of sSeg.obstacles) {
+                if (!obs.hit && obs.mesh.parent && obs.type === "giant-boulder") {
+                  const obsWorldPos = new THREE.Vector3();
+                  obs.mesh.getWorldPosition(obsWorldPos);
+                  if (mesh.position.distanceTo(obsWorldPos) <= maxRadius + 2.0) {
+                    obs.hit = true;
+                    obs.mesh.parent.remove(obs.mesh);
+                    shatterMegalith(obsWorldPos, fwdDir, Math.max(16, follower.speed * 0.5));
+                  }
+                }
+              }
+            }
+          }
+        }
+
         // Raise the governor cap (never lowering it) and keep the gauge in step.
         function setGovernorCap(newCapMph) {
           governor.setCap(Math.max(governor.getCap(), newCapMph));
@@ -813,6 +1113,43 @@
 
             if (nextOrigin) {
               rebaseActiveFlyers(nextOrigin, nextHeading);
+              rebaseThrownDynamites(nextOrigin, nextHeading);
+              rebaseActiveExplosions(nextOrigin, nextHeading);
+            }
+          }
+
+          // Sync & despawn thrown dynamite sticks (spawn explosion on ground contact)
+          for (const dyn of thrownDynamites) {
+            dyn.mesh.position.set(dyn.body.position.x, dyn.body.position.y, dyn.body.position.z);
+            dyn.mesh.quaternion.set(
+              dyn.body.quaternion.x,
+              dyn.body.quaternion.y,
+              dyn.body.quaternion.z,
+              dyn.body.quaternion.w,
+            );
+            if (dyn.body.position.y <= 0.3) {
+              dyn.landed = true;
+            }
+            if (dyn.landed) {
+              spawnExplosion(dyn.body.position);
+              simulation.removeEntity(dyn.ent);
+              thrownDynamites.delete(dyn);
+            }
+          }
+
+          // Animate & despawn explosion spheres (expand to large radius in 200ms)
+          for (const expl of activeExplosions) {
+            expl.age += dt;
+            const progress = expl.age / expl.duration;
+            if (progress >= 1) {
+              simulation.scene.remove(expl.mesh);
+              expl.mesh.geometry?.dispose();
+              expl.mesh.material?.dispose();
+              activeExplosions.delete(expl);
+            } else {
+              const currentScale = 0.1 + (expl.maxRadius - 0.1) * Math.sin((progress * Math.PI) / 2);
+              expl.mesh.scale.setScalar(currentScale);
+              expl.mesh.material.opacity = 0.9 * (1 - progress * 0.7);
             }
           }
 
@@ -905,74 +1242,9 @@
                       // Detach from segment and promote to world simulation
                       obs.mesh.parent.remove(obs.mesh);
 
-                      // Giant Megalith Boulder shatters into 4 smaller rocks on impact
+                      // Giant Megalith Boulder shatters into smaller rocks on impact
                       if (obs.type === "giant-boulder") {
-                        const shatterMat = new THREE.MeshStandardMaterial({ color: 0x2a2d30, roughness: 0.95 });
-                        const shardOffsets = [
-                          [-1.2, 1.0, 0.4],
-                          [1.2, 1.0, -0.4],
-                          [-0.4, 0.6, 1.2],
-                          [0.4, 0.6, -1.2],
-                        ];
-                        const hitSpeed = follower.speed * 0.5;
-
-                        for (const offset of shardOffsets) {
-                          const rockMesh = new THREE.Mesh(
-                            new THREE.DodecahedronGeometry(0.9, 0),
-                            shatterMat,
-                          );
-                          rockMesh.scale.set(
-                            0.9 + Math.random() * 0.4,
-                            0.8 + Math.random() * 0.3,
-                            0.9 + Math.random() * 0.4,
-                          );
-                          rockMesh.position.set(
-                            obsWorldPos.x + offset[0],
-                            obsWorldPos.y + offset[1],
-                            obsWorldPos.z + offset[2],
-                          );
-                          rockMesh.rotation.set(
-                            Math.random() * Math.PI,
-                            Math.random() * Math.PI,
-                            Math.random() * Math.PI,
-                          );
-                          rockMesh.castShadow = true;
-                          rockMesh.receiveShadow = true;
-                          simulation.scene.add(rockMesh);
-
-                          const rockBody = new CANNON.Body({
-                            mass: 600,
-                            shape: new CANNON.Sphere(0.8),
-                            linearDamping: 0.3,
-                            angularDamping: 0.4,
-                          });
-                          rockBody.position.copy(rockMesh.position);
-
-                          // Fan the shards outward and upward from the impact point
-                          const shardDir = new CANNON.Vec3(
-                            fwdDir.x + offset[0] * 0.4,
-                            2.0 + Math.random() * 2.5,
-                            fwdDir.z + offset[2] * 0.4,
-                          );
-                          shardDir.normalize();
-                          rockBody.velocity.set(
-                            shardDir.x * hitSpeed + fwdDir.z * (Math.random() - 0.5) * 10,
-                            follower.speed * 0.3 + 1.5 + Math.random() * 2,
-                            shardDir.z * hitSpeed - fwdDir.x * (Math.random() - 0.5) * 10,
-                          );
-                          rockBody.angularVelocity.set(
-                            (Math.random() - 0.5) * 14,
-                            (Math.random() - 0.5) * 14,
-                            (Math.random() - 0.5) * 14,
-                          );
-
-                          simulation.world.addBody(rockBody);
-                          activeFlyers.add({
-                            mesh: rockMesh,
-                            body: rockBody,
-                            lifetime: 2.8,
-                          });
-                        }
+                        shatterMegalith(obsWorldPos, fwdDir, follower.speed * 0.5);
 
                         // Giant Megalith Boulder takes off exactly 500 mph (min 0)
                         const effGiantMph = Math.max(0, 500 - totalDefenseMph());

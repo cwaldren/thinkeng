@@ -38,6 +38,7 @@ export function createPowerups(options = {}) {
     fontWeight: "700",
     pointerEvents: "auto",
     userSelect: "none",
+    zIndex: "100",
   });
   container.appendChild(panel);
 
@@ -66,11 +67,16 @@ export function createPowerups(options = {}) {
         backdropFilter: "blur(4px)",
         transition: "background 0.15s, transform 0.05s",
         fontSize: "1.05rem",
+        touchAction: "manipulation",
+        webkitTapHighlightColor: "transparent",
       });
       pill.addEventListener("mouseenter", () => (pill.style.background = "rgba(40, 44, 54, 0.85)"));
       pill.addEventListener("mouseleave", () => (pill.style.background = "rgba(20, 22, 28, 0.78)"));
       pill.addEventListener("mousedown", () => (pill.style.transform = "scale(0.96)"));
       pill.addEventListener("mouseup", () => (pill.style.transform = "scale(1)"));
+      pill.addEventListener("touchstart", () => (pill.style.transform = "scale(0.96)"), { passive: true });
+      pill.addEventListener("touchend", () => (pill.style.transform = "scale(1)"), { passive: true });
+      pill.addEventListener("touchcancel", () => (pill.style.transform = "scale(1)"), { passive: true });
 
       const iconEl = document.createElement("span");
       iconEl.textContent = icon;

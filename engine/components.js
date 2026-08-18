@@ -3,6 +3,7 @@
 // Track any created primitives so they can be removed together via sim.removeEntity(entity).
 
 import * as THREE from "three";
+import * as CANNON from "cannon-es";
 import { createCylinder } from "./primitives.js";
 import {
   TrackSegment,
@@ -12,13 +13,7 @@ import {
   getLocalSpinePose,
 } from "./track.js";
 
-export {
-  TrackSegment,
-  Track,
-  InfiniteTrack,
-  TrackFollower,
-  getLocalSpinePose,
-};
+export { TrackSegment, Track, InfiniteTrack, TrackFollower, getLocalSpinePose };
 
 export function createGrass(sim, opts = {}) {
   const {
@@ -119,7 +114,11 @@ export function createRailSegment(sim, opts = {}) {
   for (let i = 0; i <= n; i++) {
     const s = (i / n) * length;
     const local = getLocalSpinePose(radius, length, s);
-    pts.push({ x: local.position.x, z: local.position.z, heading: local.heading });
+    pts.push({
+      x: local.position.x,
+      z: local.position.z,
+      heading: local.heading,
+    });
   }
 
   const railY = railHeight + tieThickness / 2;
@@ -137,7 +136,16 @@ export function createRailSegment(sim, opts = {}) {
       const z2 = b.z + p2.z * (gauge / 2) * side;
       const len = Math.hypot(x2 - x1, z2 - z1);
       const ang = Math.atan2(z2 - z1, x2 - x1);
-      addBar(len, railThickness, railWidth, (x1 + x2) / 2, railY, (z1 + z2) / 2, -ang, railMat);
+      addBar(
+        len,
+        railThickness,
+        railWidth,
+        (x1 + x2) / 2,
+        railY,
+        (z1 + z2) / 2,
+        -ang,
+        railMat,
+      );
     }
   }
 
@@ -147,7 +155,16 @@ export function createRailSegment(sim, opts = {}) {
     const local = getLocalSpinePose(radius, length, s);
     const pc = perp(local.heading);
     const tieLen = gauge + 0.8;
-    addBar(tieLen, tieThickness, 0.35, local.position.x, tieThickness / 2, local.position.z, -Math.atan2(pc.z, pc.x), tieMat);
+    addBar(
+      tieLen,
+      tieThickness,
+      0.35,
+      local.position.x,
+      tieThickness / 2,
+      local.position.z,
+      -Math.atan2(pc.z, pc.x),
+      tieMat,
+    );
   }
 
   const seg = sim.addEntity(group, null, null);
@@ -162,18 +179,88 @@ export function createRailSegment(sim, opts = {}) {
     length,
     spine: pts,
     entryPose: {
-      point: [trackSegment.entryPose.position.x, trackSegment.entryPose.position.y, trackSegment.entryPose.position.z],
+      point: [
+        trackSegment.entryPose.position.x,
+        trackSegment.entryPose.position.y,
+        trackSegment.entryPose.position.z,
+      ],
       heading: trackSegment.entryPose.heading,
       position: trackSegment.entryPose.position,
     },
     exitPose: {
-      point: [trackSegment.exitPose.position.x, trackSegment.exitPose.position.y, trackSegment.exitPose.position.z],
+      point: [
+        trackSegment.exitPose.position.x,
+        trackSegment.exitPose.position.y,
+        trackSegment.exitPose.position.z,
+      ],
       heading: trackSegment.exitPose.heading,
       position: trackSegment.exitPose.position,
     },
   };
   return seg;
-  return seg;
+}
+
+// A bundle of three long, red dynamite sticks. Decorative (no physics).
+// The sticks run parallel along the local +X axis and are arranged in the YZ
+// plane as a triangular (equilateral) packing, so viewed edge-on they form a
+// triangle. Composes createCylinder primitives under one group.
+export function createDynamite(sim, opts = {}) {
+  const {
+    length = 2.4,
+    radius = 0.18,
+    color = 0xd93a2b,
+    radialSegments = 16,
+    position = [0, 0, 0],
+    mass = 0, // > 0 attaches a single dynamic physics body to the bundle
+  } = opts;
+
+  const group = new THREE.Group();
+  group.position.set(position[0], position[1], position[2]);
+  const children = [];
+
+  // Equilateral triangle (side 2r, centroid at origin) in the YZ plane so the
+  // three equal cylinders touch and pack into a triangle when viewed edge-on.
+  const R = (2 * radius) / Math.sqrt(3);
+  const offsets = [
+    [R, 0],
+    [-R / 2, -radius],
+    [-R / 2, radius],
+  ];
+
+  for (const [y, z] of offsets) {
+    const stick = createCylinder(sim, {
+      radiusTop: radius,
+      radiusBottom: radius,
+      height: length,
+      color,
+      mass: 0,
+      position: [0, y, z],
+      rotation: [0, 0, Math.PI / 2],
+      radialSegments,
+    });
+    group.add(stick.mesh);
+    children.push(stick);
+  }
+
+  const entity = sim.addEntity(group, null, null);
+  entity.children = children;
+
+  if (mass > 0) {
+    const body = new CANNON.Body({
+      mass,
+      shape: new CANNON.Box(
+        new CANNON.Vec3(length / 2, radius * 1.4, radius * 1.4),
+      ),
+      linearDamping: 0.1,
+      angularDamping: 0.2,
+    });
+    body.position.set(position[0], position[1], position[2]);
+    body.updateMassProperties();
+    sim.world.addBody(body);
+    entity.body = body;
+  }
+
+  return entity;
 }
 
 // A simple steam locomotive composite. Travels along its local +X axis (matching
@@ -194,7 +281,10 @@ export function createTrain(sim, opts = {}) {
   group.position.set(position[0], position[1], position[2]);
 
   const addMesh = (geometry, color, x, y, z, rotation = [0, 0, 0]) => {
-    const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color }));
+    const mesh = new THREE.Mesh(
+      geometry,
+      new THREE.MeshStandardMaterial({ color }),
+    );
     mesh.position.set(x, y, z);
     mesh.rotation.set(rotation[0], rotation[1], rotation[2]);
     mesh.castShadow = true;
@@ -212,7 +302,13 @@ export function createTrain(sim, opts = {}) {
   // hood [-1.4,0.0] (len 1.4), boiler [0.0,3.6] (len 3.6) — each starts
   // exactly where the previous ends, so the body is seamless.
   // Chassis box running the length of the locomotive.
-  addMesh(new THREE.BoxGeometry(7.2, 0.5, 1.8), trimColor, 0.6, railY + 0.45, 0);
+  addMesh(
+    new THREE.BoxGeometry(7.2, 0.5, 1.8),
+    trimColor,
+    0.6,
+    railY + 0.45,
+    0,
+  );
 
   // Boiler: horizontal cylinder along +X (cylinder axis is Y by default).
   const boiler = addMesh(
@@ -225,19 +321,49 @@ export function createTrain(sim, opts = {}) {
   );
 
   // Firebox / hood in front of the cab.
-  addMesh(new THREE.BoxGeometry(1.4, 1.2, 1.6), bodyColor, -0.7, railY + 0.45 + 1.0, 0);
+  addMesh(
+    new THREE.BoxGeometry(1.4, 1.2, 1.6),
+    bodyColor,
+    -0.7,
+    railY + 0.45 + 1.0,
+    0,
+  );
 
   // Cab at the rear.
-  addMesh(new THREE.BoxGeometry(2.4, 2.1, 1.9), cabColor, -2.6, railY + 0.45 + 1.9, 0);
+  addMesh(
+    new THREE.BoxGeometry(2.4, 2.1, 1.9),
+    cabColor,
+    -2.6,
+    railY + 0.45 + 1.9,
+    0,
+  );
 
   // Cab roof.
-  addMesh(new THREE.BoxGeometry(2.6, 0.16, 2.1), trimColor, -2.6, railY + 0.45 + 3.05, 0);
+  addMesh(
+    new THREE.BoxGeometry(2.6, 0.16, 2.1),
+    trimColor,
+    -2.6,
+    railY + 0.45 + 3.05,
+    0,
+  );
 
   // Smokestack on the front of the boiler.
-  addMesh(new THREE.CylinderGeometry(0.24, 0.3, 1.0, 14), trimColor, 3.55, railY + 0.45 + 0.68 + 1.1, 0);
+  addMesh(
+    new THREE.CylinderGeometry(0.24, 0.3, 1.0, 14),
+    trimColor,
+    3.55,
+    railY + 0.45 + 0.68 + 1.1,
+    0,
+  );
 
   // Steam dome / sand dome on top of the boiler.
-  addMesh(new THREE.CylinderGeometry(0.22, 0.24, 0.7, 14), accentColor, 1.6, railY + 0.45 + 0.68 + 0.85, 0);
+  addMesh(
+    new THREE.CylinderGeometry(0.22, 0.24, 0.7, 14),
+    accentColor,
+    1.6,
+    railY + 0.45 + 0.68 + 0.85,
+    0,
+  );
 
   // Cowcatcher at the front, angled.
   const cowcatcher = addMesh(
@@ -320,3 +446,4 @@ export function createFPSCounter(sim, opts = {}) {
   }
   return entity;
 }
+

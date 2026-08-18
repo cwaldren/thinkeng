@@ -22,6 +22,7 @@ import {
   createGrass,
   createRailSegment,
   createTrain,
+  createDynamite,
 } from "./components.js";
 
 export const ENTRIES = [
@@ -173,6 +174,19 @@ export const ENTRIES = [
       { key: "bodyColor", label: "Body Color", type: "color", default: "0xc23b2e" },
       { key: "cabColor", label: "Cab Color", type: "color", default: "0x8a2b22" },
       { key: "accentColor", label: "Accent Color", type: "color", default: "0x334455" },
+      { key: "position", label: "Position [x,y,z]", type: "vector", default: [0, 0, 0] },
+    ],
+  },
+  {
+    category: "component",
+    key: "dynamite",
+    label: "Dynamite",
+    desc: "A bundle of three long red dynamite sticks (component)",
+    fn: createDynamite,
+    opts: [
+      { key: "length", label: "Length", type: "number", default: 2.4, min: 0.5, max: 6, step: 0.1 },
+      { key: "radius", label: "Radius", type: "number", default: 0.18, min: 0.05, max: 1, step: 0.05 },
+      { key: "color", label: "Color", type: "color", default: "0xd93a2b" },
       { key: "position", label: "Position [x,y,z]", type: "vector", default: [0, 0, 0] },
     ],
   },

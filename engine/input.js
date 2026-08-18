@@ -50,7 +50,23 @@ export class Input {
    * @returns {Input} this, for chaining
    */
   mapTouchToKey(code) {
+    const isInteractive = (target) => {
+      if (!target || target === document.body || target === document.documentElement) return false;
+      if (target.tagName === "CANVAS") return false;
+      if (target.closest("button, a, input, select, textarea, [role='button'], [data-interactive]")) return true;
+      let cur = target;
+      while (cur && cur !== document.body) {
+        if (cur.style?.cursor === "pointer" || cur.style?.pointerEvents === "auto" || window.getComputedStyle(cur).cursor === "pointer") {
+          return true;
+        }
+        cur = cur.parentElement;
+      }
+      return false;
+    };
+
     const addTouches = (e) => {
+      if (isInteractive(e.target)) return;
+
       e.preventDefault();
       for (const touch of e.changedTouches) {
         this._touchMap.set(touch.identifier, code);
@@ -59,9 +75,15 @@ export class Input {
     };
 
     const releaseTouches = (e) => {
-      e.preventDefault();
+      let releasedAny = false;
       for (const touch of e.changedTouches) {
-        this._touchMap.delete(touch.identifier);
+        if (this._touchMap.has(touch.identifier)) {
+          this._touchMap.delete(touch.identifier);
+          releasedAny = true;
+        }
+      }
+      if (releasedAny) {
+        e.preventDefault();
       }
       // Only release the key once no remaining touch maps to it.
       if (![...this._touchMap.values()].includes(code)) {
