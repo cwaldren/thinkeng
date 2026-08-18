@@ -228,6 +228,38 @@
         // Ground plane
         const ground = createGround(sim, { size: 2000, color: 0x4e8a4a, position: [0, -0.5, 0] });
 
+        // Track generation with winding sections & high-speed straightaways (>= 10 segments)
+        let straightawayCount = 6; // Start with a straight runway
+        let windingCount = 0;
+
+        const generateTrackCurve = (index) => {
+          if (index < 6) return 0;
+
+          // Currently in a designated straightaway
+          if (straightawayCount > 0) {
+            straightawayCount--;
+            return 0;
+          }
+
+          // Transition between winding zones and straightaways
+          if (windingCount <= 0) {
+            if (Math.random() < 0.38) {
+              // Trigger a long straightaway: 10 to 15 consecutive straight segments
+              straightawayCount = 10 + Math.floor(Math.random() * 6);
+              straightawayCount--;
+              return 0;
+            } else {
+              // Trigger a winding zone: 12 to 18 curved/winding segments
+              windingCount = 12 + Math.floor(Math.random() * 7);
+            }
+          }
+
+          windingCount--;
+          if (Math.random() < 0.25) return 0;
+          const sign = Math.random() < 0.5 ? 1 : -1;
+          return sign * (60 + Math.random() * 90);
+        };
+
         // Infinite Track with straight & curved sections + roadside scenery
         const segmentLen = 40;
         const rearSegments = 3; // Keep 3 segments of track/scenery active behind the train
@@ -236,13 +268,7 @@
           windowCount: 22,
           segmentFactory: createSceneryRailSegment,
           camera: null, // Camera managed directly by train
-          curveGenerator: (index) => {
-            if (index < 4) return 0;
-            const r = Math.random();
-            if (r < 0.4) return 0;
-            const sign = Math.random() < 0.5 ? 1 : -1;
-            return sign * (60 + Math.random() * 90);
-          },
+          curveGenerator: generateTrackCurve,
         });
 
         // Train & Controls (positioned past the rear buffer segments)
