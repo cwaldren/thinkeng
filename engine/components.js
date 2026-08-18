@@ -265,3 +265,58 @@ export function createTrain(sim, opts = {}) {
 
   return sim.addEntity(group, null, null);
 }
+
+// Lightweight reusable FPS counter overlay. Displays in upper right corner.
+export function createFPSCounter(sim, opts = {}) {
+  const {
+    color = "rgba(255, 255, 255, 0.6)",
+    fontSize = "0.75rem",
+    updateInterval = 0.25,
+  } = opts;
+
+  const el = document.createElement("div");
+  el.id = "fps-counter";
+  el.style.position = "absolute";
+  el.style.top = "12px";
+  el.style.right = "14px";
+  el.style.fontFamily = "monospace, sans-serif";
+  el.style.fontSize = fontSize;
+  el.style.color = color;
+  el.style.letterSpacing = "0.05em";
+  el.style.pointerEvents = "none";
+  el.style.userSelect = "none";
+  el.style.zIndex = "1000";
+  el.textContent = "FPS 60";
+
+  const container = sim?.container || document.body;
+  container.appendChild(el);
+
+  let frameCount = 0;
+  let timeAccum = 0;
+
+  const updateFn = (dt) => {
+    frameCount++;
+    timeAccum += dt;
+    if (timeAccum >= updateInterval) {
+      const fps = Math.round(frameCount / timeAccum);
+      el.textContent = `FPS ${fps}`;
+      frameCount = 0;
+      timeAccum = 0;
+    }
+  };
+
+  const entity = {
+    mesh: null,
+    body: null,
+    updateFn,
+    element: el,
+    dispose: () => {
+      if (el.parentNode) el.parentNode.removeChild(el);
+    },
+  };
+
+  if (sim) {
+    sim.entities.add(entity);
+  }
+  return entity;
+}

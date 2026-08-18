@@ -82,6 +82,7 @@
         InfiniteTrack,
         TrackFollower,
         getLocalSpinePose,
+        createFPSCounter,
       } from "engine/components.js";
       import {} from "engine/materials.js";
 
@@ -213,6 +214,9 @@
 
       // 3. Game-Specific Setup (The LLM focus area)
       function setup(sim) {
+        // FPS Counter
+        createFPSCounter(sim);
+
         // Bright daylight lighting & atmosphere
         const hemiLight = new THREE.HemisphereLight(0xffffff, 0x446644, 0.8);
         sim.scene.add(hemiLight);
