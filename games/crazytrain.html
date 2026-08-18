@@ -36,7 +36,7 @@
       <h1 style="margin: 0; font-size: 1.2rem; opacity: 0.8">
         Crazy Train
       </h1>
-      <p style="margin: 4px 0 0; font-size: 0.85rem; opacity: 0.7">
+      <p id="controls-hint" style="margin: 4px 0 0; font-size: 0.85rem; opacity: 0.7">
         <strong>W</strong> accelerate &bull; <strong>S</strong> decelerate &bull; no input coasts &bull; <strong>Space</strong> rear camera
       </p>
     </div>
@@ -520,6 +520,10 @@ import {
         sim.world.addBody(cowcatcherBody);
 
         // Input: shared key state + tap-to-accelerate on mobile
+        if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) {
+          const hint = document.getElementById("controls-hint");
+          if (hint) hint.innerText = "Tap to accelerate \u2022 release to coast";
+        }
         const input = new Input();
         input.mapTouchToKey("KeyW");
         const keys = input.keys;
@@ -731,18 +735,20 @@ import {
         Object.assign(dynamiteBtn.style, {
           display: "none",
           position: "fixed",
-          bottom: "24px",
-          left: "max(12px, calc(50% - 195px))",
-          padding: "10px 16px",
-          background: "rgba(20, 22, 28, 0.85)",
+          bottom: "96px",
+          left: "calc(50% - 190px)",
+          width: "81px",
+          height: "81px",
+          padding: "0",
+          background: "#c62828",
           color: "#fff",
-          border: "1px solid rgba(255, 255, 255, 0.25)",
-          borderRadius: "26px",
+          border: "none",
+          borderRadius: "6px",
           cursor: "pointer",
           fontFamily: 'monospace, sans-serif',
-          fontSize: "1rem",
+          fontSize: "0.9rem",
           fontWeight: "900",
-          backdropFilter: "blur(4px)",
+          lineHeight: "1.1",
           userSelect: "none",
           zIndex: "100",
           touchAction: "manipulation",
@@ -757,8 +763,8 @@ import {
         dynamiteBtn.addEventListener("click", throwDynamite);
         document.body.appendChild(dynamiteBtn);
 
-        function updateDynamiteCounter() {
-          dynamiteBtn.textContent = `💣 ${dynamiteCount} dynamite`;
+function updateDynamiteCounter() {
+          dynamiteBtn.textContent = `THROW\nDYNAMITE\n(x${dynamiteCount})`;
           dynamiteBtn.style.opacity = dynamiteCount > 0 ? "1" : "0.4";
           dynamiteBtn.style.cursor = dynamiteCount > 0 ? "pointer" : "default";
           if (dynamiteUnlocked || dynamiteCount > 0) {
