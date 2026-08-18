@@ -174,6 +174,24 @@ export class Track {
 /**
  * Infinite streaming track with floating origin rebasing.
  * Automatically spawns new segments ahead and recycles old segments behind.
+ *
+ * NOTE ON FRAME UPDATE ORDERING:
+ * When advancing an entity along an InfiniteTrack, always process segment recycling
+ * (`track.advance()`) and station decrement (`s -= segmentLength`) BEFORE sampling
+ * poses and updating entity / camera transforms for the current frame:
+ *
+ * ```js
+ * follower.s += speed * dt;
+ * while (follower.s >= track.segmentLength) {
+ *   follower.s -= track.segmentLength;
+ *   track.advance();
+ * }
+ * const pose = follower.getPose();
+ * // update mesh, matrixWorld, and camera here...
+ * ```
+ * If transforms are sampled before `advance()`, the track segments rebase while the
+ * entity/camera transforms remain in the pre-rebase coordinate space for 1 frame,
+ * producing a single-frame visual jerk/glitch.
  */
 export class InfiniteTrack {
   constructor(sim, opts = {}) {

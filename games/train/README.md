@@ -37,6 +37,11 @@ coordinates small, we **rebase**:
 - The train mesh stays pinned near the local origin (`~ (0, 1.2, 0)`); the
   visible world just slides back by `L`.
 - Reuses `removeEntity` (which disposes GPU geometry) for recycling.
+- **Frame update order rule:** Always advance distance `s += speed * dt` and
+  perform `track.advance()` (rebasing) *before* sampling `follower.getPose()` and
+  updating train/camera matrices. Sampling before rebasing leaves transforms
+  in the prior coordinate space for a single frame, causing a noticeable 1-frame
+  track jerk.
 
 ### 3. Stitch segments with pose continuity
 Each segment stores an **entry pose** `{point, heading, bank}` and an

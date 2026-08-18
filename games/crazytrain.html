@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Crazy Train</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: #111116;
+        font-family: sans-serif;
+      }
+      #ui {
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        color: #fff;
+        pointer-events: none;
+      }
+    </style>
+
+    <!-- 1. Import Map (Constant Across All Games) -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "/vendor/three.module.js",
+          "cannon-es": "/vendor/cannon-es.js",
+          "engine/": "/engine/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="ui">
+      <h1 style="margin: 0; font-size: 1.2rem; opacity: 0.8">
+        Crazy Train
+      </h1>
+      <p style="margin: 4px 0 0; font-size: 0.85rem; opacity: 0.5">
+        You're driving an out of control train on an infinite, curving track!
+      </p>
+    </div>
+
+    <script type="module">
+      import * as THREE from "three";
+      import { Simulation } from "engine/core.js";
+      import {
+        createGround,
+        createBox,
+        createSphere,
+      } from "engine/primitives.js";
+      import {
+        createTrain,
+        createRailSegment,
+        InfiniteTrack,
+        TrackFollower,
+      } from "engine/components.js";
+      import {} from "engine/materials.js";
+
+      // 2. Initialize Core Engine with Options
+      const sim = new Simulation({
+        gravity: [0, -9.81, 0],
+        clearColor: 0x1a2230,
+        enableShadows: true,
+      });
+
+      // 3. Game-Specific Setup (The LLM focus area)
+      function setup(sim) {
+        // Ground plane
+        const ground = createGround(sim, { size: 2000, color: 0x2d4a2d, position: [0, -0.5, 0] });
+
+        // Infinite Track with straight & curved sections
+        const track = new InfiniteTrack(sim, {
+          segmentLength: 40,
+          windowCount: 15,
+          segmentFactory: createRailSegment,
+          camera: null, // Camera managed directly by train
+          curveGenerator: (index) => {
+            if (index < 2) return 0;
+            const r = Math.random();
+            if (r < 0.4) return 0;
+            const sign = Math.random() < 0.5 ? 1 : -1;
+            return sign * (60 + Math.random() * 90);
+          },
+        });
+
+        // Train
+        const train = createTrain(sim, { position: [0, 0, 0] });
+        const follower = new TrackFollower(track, train.mesh, {
+          s: 10,
+          speed: 25,
+        });
+
+        // Initial train position
+        const initPose = follower.getPose();
+        if (initPose) {
+          train.mesh.position.copy(initPose.position);
+          train.mesh.quaternion.setFromUnitVectors(follower.forwardAxis, initPose.forward);
+          train.mesh.updateMatrixWorld(true);
+        }
+
+        // Camera mounted on train cab top looking forward along the train
+        const camOffset = new THREE.Vector3(-3.5, 5.5, 0);
+        const lookOffset = new THREE.Vector3(20, 3.5, 0);
+
+        train.updateFn = (dt, entity, simulation) => {
+          // Advance distance along track
+          follower.s += follower.speed * dt;
+
+          // Recycle segments before computing poses in current coordinate frame
+          while (follower.s >= track.segmentLength) {
+            follower.s -= track.segmentLength;
+            track.advance();
+          }
+
+          // Sync train mesh to rebased track pose
+          const pose = follower.getPose();
+          if (pose) {
+            entity.mesh.position.copy(pose.position);
+            entity.mesh.quaternion.setFromUnitVectors(follower.forwardAxis, pose.forward);
+            entity.mesh.updateMatrixWorld(true);
+          }
+
+          // Center ground beneath the train
+          if (ground?.mesh) {
+            ground.mesh.position.x = entity.mesh.position.x;
+            ground.mesh.position.z = entity.mesh.position.z;
+          }
+
+          // Update camera in lockstep
+          const m = entity.mesh.matrixWorld;
+          simulation.camera.position.copy(camOffset.clone().applyMatrix4(m));
+          simulation.camera.lookAt(lookOffset.clone().applyMatrix4(m));
+        };
+
+        // Initial camera pose
+        const m = train.mesh.matrixWorld;
+        sim.camera.position.copy(camOffset.clone().applyMatrix4(m));
+        sim.camera.lookAt(lookOffset.clone().applyMatrix4(m));
+      }
+
+      // Run
+      setup(sim);
+      sim.start();
+    </script>
+  </body>
+</html>
