@@ -26,6 +26,7 @@ function el(name, attrs = {}, parent) {
   if (parent) parent.appendChild(node);
   return node;
 }
+let gaugeStylesInjected = false;
 
 export function createGauge(options = {}) {
   const {
@@ -124,6 +125,34 @@ export function createGauge(options = {}) {
     maxText.textContent = label;
   }
 
+  // "2x" earnings badge, always shown in the blank area of the semicircle to the
+  // right of the full-throttle line. Turns gold and sways when at top speed.
+  const rate2x = el("text", {
+    x: cx + 46, y: 56, "text-anchor": "middle", fill: "#777",
+    opacity: "1", "font-size": "17", "font-weight": "900",
+    "font-family": "monospace", "class": "gauge-2x",
+  }, svg);
+  rate2x.textContent = "2x";
+
+  // Inject the sway keyframes/style once for the 2x badge.
+  if (!gaugeStylesInjected) {
+    gaugeStylesInjected = true;
+    const style = document.createElement("style");
+    style.textContent = `
+      .gauge-2x {
+        transform-origin: ${cx + 46}px ${56}px;
+      }
+      .gauge-2x.swaying {
+        animation: gauge-2x-sway 0.6s ease-in-out infinite;
+      }
+      @keyframes gauge-2x-sway {
+        0%, 100% { transform: rotate(-30deg); }
+        50% { transform: rotate(30deg); }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
   container.appendChild(wrapper);
 
   // --- API ---------------------------------------------------------------
@@ -137,6 +166,8 @@ export function createGauge(options = {}) {
   function setMax(on) {
     arc.setAttribute("stroke", on ? "#ffd24a" : "rgba(255,255,255,0.25)");
     arc.setAttribute("stroke-width", on ? "5" : "2");
+    rate2x.setAttribute("fill", on ? "#ffd24a" : "#777");
+    rate2x.classList.toggle("swaying", !!on);
   }
 
   function setVisible(on) {

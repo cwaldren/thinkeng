@@ -501,6 +501,14 @@
         function addDefense(def) {
           defenses.push(def);
         }
+        function removeDefense(id) {
+          for (let i = 0; i < defenses.length; i++) {
+            if (defenses[i].id === id) {
+              defenses.splice(i, 1);
+              i--;
+            }
+          }
+        }
         function totalDefenseMph() {
           let total = 0;
           for (const def of defenses) total += def.valueMph;
@@ -539,7 +547,9 @@
 
         // Powerups: each is granted when its `grantWhen` condition is met, then
         // purchased by clicking its pill. `onBuy` applies the effect; the click is
-        // gated by cost so money can never go negative.
+        // gated by cost so money can never go negative. A `requires` id gates a
+        // later tier behind the previous one — it isn't shown (or purchasable)
+        // until the prerequisite is purchased.
         const POWERUPS = [
           {
             id: "auto-throttle", label: "Auto Throttle", icon: "↑", cost: 15,
@@ -549,7 +559,19 @@
           {
             id: "cowcatcher", label: "Cowcatcher", icon: "▴", cost: 50,
             grantWhen: () => autoThrottle,
-            onBuy: () => addCowcatcher(),
+            onBuy: () => setCowcatcherTier({ defenseId: "cowcatcher", valueMph: 1, scale: 1 }),
+          },
+          {
+            id: "big-cowcatcher", label: "Big Cowcatcher", icon: "▴", cost: 150,
+            grantWhen: () => money >= 150,
+            requires: "cowcatcher",
+            onBuy: () => setCowcatcherTier({ defenseId: "big-cowcatcher", valueMph: 3, scale: 1.45 }),
+          },
+          {
+            id: "wedge-plow", label: "Wedge Plow", icon: "▴", cost: 400,
+            grantWhen: () => money >= 400,
+            requires: "big-cowcatcher",
+            onBuy: () => setCowcatcherTier({ defenseId: "wedge-plow", valueMph: 6, scale: 1.9 }),
           },
           {
             id: "sandbox-1", label: "Better Accel I", icon: "▲", cost: 5,
@@ -559,11 +581,13 @@
           {
             id: "sandbox-2", label: "Better Accel II", icon: "▲", cost: 50,
             grantWhen: () => money >= 50,
+            requires: "sandbox-1",
             onBuy: () => { accelRate += 5; },
           },
           {
             id: "sandbox-3", label: "Better Accel III", icon: "▲", cost: 500,
             grantWhen: () => money >= 500,
+            requires: "sandbox-2",
             onBuy: () => { accelRate += 5; },
           },
           {
@@ -574,22 +598,26 @@
           {
             id: "governor-2", label: "Governor II", icon: "◆", cost: 200,
             grantWhen: () => money >= 200,
+            requires: "governor-1",
             onBuy: () => setGovernorCap(100),
           },
           {
             id: "governor-3", label: "Governor III", icon: "◆", cost: 300,
             grantWhen: () => money >= 300,
+            requires: "governor-2",
             onBuy: () => setGovernorCap(150),
           },
         ];
 
         const powerups = createPowerups();
         const grantedPowerups = new Set();
+        const purchasedPowerups = new Set();
         powerups.on((item) => {
           const def = POWERUPS.find((d) => d.id === item.id);
           if (!def) return;
           money -= item.cost;
           moneyCounter.setValue(money);
+          purchasedPowerups.add(def.id);
           if (def.onBuy) def.onBuy();
         });
 
@@ -602,6 +630,7 @@
         function grantPowerups() {
           for (const def of POWERUPS) {
             if (grantedPowerups.has(def.id)) continue;
+            if (def.requires && !purchasedPowerups.has(def.requires)) continue;
             if (!def.grantWhen()) continue;
             grantedPowerups.add(def.id);
             powerups.add({
@@ -611,12 +640,26 @@
           }
         }
 
-        // Adds the wedge cowcatcher to the front of the train. The sloped face
-        // tips obstacles up/away, which softens collisions (implemented in the
-        // impact handling below).
-        function addCowcatcher() {
-          addDefense({ id: "cowcatcher", valueMph: 1 });
-          const w = 0.85, d = 0.55, h = 0.75; // half-width side, half-depth, height
+        // Renders the wedge cowcatcher at the front of the train and applies its
+// defense. Upgrades replace the previous triangle (and defense) with a larger
+// one. The sloped face tips obstacles up/away, softening collisions.
+        let cowcatcherMesh = null;
+        const COWCATCHER_DEFENSE_IDS = new Set();
+        function setCowcatcherTier({ defenseId, valueMph, scale }) {
+          // Swap in the new defense, dropping any prior cowcatcher-class one.
+          for (const id of COWCATCHER_DEFENSE_IDS) removeDefense(id);
+          COWCATCHER_DEFENSE_IDS.clear();
+          addDefense({ id: defenseId, valueMph });
+          COWCATCHER_DEFENSE_IDS.add(defenseId);
+
+          // Replace the existing wedge with a larger one.
+          if (cowcatcherMesh) {
+            train.mesh.remove(cowcatcherMesh);
+            cowcatcherMesh.geometry.dispose();
+            cowcatcherMesh.material.dispose();
+            cowcatcherMesh = null;
+          }
+          const w = 0.85 * scale, d = 0.55 * scale, h = 0.75 * scale;
           const geo = new THREE.BufferGeometry();
           geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array([
             -w, 0,  d,  w, 0,  d, -w, 0, -d,  w, 0, -d, -w, h, -d,  w, h, -d,
@@ -635,6 +678,7 @@
           mesh.castShadow = true;
           mesh.receiveShadow = true;
           train.mesh.add(mesh);
+          cowcatcherMesh = mesh;
         }
 
         // Flying "$" signs that emit from the smokestack at top speed
@@ -722,19 +766,19 @@
           const speedMph = currentSpeed * 2.237;
           gauge.setValue(speedMph);
 
-          // Earn $1/second while at full governor speed; stop counting below it.
+          // Money is earned proportional to velocity: the faster you're going, the
+          // more you rake in per second. No minimum speed required — coasting
+          // still pays, just less than going flat out.
           const atMaxSpeed = currentSpeed >= governor.getCapMps() - 1e-6;
           gauge.setMax(atMaxSpeed);
-          if (atMaxSpeed) {
-            money += dt * 5;
-            moneyCounter.setValue(money);
+          money += dt * speedMph * (atMaxSpeed ? 0.14 : 0.07);
+          moneyCounter.setValue(money);
 
-            // Emit a "$" sign from the smokestack at a steady cadence
-            moneySpawnAccum += dt;
-            while (moneySpawnAccum >= 0.12) {
-              moneySpawnAccum -= 0.12;
-              spawnMoneySign();
-            }
+          // Emit a "$" sign from the smokestack, with cadence scaling with speed
+          moneySpawnAccum += dt * speedMph;
+          while (moneySpawnAccum >= 14) {
+            moneySpawnAccum -= 14;
+            spawnMoneySign();
           }
 
           // Grant any powerup whose condition is now met
