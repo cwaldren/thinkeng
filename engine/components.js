@@ -4,6 +4,21 @@
 
 import * as THREE from "three";
 import { createCylinder } from "./primitives.js";
+import {
+  TrackSegment,
+  Track,
+  InfiniteTrack,
+  TrackFollower,
+  getLocalSpinePose,
+} from "./track.js";
+
+export {
+  TrackSegment,
+  Track,
+  InfiniteTrack,
+  TrackFollower,
+  getLocalSpinePose,
+};
 
 export function createGrass(sim, opts = {}) {
   const {
@@ -87,18 +102,20 @@ export function createRailSegment(sim, opts = {}) {
     group.add(mesh);
   };
 
-  const n = Math.max(1, Math.round(length / step));
-  const ds = length / n;
+  const trackSegment = new TrackSegment({
+    length,
+    radius,
+    position,
+    entryHeading,
+    mesh: group,
+  });
 
+  const n = Math.max(1, Math.round(length / step));
   const pts = [];
-  let x = 0;
-  let z = 0;
-  let heading = 0;
   for (let i = 0; i <= n; i++) {
-    heading = radius === 0 ? 0 : (i / n) * length / radius;
-    pts.push({ x, z, heading });
-    x += Math.cos(heading) * ds;
-    z += Math.sin(heading) * ds;
+    const s = (i / n) * length;
+    const local = getLocalSpinePose(radius, length, s);
+    pts.push({ x: local.position.x, z: local.position.z, heading: local.heading });
   }
 
   const railY = railHeight + tieThickness / 2;
@@ -122,30 +139,36 @@ export function createRailSegment(sim, opts = {}) {
 
   const tieCount = Math.max(1, Math.round(length / tieSpacing));
   for (let t = 0; t <= tieCount; t++) {
-    const i = Math.min(n, Math.round((t * length / tieSpacing) / ds));
-    const p = pts[i];
-    const pc = perp(p.heading);
+    const s = Math.min(length, t * tieSpacing);
+    const local = getLocalSpinePose(radius, length, s);
+    const pc = perp(local.heading);
     const tieLen = gauge + 0.8;
-    addBar(tieLen, tieThickness, 0.35, p.x, tieThickness / 2, p.z, -Math.atan2(pc.z, pc.x), tieMat);
+    addBar(tieLen, tieThickness, 0.35, local.position.x, tieThickness / 2, local.position.z, -Math.atan2(pc.z, pc.x), tieMat);
   }
 
-  const pe = pts[n];
-  const a = entryHeading;
-  const ca = Math.cos(a);
-  const sa = Math.sin(a);
-  const segment = {
+  const seg = sim.addEntity(group, null, null);
+  seg.length = length;
+  seg.radius = radius;
+  seg.trackSegment = trackSegment;
+  seg.getPoseAt = (s) => trackSegment.getPoseAt(s);
+  seg.entryPose = trackSegment.entryPose;
+  seg.exitPose = trackSegment.exitPose;
+  seg.segment = {
     curve: radius,
     length,
     spine: pts,
-    entryPose: { point: [position[0], 0, position[2]], heading: a },
+    entryPose: {
+      point: [trackSegment.entryPose.position.x, trackSegment.entryPose.position.y, trackSegment.entryPose.position.z],
+      heading: trackSegment.entryPose.heading,
+      position: trackSegment.entryPose.position,
+    },
     exitPose: {
-      point: [position[0] + pe.x * ca - pe.z * sa, 0, position[2] + pe.x * sa + pe.z * ca],
-      heading: a + pe.heading,
+      point: [trackSegment.exitPose.position.x, trackSegment.exitPose.position.y, trackSegment.exitPose.position.z],
+      heading: trackSegment.exitPose.heading,
+      position: trackSegment.exitPose.position,
     },
   };
-
-  const seg = sim.addEntity(group, null, null);
-  seg.segment = segment;
+  return seg;
   return seg;
 }
 
