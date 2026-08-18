@@ -27,41 +27,45 @@ export function createGrass(sim, opts = {}) {
     count = 200,
     color = 0x44aa55,
     height = 1,
-    radiusBottom = 0.06,
-    radiusTop = 0.02,
+    radiusBottom = 0.08,
     position = [0, 0, 0],
-    radialSegments = 6,
+    radialSegments = 4,
   } = opts;
 
-  const group = new THREE.Group();
-  group.position.set(position[0], position[1], position[2]);
-  const children = [];
+  const geo = new THREE.ConeGeometry(radiusBottom, height, radialSegments);
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.8 });
+  const instancedMesh = new THREE.InstancedMesh(geo, mat, count);
+  instancedMesh.position.set(position[0], position[1], position[2]);
+  instancedMesh.castShadow = true;
+  instancedMesh.receiveShadow = true;
 
+  const dummy = new THREE.Object3D();
   const halfWidth = width / 2;
   const halfDepth = depth / 2;
 
   for (let i = 0; i < count; i++) {
-    const bladeHeight = height * (0.5 + Math.random() * 0.7);
-    const entity = createCylinder(sim, {
-      radiusTop,
-      radiusBottom,
-      height: bladeHeight,
-      color,
-      mass: 0,
-      radialSegments,
-      position: [
-        position[0] + (Math.random() * width - halfWidth),
-        position[1] + bladeHeight / 2,
-        position[2] + (Math.random() * depth - halfDepth),
-      ],
-    });
-    group.add(entity.mesh);
-    children.push(entity);
+    const bladeScale = 0.6 + Math.random() * 0.8;
+    const h = height * bladeScale;
+    dummy.position.set(
+      Math.random() * width - halfWidth,
+      h / 2,
+      Math.random() * depth - halfDepth,
+    );
+    dummy.rotation.set(
+      (Math.random() - 0.5) * 0.35,
+      Math.random() * Math.PI * 2,
+      (Math.random() - 0.5) * 0.35,
+    );
+    dummy.scale.set(bladeScale, bladeScale, bladeScale);
+    dummy.updateMatrix();
+    instancedMesh.setMatrixAt(i, dummy.matrix);
   }
+  instancedMesh.instanceMatrix.needsUpdate = true;
 
-  const grass = sim.addEntity(group, null, null);
-  grass.children = children;
-  return grass;
+  if (sim) {
+    return sim.addEntity(instancedMesh, null, null);
+  }
+  return instancedMesh;
 }
 
 // A single train-track chunk: a pair of rails + ties laid out along a spine of

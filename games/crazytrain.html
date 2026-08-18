@@ -18,6 +18,29 @@
         color: #fff;
         pointer-events: none;
       }
+      #speed-hud {
+        position: absolute;
+        bottom: 24px;
+        left: 24px;
+        color: #fff;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace, sans-serif;
+        pointer-events: none;
+        user-select: none;
+        text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+      }
+      #speed-hud .value {
+        font-size: 4rem;
+        font-weight: 900;
+        line-height: 1;
+        letter-spacing: -0.03em;
+      }
+      #speed-hud .unit {
+        font-size: 1.4rem;
+        font-weight: 700;
+        opacity: 0.8;
+        margin-left: 6px;
+        letter-spacing: 0.05em;
+      }
     </style>
 
     <!-- 1. Import Map (Constant Across All Games) -->
@@ -37,11 +60,12 @@
         Crazy Train
       </h1>
       <p style="margin: 4px 0 0; font-size: 0.85rem; opacity: 0.7">
-        Hold <strong>W</strong> to accelerate &bull; Release to decelerate
+        Hold <strong>W</strong> to accelerate &bull; Hold <strong>Space</strong> for rear camera
       </p>
-      <p id="speedometer" style="margin: 4px 0 0; font-size: 0.85rem; opacity: 0.9; font-weight: bold">
-        Speed: 0 km/h
-      </p>
+    </div>
+
+    <div id="speed-hud">
+      <span id="speed-value" class="value">0</span><span class="unit">MPH</span>
     </div>
 
     <script type="module">
@@ -74,7 +98,9 @@
         const { length = 40, radius = 0 } = opts;
 
         // Place random trees, rocks, and grass along the sides of the track
-        const count = 12 + Math.floor(Math.random() * 8);
+        const count = 24 + Math.floor(Math.random() * 10);
+        const grassTransforms = [];
+
         for (let i = 0; i < count; i++) {
           const s = Math.random() * length;
           const local = getLocalSpinePose(radius, length, s);
@@ -87,16 +113,25 @@
           const z = local.position.z + perp.z * offset * side;
 
           const rand = Math.random();
-          if (rand < 0.45) {
-            // Pine tree
+          if (rand < 0.28) {
+            // Pine tree with varied natural foliage hues (deep pines, bright spring greens, olive/moss)
             const treeGroup = new THREE.Group();
             treeGroup.position.set(x, 0, z);
             const scale = 0.8 + Math.random() * 0.7;
             treeGroup.scale.set(scale, scale, scale);
 
-            const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4033 });
-            const foliageMat1 = new THREE.MeshStandardMaterial({ color: 0x2e6f40, roughness: 0.8 });
-            const foliageMat2 = new THREE.MeshStandardMaterial({ color: 0x3d8b4e, roughness: 0.8 });
+            const treePalettes = [
+              { base: 0x1a4524, highlight: 0x245a30 }, // Deep forest pine
+              { base: 0x286337, highlight: 0x367e47 }, // Classic evergreen
+              { base: 0x3d7e32, highlight: 0x519e42 }, // Vibrant green
+              { base: 0x4f8c3e, highlight: 0x65ab50 }, // Light spring green
+              { base: 0x3b5930, highlight: 0x4c703e }, // Olive moss
+            ];
+            const pal = treePalettes[Math.floor(Math.random() * treePalettes.length)];
+
+            const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.9 });
+            const foliageMat1 = new THREE.MeshStandardMaterial({ color: pal.base, roughness: 0.8 });
+            const foliageMat2 = new THREE.MeshStandardMaterial({ color: pal.highlight, roughness: 0.8 });
 
             const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.45, 3, 6), trunkMat);
             trunk.position.y = 1.5;
@@ -114,7 +149,7 @@
             treeGroup.add(foliage2);
 
             group.add(treeGroup);
-          } else if (rand < 0.72) {
+          } else if (rand < 0.48) {
             // Rock
             const rockMat = new THREE.MeshStandardMaterial({ color: 0x75787b, roughness: 0.9 });
             const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(1, 0), rockMat);
@@ -128,18 +163,49 @@
             rock.receiveShadow = true;
             group.add(rock);
           } else {
-            // Grass cluster
-            const grassGroup = new THREE.Group();
-            grassGroup.position.set(x, 0, z);
-            const grassMat = new THREE.MeshStandardMaterial({ color: 0x5da848, roughness: 0.7 });
-            for (let b = 0; b < 6; b++) {
-              const blade = new THREE.Mesh(new THREE.ConeGeometry(0.12, 1.2, 4), grassMat);
-              blade.position.set((Math.random() - 0.5) * 0.8, 0.6, (Math.random() - 0.5) * 0.8);
-              blade.rotation.set((Math.random() - 0.5) * 0.3, Math.random() * Math.PI, (Math.random() - 0.5) * 0.3);
-              grassGroup.add(blade);
+            // Large lush grass patch - collect blade transforms for InstancedMesh
+            const patchRadius = 2.0 + Math.random() * 2.2;
+            const bladeCount = 35 + Math.floor(Math.random() * 20);
+
+            for (let b = 0; b < bladeCount; b++) {
+              const ang = Math.random() * Math.PI * 2;
+              const dist = Math.sqrt(Math.random()) * patchRadius;
+              const bx = x + Math.cos(ang) * dist;
+              const bz = z + Math.sin(ang) * dist;
+              const bHeight = 0.7 + Math.random() * 0.5;
+
+              grassTransforms.push({
+                x: bx,
+                y: bHeight / 2,
+                z: bz,
+                rx: (Math.random() - 0.5) * 0.35,
+                ry: Math.random() * Math.PI,
+                rz: (Math.random() - 0.5) * 0.35,
+                scale: bHeight,
+              });
             }
-            group.add(grassGroup);
           }
+        }
+
+        // Create single instanced mesh for all grass in this segment (1 draw call)
+        if (grassTransforms.length > 0) {
+          const grassGeo = new THREE.ConeGeometry(0.1, 1.0, 4);
+          const grassMat = new THREE.MeshStandardMaterial({ color: 0x56a442, roughness: 0.7 });
+          const instancedGrass = new THREE.InstancedMesh(grassGeo, grassMat, grassTransforms.length);
+          const dummy = new THREE.Object3D();
+
+          for (let i = 0; i < grassTransforms.length; i++) {
+            const t = grassTransforms[i];
+            dummy.position.set(t.x, t.y, t.z);
+            dummy.rotation.set(t.rx, t.ry, t.rz);
+            dummy.scale.set(1, t.scale, 1);
+            dummy.updateMatrix();
+            instancedGrass.setMatrixAt(i, dummy.matrix);
+          }
+          instancedGrass.instanceMatrix.needsUpdate = true;
+          instancedGrass.castShadow = true;
+          instancedGrass.receiveShadow = true;
+          group.add(instancedGrass);
         }
 
         return seg;
@@ -151,17 +217,23 @@
         const hemiLight = new THREE.HemisphereLight(0xffffff, 0x446644, 0.8);
         sim.scene.add(hemiLight);
 
+        // Fog of war / Atmospheric horizon blending
+        const skyColor = 0x8ecae6;
+        sim.scene.fog = new THREE.Fog(skyColor, 50, 220);
+
         // Ground plane
         const ground = createGround(sim, { size: 2000, color: 0x4e8a4a, position: [0, -0.5, 0] });
 
         // Infinite Track with straight & curved sections + roadside scenery
+        const segmentLen = 40;
+        const rearSegments = 3; // Keep 3 segments of track/scenery active behind the train
         const track = new InfiniteTrack(sim, {
-          segmentLength: 40,
-          windowCount: 15,
+          segmentLength: segmentLen,
+          windowCount: 22,
           segmentFactory: createSceneryRailSegment,
           camera: null, // Camera managed directly by train
           curveGenerator: (index) => {
-            if (index < 2) return 0;
+            if (index < 4) return 0;
             const r = Math.random();
             if (r < 0.4) return 0;
             const sign = Math.random() < 0.5 ? 1 : -1;
@@ -169,22 +241,28 @@
           },
         });
 
-        // Train & Controls
+        // Train & Controls (positioned past the rear buffer segments)
         const train = createTrain(sim, { position: [0, 0, 0] });
         const follower = new TrackFollower(track, train.mesh, {
-          s: 10,
+          s: rearSegments * segmentLen + 10,
           speed: 0,
         });
 
         // Keyboard controls
         const keys = new Set();
-        window.addEventListener("keydown", (e) => keys.add(e.code));
-        window.addEventListener("keyup", (e) => keys.delete(e.code));
+        window.addEventListener("keydown", (e) => {
+          if (e.code === "Space") e.preventDefault();
+          keys.add(e.code);
+        });
+        window.addEventListener("keyup", (e) => {
+          if (e.code === "Space") e.preventDefault();
+          keys.delete(e.code);
+        });
 
         const accelRate = 30; // m/s^2 acceleration (no max cap)
         const decelRate = accelRate * 2; // deceleration is twice acceleration (60 m/s^2)
         let currentSpeed = 0;
-        const speedometerEl = document.getElementById("speedometer");
+        const speedValueEl = document.getElementById("speed-value");
 
         // Initial train position
         const initPose = follower.getPose();
@@ -194,9 +272,11 @@
           train.mesh.updateMatrixWorld(true);
         }
 
-        // Camera mounted on train cab top looking forward along the train
-        const camOffset = new THREE.Vector3(-3.5, 5.5, 0);
-        const lookOffset = new THREE.Vector3(20, 3.5, 0);
+        // Camera offsets (front & rear views)
+        const camOffsetForward = new THREE.Vector3(-3.5, 5.5, 0);
+        const lookOffsetForward = new THREE.Vector3(25, 3.5, 0);
+        const camOffsetRear = new THREE.Vector3(2.5, 5.5, 0);
+        const lookOffsetRear = new THREE.Vector3(-25, 3.5, 0);
 
         train.updateFn = (dt, entity, simulation) => {
           // Handle acceleration & deceleration
@@ -207,16 +287,17 @@
           }
           follower.speed = currentSpeed;
 
-          if (speedometerEl) {
-            speedometerEl.textContent = `Speed: ${(currentSpeed * 3.6).toFixed(0)} km/h`;
+          if (speedValueEl) {
+            speedValueEl.textContent = (currentSpeed * 2.237).toFixed(0);
           }
 
           // Advance distance along track
           follower.s += follower.speed * dt;
 
-          // Recycle segments before computing poses in current coordinate frame
-          while (follower.s >= track.segmentLength) {
-            follower.s -= track.segmentLength;
+          // Recycle segments while maintaining rear segment buffer behind train
+          const advanceThreshold = (rearSegments + 1) * segmentLen;
+          while (follower.s >= advanceThreshold) {
+            follower.s -= segmentLen;
             track.advance();
           }
 
@@ -234,16 +315,26 @@
             ground.mesh.position.z = entity.mesh.position.z;
           }
 
-          // Update camera in lockstep
+          // Update camera pose (front vs rear view based on Space key)
+          const isRearView = keys.has("Space");
+          const activeCamOffset = isRearView ? camOffsetRear : camOffsetForward;
+          const activeLookOffset = isRearView ? lookOffsetRear : lookOffsetForward;
+
+          // Dynamic fog adjustment: bring fog closer in rear view to hide limited rear draw distance
+          const targetFogNear = isRearView ? 15 : 50;
+          const targetFogFar = isRearView ? 95 : 220;
+          simulation.scene.fog.near += (targetFogNear - simulation.scene.fog.near) * Math.min(1, dt * 10);
+          simulation.scene.fog.far += (targetFogFar - simulation.scene.fog.far) * Math.min(1, dt * 10);
+
           const m = entity.mesh.matrixWorld;
-          simulation.camera.position.copy(camOffset.clone().applyMatrix4(m));
-          simulation.camera.lookAt(lookOffset.clone().applyMatrix4(m));
+          simulation.camera.position.copy(activeCamOffset.clone().applyMatrix4(m));
+          simulation.camera.lookAt(activeLookOffset.clone().applyMatrix4(m));
         };
 
         // Initial camera pose
         const m = train.mesh.matrixWorld;
-        sim.camera.position.copy(camOffset.clone().applyMatrix4(m));
-        sim.camera.lookAt(lookOffset.clone().applyMatrix4(m));
+        sim.camera.position.copy(camOffsetForward.clone().applyMatrix4(m));
+        sim.camera.lookAt(lookOffsetForward.clone().applyMatrix4(m));
       }
 
       // Run
