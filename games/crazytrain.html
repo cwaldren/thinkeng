@@ -678,11 +678,11 @@ import {
           alignItems: "center",
           gap: "10px",
           padding: "12px 20px",
-          background: "rgba(20, 22, 28, 0.78)",
+          background: "rgba(20, 22, 28, 0.20)",
           border: "1px solid rgba(217, 58, 43, 0.45)",
           borderRadius: "24px",
           cursor: "pointer",
-          backdropFilter: "blur(4px)",
+          backdropFilter: "blur(6px)",
           transition: "background 0.15s, transform 0.05s",
           fontSize: "1.05rem",
           color: "#fff",
@@ -690,6 +690,7 @@ import {
           webkitTapHighlightColor: "transparent",
         });
         const dynamiteBuyIcon = document.createElement("span");
+        dynamiteBuyIcon.className = "powerup-icon";
         dynamiteBuyIcon.textContent = "💣";
         dynamiteBuyIcon.style.fontSize = "1.3rem";
         dynamiteBuyIcon.style.lineHeight = "1";
@@ -713,8 +714,8 @@ import {
         dynamiteBuy.appendChild(dynamiteBuyCost);
         powerups.panel.appendChild(dynamiteBuy);
 
-        dynamiteBuy.addEventListener("mouseenter", () => (dynamiteBuy.style.background = "rgba(40, 44, 54, 0.85)"));
-        dynamiteBuy.addEventListener("mouseleave", () => (dynamiteBuy.style.background = "rgba(20, 22, 28, 0.78)"));
+        dynamiteBuy.addEventListener("mouseenter", () => (dynamiteBuy.style.background = "rgba(40, 44, 54, 0.35)"));
+        dynamiteBuy.addEventListener("mouseleave", () => (dynamiteBuy.style.background = "rgba(20, 22, 28, 0.20)"));
         dynamiteBuy.addEventListener("mousedown", () => (dynamiteBuy.style.transform = "scale(0.96)"));
         dynamiteBuy.addEventListener("mouseup", () => (dynamiteBuy.style.transform = "scale(1)"));
         dynamiteBuy.addEventListener("touchstart", () => (dynamiteBuy.style.transform = "scale(0.96)"), { passive: true });

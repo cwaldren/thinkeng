@@ -14,7 +14,23 @@
 //   });
 //   powerups.add({ id: "auto-throttle", label: "Auto Throttle", icon: "↑" });
 
+let stylesInjected = false;
+function ensureStyles() {
+  if (stylesInjected) return;
+  stylesInjected = true;
+  const style = document.createElement("style");
+  style.textContent = `
+    @media (max-width: 600px), (pointer: coarse) {
+      .powerup-icon {
+        display: none !important;
+      }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 export function createPowerups(options = {}) {
+  ensureStyles();
   const {
     container = document.body,
     top = "82px",
@@ -60,18 +76,18 @@ export function createPowerups(options = {}) {
         alignItems: "center",
         gap: "10px",
         padding: "12px 20px",
-        background: "rgba(20, 22, 28, 0.78)",
-        border: "1px solid rgba(255, 255, 255, 0.18)",
+        background: "rgba(20, 22, 28, 0.20)",
+        border: "1px solid rgba(255, 255, 255, 0.15)",
         borderRadius: "24px",
         cursor: "pointer",
-        backdropFilter: "blur(4px)",
+        backdropFilter: "blur(6px)",
         transition: "background 0.15s, transform 0.05s",
         fontSize: "1.05rem",
         touchAction: "manipulation",
         webkitTapHighlightColor: "transparent",
       });
-      pill.addEventListener("mouseenter", () => (pill.style.background = "rgba(40, 44, 54, 0.85)"));
-      pill.addEventListener("mouseleave", () => (pill.style.background = "rgba(20, 22, 28, 0.78)"));
+      pill.addEventListener("mouseenter", () => (pill.style.background = "rgba(40, 44, 54, 0.35)"));
+      pill.addEventListener("mouseleave", () => (pill.style.background = "rgba(20, 22, 28, 0.20)"));
       pill.addEventListener("mousedown", () => (pill.style.transform = "scale(0.96)"));
       pill.addEventListener("mouseup", () => (pill.style.transform = "scale(1)"));
       pill.addEventListener("touchstart", () => (pill.style.transform = "scale(0.96)"), { passive: true });
@@ -79,6 +95,7 @@ export function createPowerups(options = {}) {
       pill.addEventListener("touchcancel", () => (pill.style.transform = "scale(1)"), { passive: true });
 
       const iconEl = document.createElement("span");
+      iconEl.className = "powerup-icon";
       iconEl.textContent = icon;
       iconEl.style.fontSize = "1.3rem";
       iconEl.style.lineHeight = "1";
