@@ -140,10 +140,7 @@ export class Simulation {
 
     if (Array.isArray(entity.children)) {
       for (const child of entity.children) {
-        this.entities.delete(child);
-        if (child.body) {
-          this.world.removeBody(child.body);
-        }
+        this.removeEntity(child);
       }
     }
 

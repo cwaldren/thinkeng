@@ -70,6 +70,7 @@
 
     <script type="module">
       import * as THREE from "three";
+      import * as CANNON from "cannon-es";
       import { Simulation } from "engine/core.js";
       import {
         createGround,
@@ -92,6 +93,33 @@
         clearColor: 0x8ecae6,
         enableShadows: true,
       });
+
+      // Active flying obstacles launched by collisions
+      const activeFlyers = new Set();
+
+      function rebaseActiveFlyers(origin, heading) {
+        const ca = Math.cos(heading);
+        const sa = Math.sin(heading);
+        const qRebase = new CANNON.Quaternion();
+        qRebase.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), -heading);
+
+        for (const flyer of activeFlyers) {
+          const b = flyer.body;
+          const dx = b.position.x - origin.x;
+          const dz = b.position.z - origin.z;
+          b.position.x = dx * ca + dz * sa;
+          b.position.z = -dx * sa + dz * ca;
+          b.quaternion = qRebase.mult(b.quaternion);
+
+          const vx = b.velocity.x;
+          const vz = b.velocity.z;
+          b.velocity.x = vx * ca + vz * sa;
+          b.velocity.z = -vx * sa + vz * ca;
+
+          flyer.mesh.position.set(b.position.x, b.position.y, b.position.z);
+          flyer.mesh.quaternion.set(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w);
+        }
+      }
 
       function createSceneryRailSegment(simulation, opts = {}) {
         const seg = createRailSegment(simulation, opts);
@@ -209,6 +237,61 @@
           group.add(instancedGrass);
         }
 
+        // Occasional on-track obstacles (fallen trees & track boulders)
+        seg.obstacles = seg.obstacles || [];
+        if (Math.random() < 0.38) {
+          const obsS = length * (0.3 + Math.random() * 0.4);
+          const localPose = getLocalSpinePose(radius, length, obsS);
+
+          if (Math.random() < 0.5) {
+            // Fallen Tree across the rails
+            const logLen = 3.8 + Math.random() * 1.6;
+            const logMat = new THREE.MeshStandardMaterial({ color: 0x4a3324, roughness: 0.95 });
+            const logMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.42, logLen, 8), logMat);
+            logMesh.rotation.z = Math.PI / 2;
+            logMesh.castShadow = true;
+            logMesh.receiveShadow = true;
+
+            const logGroup = new THREE.Group();
+            logGroup.position.set(localPose.position.x, 0.55, localPose.position.z);
+            logGroup.rotation.y = -localPose.heading + Math.PI / 2 + (Math.random() - 0.5) * 0.4;
+            logGroup.add(logMesh);
+
+            const branchMat = new THREE.MeshStandardMaterial({ color: 0x2e6035, roughness: 0.8 });
+            const branch = new THREE.Mesh(new THREE.ConeGeometry(0.7, 1.8, 5), branchMat);
+            branch.position.set(logLen / 2 - 0.2, 0.35, 0);
+            branch.rotation.z = -Math.PI / 3;
+            branch.castShadow = true;
+            logGroup.add(branch);
+
+            group.add(logGroup);
+            seg.obstacles.push({
+              mesh: logGroup,
+              type: "log",
+              logLen,
+              s: obsS,
+              hit: false,
+            });
+          } else {
+            // Track Boulder sitting directly on the tracks
+            const boulderMat = new THREE.MeshStandardMaterial({ color: 0x55585b, roughness: 0.9 });
+            const boulder = new THREE.Mesh(new THREE.DodecahedronGeometry(0.95, 0), boulderMat);
+            boulder.scale.set(1.1 + Math.random() * 0.3, 0.75 + Math.random() * 0.25, 1.1 + Math.random() * 0.3);
+            boulder.position.set(localPose.position.x, 0.85, localPose.position.z);
+            boulder.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+            boulder.castShadow = true;
+            boulder.receiveShadow = true;
+
+            group.add(boulder);
+            seg.obstacles.push({
+              mesh: boulder,
+              type: "boulder",
+              s: obsS,
+              hit: false,
+            });
+          }
+        }
+
         return seg;
       }
 
@@ -278,6 +361,14 @@
           speed: 0,
         });
 
+        // Cowcatcher kinematic physics collider mounted on front of train
+        const cowcatcherBody = new CANNON.Body({
+          mass: 0,
+          type: CANNON.Body.KINEMATIC,
+          shape: new CANNON.Box(new CANNON.Vec3(1.4, 1.2, 1.2)),
+        });
+        sim.world.addBody(cowcatcherBody);
+
         // Keyboard controls
         const keys = new Set();
         window.addEventListener("keydown", (e) => {
@@ -292,6 +383,8 @@
         const accelRate = 30; // m/s^2 acceleration (no max cap)
         const decelRate = accelRate * 2; // deceleration is twice acceleration (60 m/s^2)
         let currentSpeed = 0;
+        let currentTilt = 0;
+        let screenShake = 0;
         const speedValueEl = document.getElementById("speed-value");
 
         // Initial train position
@@ -317,8 +410,9 @@
           }
           follower.speed = currentSpeed;
 
+          const speedMph = currentSpeed * 2.237;
           if (speedValueEl) {
-            speedValueEl.textContent = (currentSpeed * 2.237).toFixed(0);
+            speedValueEl.textContent = speedMph.toFixed(0);
           }
 
           // Advance distance along track
@@ -328,7 +422,38 @@
           const advanceThreshold = (rearSegments + 1) * segmentLen;
           while (follower.s >= advanceThreshold) {
             follower.s -= segmentLen;
+            const nextOrigin = track.segments[1]?.entryPose.position.clone();
+            const nextHeading = track.segments[1]?.entryPose.heading || 0;
+
             track.advance();
+
+            if (nextOrigin) {
+              rebaseActiveFlyers(nextOrigin, nextHeading);
+            }
+          }
+
+          // Update & sync active flying obstacles
+          for (const flyer of activeFlyers) {
+            flyer.mesh.position.set(flyer.body.position.x, flyer.body.position.y, flyer.body.position.z);
+            flyer.mesh.quaternion.set(
+              flyer.body.quaternion.x,
+              flyer.body.quaternion.y,
+              flyer.body.quaternion.z,
+              flyer.body.quaternion.w,
+            );
+            flyer.lifetime -= dt;
+            if (flyer.lifetime <= 0) {
+              simulation.scene.remove(flyer.mesh);
+              simulation.world.removeBody(flyer.body);
+              flyer.mesh.traverse((child) => {
+                if (child.isMesh) {
+                  child.geometry?.dispose();
+                  if (Array.isArray(child.material)) child.material.forEach((m) => m.dispose());
+                  else child.material?.dispose();
+                }
+              });
+              activeFlyers.delete(flyer);
+            }
           }
 
           // Sync train mesh to rebased track pose
@@ -336,7 +461,121 @@
           if (pose) {
             entity.mesh.position.copy(pose.position);
             entity.mesh.quaternion.setFromUnitVectors(follower.forwardAxis, pose.forward);
+
+            // Visual corner tilt: 0 tilt below 100 mph, increasing with speed above 100 mph
+            let targetTilt = 0;
+            if (speedMph > 100) {
+              const poseAhead = track.getPoseAt(follower.s + 1.2);
+              const poseBehind = track.getPoseAt(Math.max(0, follower.s - 1.2));
+              if (poseAhead && poseBehind) {
+                const dHeading = (poseAhead.heading - poseBehind.heading) / 2.4;
+                const excessSpeed = speedMph - 100;
+                targetTilt = -dHeading * (excessSpeed / 25.0);
+                targetTilt = Math.max(-0.52, Math.min(0.52, targetTilt));
+              }
+            }
+            currentTilt += (targetTilt - currentTilt) * Math.min(1, dt * 8);
+
+            // Apply corner tilt along train's forward axis
+            const rollQuat = new THREE.Quaternion().setFromAxisAngle(
+              follower.forwardAxis,
+              currentTilt,
+            );
+            entity.mesh.quaternion.multiply(rollQuat);
             entity.mesh.updateMatrixWorld(true);
+
+            // Sync kinematic cowcatcher collider to front of locomotive
+            const cowcatcherWorldPos = new THREE.Vector3(4.0, 0.85, 0).applyMatrix4(entity.mesh.matrixWorld);
+            cowcatcherBody.position.set(cowcatcherWorldPos.x, cowcatcherWorldPos.y, cowcatcherWorldPos.z);
+            cowcatcherBody.quaternion.set(
+              entity.mesh.quaternion.x,
+              entity.mesh.quaternion.y,
+              entity.mesh.quaternion.z,
+              entity.mesh.quaternion.w,
+            );
+
+            // Give kinematic collider forward/upward impulse velocity
+            const fwdDir = follower.forwardAxis.clone().applyQuaternion(entity.mesh.quaternion);
+            const impulseSpeed = follower.speed * 1.6 + 10;
+            cowcatcherBody.velocity.set(
+              fwdDir.x * impulseSpeed,
+              follower.speed * 0.35 + 5,
+              fwdDir.z * impulseSpeed,
+            );
+
+            // Impact detection: when locomotive cowcatcher reaches an obstacle, launch it with physics
+            for (const sSeg of track.segments) {
+              if (sSeg.obstacles) {
+                for (const obs of sSeg.obstacles) {
+                  if (!obs.hit && obs.mesh.parent) {
+                    const obsWorldPos = new THREE.Vector3();
+                    obs.mesh.getWorldPosition(obsWorldPos);
+                    const dist = cowcatcherWorldPos.distanceTo(obsWorldPos);
+
+                    if (dist < 3.0) {
+                      obs.hit = true;
+
+                      const obsWorldQuat = new THREE.Quaternion();
+                      obs.mesh.getWorldQuaternion(obsWorldQuat);
+
+                      // Detach from segment and promote to world simulation
+                      obs.mesh.parent.remove(obs.mesh);
+                      simulation.scene.add(obs.mesh);
+                      obs.mesh.position.copy(obsWorldPos);
+                      obs.mesh.quaternion.copy(obsWorldQuat);
+
+                      let body;
+                      if (obs.type === "log") {
+                        body = new CANNON.Body({
+                          mass: 400,
+                          shape: new CANNON.Box(new CANNON.Vec3(obs.logLen / 2, 0.4, 0.4)),
+                        });
+                      } else {
+                        body = new CANNON.Body({
+                          mass: 1200,
+                          shape: new CANNON.Sphere(0.95),
+                        });
+                      }
+                      body.position.set(obsWorldPos.x, obsWorldPos.y, obsWorldPos.z);
+                      body.quaternion.set(obsWorldQuat.x, obsWorldQuat.y, obsWorldQuat.z, obsWorldQuat.w);
+
+                      // Launch obstacle with high-energy impact impulse
+                      const lateralSide = (Math.random() < 0.5 ? 1 : -1) * (15 + Math.random() * 25);
+                      const hitSpeed = Math.max(25, follower.speed * 1.8 + 15);
+                      body.velocity.set(
+                        fwdDir.x * hitSpeed + fwdDir.z * lateralSide,
+                        follower.speed * 0.45 + 10 + Math.random() * 6,
+                        fwdDir.z * hitSpeed - fwdDir.x * lateralSide,
+                      );
+                      body.angularVelocity.set(
+                        (Math.random() - 0.5) * 15,
+                        (Math.random() - 0.5) * 15,
+                        (Math.random() - 0.5) * 15,
+                      );
+
+                      // Subtract velocity commensurate with obstacle mass & apply impact feedback
+                      if (obs.type === "log") {
+                        const speedLoss = Math.max(5.0, currentSpeed * 0.22);
+                        currentSpeed = Math.max(0, currentSpeed - speedLoss);
+                        screenShake = Math.min(0.35, screenShake + 0.22);
+                      } else {
+                        const speedLoss = Math.max(14.0, currentSpeed * 0.45);
+                        currentSpeed = Math.max(0, currentSpeed - speedLoss);
+                        screenShake = Math.min(0.75, screenShake + 0.55);
+                      }
+                      follower.speed = currentSpeed;
+
+                      simulation.world.addBody(body);
+                      activeFlyers.add({
+                        mesh: obs.mesh,
+                        body,
+                        lifetime: 2.8,
+                      });
+                    }
+                  }
+                }
+              }
+            }
           }
 
           // Center ground beneath the train
@@ -359,6 +598,13 @@
           const m = entity.mesh.matrixWorld;
           simulation.camera.position.copy(activeCamOffset.clone().applyMatrix4(m));
           simulation.camera.lookAt(activeLookOffset.clone().applyMatrix4(m));
+
+          // Impact screen shake
+          if (screenShake > 0.001) {
+            simulation.camera.position.x += (Math.random() - 0.5) * screenShake;
+            simulation.camera.position.y += (Math.random() - 0.5) * screenShake;
+            screenShake *= Math.exp(-dt * 9.0);
+          }
         };
 
         // Initial camera pose
