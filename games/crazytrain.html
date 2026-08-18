@@ -21,25 +21,17 @@
       #speed-hud {
         position: absolute;
         bottom: 24px;
-        left: 24px;
+        left: 50%;
+        transform: translateX(-50%);
         color: #fff;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace, sans-serif;
         pointer-events: none;
         user-select: none;
-        text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.5));
       }
-      #speed-hud .value {
-        font-size: 4rem;
-        font-weight: 900;
-        line-height: 1;
-        letter-spacing: -0.03em;
-      }
-      #speed-hud .unit {
-        font-size: 1.4rem;
-        font-weight: 700;
-        opacity: 0.8;
-        margin-left: 6px;
-        letter-spacing: 0.05em;
+      #speed-hud svg {
+        display: block;
+        width: 180px;
+        height: 180px;
       }
     </style>
 
@@ -65,7 +57,25 @@
     </div>
 
     <div id="speed-hud">
-      <span id="speed-value" class="value">0</span><span class="unit">MPH</span>
+      <svg viewBox="0 -14 200 228">
+        <defs>
+          <clipPath id="semi">
+            <rect x="0" y="0" width="200" height="100" />
+          </clipPath>
+        </defs>
+        <g clip-path="url(#semi)">
+          <path d="M 100,100 L 12,100 A 88,88 0 0 1 100,12 L 100,100 Z" fill="#555" />
+          <path d="M 100,100 L 100,12 A 88,88 0 0 1 188,100 L 100,100 Z" fill="rgba(0,0,0,0.55)" />
+          <path d="M 12,100 A 88,88 0 0 1 188,100" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="2" />
+          <g id="gauge-needle" style="transform-origin: 100px 100px;">
+            <line x1="100" y1="100" x2="22" y2="100" stroke="#ffd24a" stroke-width="5" stroke-linecap="round" />
+          </g>
+          <circle cx="100" cy="100" r="7" fill="#fff" />
+        </g>
+        <text id="gauge-value" x="100" y="130" text-anchor="middle" fill="#fff" font-size="34" font-weight="900" font-family="monospace">0</text>
+        <text x="100" y="150" text-anchor="middle" fill="#fff" opacity="0.8" font-size="12" font-weight="700" font-family="monospace">MPH</text>
+        <text x="100" y="2" text-anchor="middle" fill="#fff" opacity="0.55" font-size="15" font-weight="700" font-family="monospace">MAX</text>
+      </svg>
     </div>
 
     <script type="module">
@@ -279,6 +289,33 @@
 
         // Occasional on-track obstacles (fallen trees & track boulders)
         seg.obstacles = seg.obstacles || [];
+
+        // Tiny rocks: extremely common, low mass, littered right on the rails
+        const tinyCount = 2 + Math.floor(Math.random() * 3);
+        const tinyMat = new THREE.MeshStandardMaterial({ color: 0x8a8e93, roughness: 0.9 });
+        for (let i = 0; i < tinyCount; i++) {
+          const tS = length * (0.05 + Math.random() * 0.9);
+          const tPose = getLocalSpinePose(radius, length, tS);
+          const edge = (Math.random() < 0.5 ? 1 : -1) * Math.random() * 0.7;
+          const tiny = new THREE.Mesh(new THREE.DodecahedronGeometry(0.28, 0), tinyMat);
+          tiny.scale.set(
+            0.6 + Math.random() * 0.9,
+            0.55 + Math.random() * 0.7,
+            0.6 + Math.random() * 0.9,
+          );
+          tiny.position.set(tPose.position.x, 0.28, tPose.position.z + edge);
+          tiny.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+          tiny.castShadow = true;
+          tiny.receiveShadow = true;
+          group.add(tiny);
+          seg.obstacles.push({
+            mesh: tiny,
+            type: "tiny-rock",
+            s: tS,
+            hit: false,
+          });
+        }
+
         if (Math.random() < 0.65) {
           const obsS = length * (0.3 + Math.random() * 0.4);
           const localPose = getLocalSpinePose(radius, length, obsS);
@@ -491,7 +528,8 @@
         let leverAngle = 0;
         // Governor cutoff: once the cap is hit, throttle is neutral until W is released
         let throttleLatched = false;
-        const speedValueEl = document.getElementById("speed-value");
+        const gaugeValueEl = document.getElementById("gauge-value");
+        const gaugeNeedleEl = document.getElementById("gauge-needle");
 
         // Governor caps max speed (default 70 mph); adjust with governor.setCap()
         const governor = new Governor(70);
@@ -538,8 +576,12 @@
           follower.speed = currentSpeed;
 
           const speedMph = currentSpeed * 2.237;
-          if (speedValueEl) {
-            speedValueEl.textContent = speedMph.toFixed(0);
+          if (gaugeValueEl) {
+            gaugeValueEl.textContent = speedMph.toFixed(0);
+          }
+          if (gaugeNeedleEl) {
+            const rotation = (Math.min(speedMph, governor.getCap()) / governor.getCap()) * 90;
+            gaugeNeedleEl.style.transform = `rotate(${rotation}deg)`;
           }
 
           // Advance distance along track
@@ -735,6 +777,13 @@
                           mass: 400,
                           shape: new CANNON.Box(new CANNON.Vec3(obs.logLen / 2, 0.4, 0.4)),
                         });
+                      } else if (obs.type === "tiny-rock") {
+                        body = new CANNON.Body({
+                          mass: 30,
+                          shape: new CANNON.Sphere(0.3),
+                          linearDamping: 0.2,
+                          angularDamping: 0.3,
+                        });
                       } else {
                         body = new CANNON.Body({
                           mass: 1200,
@@ -766,6 +815,11 @@
                         const speedLoss = Math.max(5.0, currentSpeed * 0.22);
                         currentSpeed = Math.max(0, currentSpeed - speedLoss);
                         screenShake = Math.min(0.35, screenShake + 0.22);
+                      } else if (obs.type === "tiny-rock") {
+                        // Tiny rocks: negligible impact, just a small rattle
+                        const speedLoss = Math.max(0.5, currentSpeed * 0.05);
+                        currentSpeed = Math.max(0, currentSpeed - speedLoss);
+                        screenShake = Math.min(0.15, screenShake + 0.08);
                       } else {
                         const speedLoss = Math.max(14.0, currentSpeed * 0.45);
                         currentSpeed = Math.max(0, currentSpeed - speedLoss);
