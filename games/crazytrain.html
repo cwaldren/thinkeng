@@ -36,8 +36,11 @@
       <h1 style="margin: 0; font-size: 1.2rem; opacity: 0.8">
         Crazy Train
       </h1>
-      <p style="margin: 4px 0 0; font-size: 0.85rem; opacity: 0.5">
-        You're driving an out of control train on an infinite, curving track!
+      <p style="margin: 4px 0 0; font-size: 0.85rem; opacity: 0.7">
+        Hold <strong>W</strong> to accelerate &bull; Release to decelerate
+      </p>
+      <p id="speedometer" style="margin: 4px 0 0; font-size: 0.85rem; opacity: 0.9; font-weight: bold">
+        Speed: 0 km/h
       </p>
     </div>
 
@@ -54,26 +57,108 @@
         createRailSegment,
         InfiniteTrack,
         TrackFollower,
+        getLocalSpinePose,
       } from "engine/components.js";
       import {} from "engine/materials.js";
 
       // 2. Initialize Core Engine with Options
       const sim = new Simulation({
         gravity: [0, -9.81, 0],
-        clearColor: 0x1a2230,
+        clearColor: 0x8ecae6,
         enableShadows: true,
       });
 
+      function createSceneryRailSegment(simulation, opts = {}) {
+        const seg = createRailSegment(simulation, opts);
+        const group = seg.mesh;
+        const { length = 40, radius = 0 } = opts;
+
+        // Place random trees, rocks, and grass along the sides of the track
+        const count = 12 + Math.floor(Math.random() * 8);
+        for (let i = 0; i < count; i++) {
+          const s = Math.random() * length;
+          const local = getLocalSpinePose(radius, length, s);
+          const perp = { x: -Math.sin(local.heading), z: Math.cos(local.heading) };
+
+          // Keep scenery safely off the rails (at least 4.5m away)
+          const side = Math.random() < 0.5 ? 1 : -1;
+          const offset = 4.5 + Math.random() * 26;
+          const x = local.position.x + perp.x * offset * side;
+          const z = local.position.z + perp.z * offset * side;
+
+          const rand = Math.random();
+          if (rand < 0.45) {
+            // Pine tree
+            const treeGroup = new THREE.Group();
+            treeGroup.position.set(x, 0, z);
+            const scale = 0.8 + Math.random() * 0.7;
+            treeGroup.scale.set(scale, scale, scale);
+
+            const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4033 });
+            const foliageMat1 = new THREE.MeshStandardMaterial({ color: 0x2e6f40, roughness: 0.8 });
+            const foliageMat2 = new THREE.MeshStandardMaterial({ color: 0x3d8b4e, roughness: 0.8 });
+
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.45, 3, 6), trunkMat);
+            trunk.position.y = 1.5;
+            trunk.castShadow = true;
+            treeGroup.add(trunk);
+
+            const foliage1 = new THREE.Mesh(new THREE.ConeGeometry(1.8, 4, 6), foliageMat1);
+            foliage1.position.y = 4.0;
+            foliage1.castShadow = true;
+            treeGroup.add(foliage1);
+
+            const foliage2 = new THREE.Mesh(new THREE.ConeGeometry(1.35, 3, 6), foliageMat2);
+            foliage2.position.y = 5.6;
+            foliage2.castShadow = true;
+            treeGroup.add(foliage2);
+
+            group.add(treeGroup);
+          } else if (rand < 0.72) {
+            // Rock
+            const rockMat = new THREE.MeshStandardMaterial({ color: 0x75787b, roughness: 0.9 });
+            const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(1, 0), rockMat);
+            const sX = 0.8 + Math.random() * 1.4;
+            const sY = 0.6 + Math.random() * 0.9;
+            const sZ = 0.8 + Math.random() * 1.4;
+            rock.scale.set(sX, sY, sZ);
+            rock.position.set(x, sY * 0.6, z);
+            rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+            rock.castShadow = true;
+            rock.receiveShadow = true;
+            group.add(rock);
+          } else {
+            // Grass cluster
+            const grassGroup = new THREE.Group();
+            grassGroup.position.set(x, 0, z);
+            const grassMat = new THREE.MeshStandardMaterial({ color: 0x5da848, roughness: 0.7 });
+            for (let b = 0; b < 6; b++) {
+              const blade = new THREE.Mesh(new THREE.ConeGeometry(0.12, 1.2, 4), grassMat);
+              blade.position.set((Math.random() - 0.5) * 0.8, 0.6, (Math.random() - 0.5) * 0.8);
+              blade.rotation.set((Math.random() - 0.5) * 0.3, Math.random() * Math.PI, (Math.random() - 0.5) * 0.3);
+              grassGroup.add(blade);
+            }
+            group.add(grassGroup);
+          }
+        }
+
+        return seg;
+      }
+
       // 3. Game-Specific Setup (The LLM focus area)
       function setup(sim) {
-        // Ground plane
-        const ground = createGround(sim, { size: 2000, color: 0x2d4a2d, position: [0, -0.5, 0] });
+        // Bright daylight lighting & atmosphere
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x446644, 0.8);
+        sim.scene.add(hemiLight);
 
-        // Infinite Track with straight & curved sections
+        // Ground plane
+        const ground = createGround(sim, { size: 2000, color: 0x4e8a4a, position: [0, -0.5, 0] });
+
+        // Infinite Track with straight & curved sections + roadside scenery
         const track = new InfiniteTrack(sim, {
           segmentLength: 40,
           windowCount: 15,
-          segmentFactory: createRailSegment,
+          segmentFactory: createSceneryRailSegment,
           camera: null, // Camera managed directly by train
           curveGenerator: (index) => {
             if (index < 2) return 0;
@@ -84,12 +169,22 @@
           },
         });
 
-        // Train
+        // Train & Controls
         const train = createTrain(sim, { position: [0, 0, 0] });
         const follower = new TrackFollower(track, train.mesh, {
           s: 10,
-          speed: 25,
+          speed: 0,
         });
+
+        // Keyboard controls
+        const keys = new Set();
+        window.addEventListener("keydown", (e) => keys.add(e.code));
+        window.addEventListener("keyup", (e) => keys.delete(e.code));
+
+        const accelRate = 30; // m/s^2 acceleration (no max cap)
+        const decelRate = accelRate * 2; // deceleration is twice acceleration (60 m/s^2)
+        let currentSpeed = 0;
+        const speedometerEl = document.getElementById("speedometer");
 
         // Initial train position
         const initPose = follower.getPose();
@@ -104,6 +199,18 @@
         const lookOffset = new THREE.Vector3(20, 3.5, 0);
 
         train.updateFn = (dt, entity, simulation) => {
+          // Handle acceleration & deceleration
+          if (keys.has("KeyW") || keys.has("ArrowUp")) {
+            currentSpeed += accelRate * dt;
+          } else {
+            currentSpeed = Math.max(0, currentSpeed - decelRate * dt);
+          }
+          follower.speed = currentSpeed;
+
+          if (speedometerEl) {
+            speedometerEl.textContent = `Speed: ${(currentSpeed * 3.6).toFixed(0)} km/h`;
+          }
+
           // Advance distance along track
           follower.s += follower.speed * dt;
 
