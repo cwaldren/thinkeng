@@ -80,12 +80,13 @@ export function createGauge(options = {}) {
     d: `M ${cx},${cy} L ${cx},${cy - r} A ${r},${r} 0 0 1 ${cx + r},${cy} L ${cx},${cy} Z`,
     fill: "rgba(0,0,0,0.55)",
   }, body);
-  el("path", {
+  const arc = el("path", {
     d: `M ${cx - r},${cy} A ${r},${r} 0 0 1 ${cx + r},${cy}`,
     fill: "none",
     stroke: "rgba(255,255,255,0.25)",
     "stroke-width": "2",
   }, body);
+  arc.style.transition = "stroke 0.2s";
 
   // Needle: points left at min, rotates clockwise to straight up at max.
   const needle = el("g", { id: "gauge-needle" }, body);
@@ -133,6 +134,11 @@ export function createGauge(options = {}) {
     needle.style.transform = `rotate(${rotation}deg)`;
   }
 
+  function setMax(on) {
+    arc.setAttribute("stroke", on ? "#ffd24a" : "rgba(255,255,255,0.25)");
+    arc.setAttribute("stroke-width", on ? "5" : "2");
+  }
+
   function setVisible(on) {
     wrapper.style.display = on ? "block" : "none";
   }
@@ -140,6 +146,68 @@ export function createGauge(options = {}) {
   function dispose() {
     wrapper.remove();
   }
+
+  return { wrapper, setValue, setMax, setVisible, dispose };
+}
+
+// # createMoneyCounter
+//
+// A large "money" display (e.g. "$0") anchored below the top-left controls UI.
+// Call `setValue()` to update the displayed amount, or use the returned
+// `wrapper` to reposition it under other UI elements.
+export function createMoneyCounter(options = {}) {
+  const {
+    container = document.body,
+    symbol = "$",
+    size = "2.2rem",
+    anchor = null, // optional HTMLElement to place directly beneath
+    marginTop = 0,
+  } = options;
+
+  const wrapper = document.createElement("div");
+  const hasBottom = options.bottom != null;
+  Object.assign(wrapper.style, {
+    position: "fixed",
+    top: anchor ? null : (hasBottom ? null : (options.top ?? "64px")),
+    left: anchor ? null : (options.left ?? "16px"),
+    bottom: anchor ? null : (options.bottom ?? null),
+    color: "#e7d984",
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace, sans-serif',
+    fontSize: size,
+    fontWeight: "900",
+    lineHeight: "1",
+    letterSpacing: "-0.02em",
+    pointerEvents: "none",
+    userSelect: "none",
+    textShadow: "0 2px 10px rgba(0, 0, 0, 0.5)",
+  });
+
+  if (anchor) {
+    wrapper.style.top = null;
+    wrapper.style.left = null;
+    wrapper.style.position = "static";
+    wrapper.style.marginTop = `${marginTop}px`;
+    anchor.appendChild(wrapper);
+  } else {
+    container.appendChild(wrapper);
+  }
+
+  const valueEl = document.createElement("span");
+  wrapper.appendChild(valueEl);
+
+  function setValue(v) {
+    valueEl.textContent = `${symbol}${Math.floor(v).toLocaleString()}`;
+  }
+
+  function setVisible(on) {
+    wrapper.style.display = on ? "block" : "none";
+  }
+
+  function dispose() {
+    wrapper.remove();
+  }
+
+  setValue(0);
 
   return { wrapper, setValue, setVisible, dispose };
 }

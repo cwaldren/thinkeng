@@ -62,7 +62,7 @@
       import {} from "engine/materials.js";
       import { Input } from "engine/input.js";
       import { createCameraControls } from "engine/cameraControls.js";
-      import { createGauge } from "engine/ui.js";
+      import { createGauge, createMoneyCounter } from "engine/ui.js";
 
       // Speed governor: caps max speed. governor.setCap(90), getCap(), etc.
       class Governor {
@@ -484,7 +484,7 @@
         input.mapTouchToKey("KeyW");
         const keys = input.keys;
 
-        const accelRate = 30; // m/s^2 acceleration (no max cap)
+        const accelRate = 24; // m/s^2 acceleration (no max cap)
         const decelRate = accelRate * 2; // deceleration is twice acceleration (60 m/s^2)
         let currentSpeed = 0;
         let currentTilt = 0;
@@ -498,6 +498,50 @@
 
         // Speed gauge (circular semicircle, full scale = governor cap)
         const gauge = createGauge({ min: 0, max: governor.getCap(), unit: "MPH" });
+
+        // Money display below the top-left controls UI
+        const moneyCounter = createMoneyCounter({
+          left: "calc(50% + 130px)",
+          bottom: "96px",
+        });
+        let money = 0;
+
+        // Flying "$" signs that emit from the smokestack at top speed
+        const moneySigns = [];
+        let moneySpawnAccum = 0;
+        const MONEY_SIGN_LIFETIME = 1.0;
+
+        const moneyCanvas = document.createElement("canvas");
+        moneyCanvas.width = moneyCanvas.height = 64;
+        const moneyCtx = moneyCanvas.getContext("2d");
+        moneyCtx.fillStyle = "#e7d984";
+        moneyCtx.font = "bold 46px sans-serif";
+        moneyCtx.textAlign = "center";
+        moneyCtx.textBaseline = "middle";
+        moneyCtx.fillText("$", 32, 32);
+        const moneyTexture = new THREE.CanvasTexture(moneyCanvas);
+        moneyTexture.needsUpdate = true;
+
+        function spawnMoneySign() {
+          const sprite = new THREE.Sprite(
+            new THREE.SpriteMaterial({
+              map: moneyTexture,
+              transparent: true,
+              depthTest: false,
+              opacity: 1,
+            }),
+          );
+          // Spawn just below the smokestack top, child of the train so it travels with it.
+          sprite.position.set(
+            3.55,
+            2.9 + Math.random() * 0.3,
+            (Math.random() - 0.5) * 0.2,
+          );
+          sprite.scale.set(0.5, 0.5, 0.5);
+          sprite.userData.age = 0;
+          train.mesh.add(sprite);
+          moneySigns.push(sprite);
+        }
 
         // 3D master-controller lever (bottom-right screen overlay)
         const lever = createLever();
@@ -542,6 +586,36 @@
 
           const speedMph = currentSpeed * 2.237;
           gauge.setValue(speedMph);
+
+          // Earn $1/second while at full governor speed; stop counting below it.
+          const atMaxSpeed = currentSpeed >= governor.getCapMps() - 1e-6;
+          gauge.setMax(atMaxSpeed);
+          if (atMaxSpeed) {
+            money += dt * 5;
+            moneyCounter.setValue(money);
+
+            // Emit a "$" sign from the smokestack at a steady cadence
+            moneySpawnAccum += dt;
+            while (moneySpawnAccum >= 0.12) {
+              moneySpawnAccum -= 0.12;
+              spawnMoneySign();
+            }
+          }
+
+          // Animate flying money signs upward and despawn them after 1s
+          for (let i = moneySigns.length - 1; i >= 0; i--) {
+            const sign = moneySigns[i];
+            sign.userData.age += dt;
+            const t = sign.userData.age / MONEY_SIGN_LIFETIME;
+            sign.position.y += 2.5 * dt;
+            sign.position.x += 0.6 * dt;
+            sign.material.opacity = 1 - t;
+            if (t >= 1) {
+              train.mesh.remove(sign);
+              sign.material.dispose();
+              moneySigns.splice(i, 1);
+            }
+          }
 
           // Advance distance along track
           follower.s += follower.speed * dt;
