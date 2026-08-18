@@ -535,6 +535,8 @@ import {
         const decelRate = accelRate * 2; // deceleration is twice acceleration (60 m/s^2)
         let currentSpeed = 0;
         let currentTilt = 0;
+        let currentCameraLookZ = 0;
+        let currentCameraOffsetZ = 0;
         let screenShake = 0;
         let leverAngle = 0;
 
@@ -597,8 +599,8 @@ import {
         // until the prerequisite is purchased.
         const POWERUPS = [
           {
-            id: "auto-throttle", label: "Auto Throttle", icon: "↑", cost: 15,
-            grantWhen: () => money >= 15,
+            id: "auto-throttle", label: "Auto Throttle", icon: "↑", cost: 100,
+            grantWhen: () => money >= 100,
             onBuy: () => { autoThrottle = true; },
           },
           {
@@ -1069,6 +1071,8 @@ import {
         });
 
         train.updateFn = (dt, entity, simulation) => {
+          const isRearView = keys.has("Space");
+
           // Master controller lever: W/S accelerate/decelerate, no input coasts.
           // Governor cutoff: at the cap the throttle latches to neutral and stays
           // dead until the player releases W (or lifts their finger on mobile).
@@ -1229,17 +1233,39 @@ import {
             entity.mesh.position.copy(pose.position);
             entity.mesh.quaternion.setFromUnitVectors(follower.forwardAxis, pose.forward);
 
-            // Visual corner tilt: 0 tilt below 100 mph, increasing with speed above 100 mph
+            // Track curvature ahead/behind for train & camera dynamics
+            const poseAhead = track.getPoseAt(follower.s + 1.6);
+            const poseBehind = track.getPoseAt(Math.max(0, follower.s - 1.6));
+            let dHeading = 0;
+            if (poseAhead && poseBehind) {
+              dHeading = (poseAhead.heading - poseBehind.heading) / 3.2;
+            }
+
+            // Sample track curve ahead to look around upcoming bends
+            const aheadDist = 26;
+            const lookPoseAhead = track.getPoseAt(follower.s + aheadDist);
+            let curveLateralAhead = 0;
+            if (lookPoseAhead && !isRearView) {
+              const invMatrix = new THREE.Matrix4().copy(entity.mesh.matrixWorld).invert();
+              const localAhead = lookPoseAhead.position.clone().applyMatrix4(invMatrix);
+              curveLateralAhead = localAhead.z;
+            }
+
+            // Dynamic camera look-ahead aiming and lateral lean to gently see around corners
+            const targetLookZ = Math.max(-3.0, Math.min(3.0, curveLateralAhead * 0.25));
+            const targetOffsetZ = -Math.max(-1.0, Math.min(1.0, curveLateralAhead * 0.08));
+            currentCameraLookZ += (targetLookZ - currentCameraLookZ) * Math.min(1, dt * 4.5);
+            currentCameraOffsetZ += (targetOffsetZ - currentCameraOffsetZ) * Math.min(1, dt * 4.5);
+
+            camCtrl.state.offset.z = currentCameraOffsetZ;
+            camCtrl.state.look.z = currentCameraLookZ;
+
+            // Visual corner tilt on train: 0 tilt below 100 mph, increasing with speed above 100 mph
             let targetTilt = 0;
             if (speedMph > 100) {
-              const poseAhead = track.getPoseAt(follower.s + 1.2);
-              const poseBehind = track.getPoseAt(Math.max(0, follower.s - 1.2));
-              if (poseAhead && poseBehind) {
-                const dHeading = (poseAhead.heading - poseBehind.heading) / 2.4;
-                const excessSpeed = speedMph - 100;
-                targetTilt = -dHeading * (excessSpeed / 25.0);
-                targetTilt = Math.max(-0.52, Math.min(0.52, targetTilt));
-              }
+              const excessSpeed = speedMph - 100;
+              targetTilt = -dHeading * (excessSpeed / 25.0);
+              targetTilt = Math.max(-0.52, Math.min(0.52, targetTilt));
             }
             currentTilt += (targetTilt - currentTilt) * Math.min(1, dt * 8);
 
@@ -1374,7 +1400,6 @@ import {
           }
 
           // Update camera pose (Space toggles front/rear rig)
-          const isRearView = keys.has("Space");
           camCtrl.update({ mirror: isRearView });
 
           // FOV scales exponentially with speed: 60° at rest → 80° at 250 mph
