@@ -63,6 +63,7 @@
       import { Input } from "engine/input.js";
       import { createCameraControls } from "engine/cameraControls.js";
       import { createGauge, createMoneyCounter } from "engine/ui.js";
+      import { createPowerups } from "engine/powerups.js";
 
       // Speed governor: caps max speed. governor.setCap(90), getCap(), etc.
       class Governor {
@@ -314,7 +315,7 @@
               s: obsS,
               hit: false,
             });
-          } else if (randObs < 0.66) {
+          } else if (randObs < 0.55) {
             // Regular Track Boulder
             const boulderMat = new THREE.MeshStandardMaterial({ color: 0x6e7278, roughness: 0.9 });
             const boulder = new THREE.Mesh(new THREE.DodecahedronGeometry(0.95, 0), boulderMat);
@@ -331,7 +332,7 @@
               s: obsS,
               hit: false,
             });
-          } else {
+          } else if (randObs < 0.63) {
             // Massive Giant Megalith Boulder (towering monolithic mountain rock)
             const giantGroup = new THREE.Group();
             giantGroup.position.set(localPose.position.x, 0, localPose.position.z);
@@ -365,6 +366,7 @@
               hit: false,
             });
           }
+          // else (randObs >= 0.63): no on-track obstacle in this spot
         }
 
         return seg;
@@ -484,12 +486,35 @@
         input.mapTouchToKey("KeyW");
         const keys = input.keys;
 
-        const accelRate = 10; // m/s^2 acceleration (no max cap)
+        let accelRate = 10; // m/s^2 acceleration (no max cap)
         const decelRate = accelRate * 2; // deceleration is twice acceleration (60 m/s^2)
         let currentSpeed = 0;
         let currentTilt = 0;
         let screenShake = 0;
         let leverAngle = 0;
+
+        // Defenses: an object per equipped defense, each carrying a numeric
+        // `valueMph`. Total defense = sum across all equipped defenses and is
+        // used to offset any speed loss — impacts worth less than the total are
+        // absorbed entirely, larger ones reduced by it.
+        const defenses = [];
+        function addDefense(def) {
+          defenses.push(def);
+        }
+        function totalDefenseMph() {
+          let total = 0;
+          for (const def of defenses) total += def.valueMph;
+          return total;
+        }
+        // Apply a speed loss (mps) offset by total defense. Returns nothing; fully
+        // absorbed impacts cause no speed loss and no screen shake.
+        function applyImpact(speedLossMps, shakeDelta, shakeCap) {
+          const effMph = Math.max(0, speedLossMps * 2.237 - totalDefenseMph());
+          if (effMph <= 0) return;
+          currentSpeed = Math.max(0, currentSpeed - effMph / 2.237);
+          screenShake = Math.min(shakeCap, screenShake + shakeDelta);
+        }
+
         // Governor cutoff: once the cap is hit, throttle is neutral until W is released
         let throttleLatched = false;
 
@@ -497,7 +522,12 @@
         const governor = new Governor(70);
 
         // Speed gauge (circular semicircle, full scale = governor cap)
-        const gauge = createGauge({ min: 0, max: governor.getCap(), unit: "MPH" });
+        let gauge = createGauge({ min: 0, max: governor.getCap(), unit: "MPH" });
+        // Rebuild the gauge so its full scale tracks a raised governor cap.
+        function rebuildGauge() {
+          gauge.dispose();
+          gauge = createGauge({ min: 0, max: governor.getCap(), unit: "MPH" });
+        }
 
         // Money display below the top-left controls UI
         const moneyCounter = createMoneyCounter({
@@ -505,6 +535,107 @@
           bottom: "96px",
         });
         let money = 0;
+        let autoThrottle = false;
+
+        // Powerups: each is granted when its `grantWhen` condition is met, then
+        // purchased by clicking its pill. `onBuy` applies the effect; the click is
+        // gated by cost so money can never go negative.
+        const POWERUPS = [
+          {
+            id: "auto-throttle", label: "Auto Throttle", icon: "↑", cost: 15,
+            grantWhen: () => money >= 15,
+            onBuy: () => { autoThrottle = true; },
+          },
+          {
+            id: "cowcatcher", label: "Cowcatcher", icon: "▴", cost: 50,
+            grantWhen: () => autoThrottle,
+            onBuy: () => addCowcatcher(),
+          },
+          {
+            id: "sandbox-1", label: "Better Accel I", icon: "▲", cost: 5,
+            grantWhen: () => money >= 5,
+            onBuy: () => { accelRate += 5; },
+          },
+          {
+            id: "sandbox-2", label: "Better Accel II", icon: "▲", cost: 50,
+            grantWhen: () => money >= 50,
+            onBuy: () => { accelRate += 5; },
+          },
+          {
+            id: "sandbox-3", label: "Better Accel III", icon: "▲", cost: 500,
+            grantWhen: () => money >= 500,
+            onBuy: () => { accelRate += 5; },
+          },
+          {
+            id: "governor-1", label: "Governor I", icon: "◆", cost: 100,
+            grantWhen: () => money >= 100,
+            onBuy: () => setGovernorCap(85),
+          },
+          {
+            id: "governor-2", label: "Governor II", icon: "◆", cost: 200,
+            grantWhen: () => money >= 200,
+            onBuy: () => setGovernorCap(100),
+          },
+          {
+            id: "governor-3", label: "Governor III", icon: "◆", cost: 300,
+            grantWhen: () => money >= 300,
+            onBuy: () => setGovernorCap(150),
+          },
+        ];
+
+        const powerups = createPowerups();
+        const grantedPowerups = new Set();
+        powerups.on((item) => {
+          const def = POWERUPS.find((d) => d.id === item.id);
+          if (!def) return;
+          money -= item.cost;
+          moneyCounter.setValue(money);
+          if (def.onBuy) def.onBuy();
+        });
+
+        // Raise the governor cap (never lowering it) and keep the gauge in step.
+        function setGovernorCap(newCapMph) {
+          governor.setCap(Math.max(governor.getCap(), newCapMph));
+          rebuildGauge();
+        }
+        // Award any powerup whose grant condition is now met (each only once).
+        function grantPowerups() {
+          for (const def of POWERUPS) {
+            if (grantedPowerups.has(def.id)) continue;
+            if (!def.grantWhen()) continue;
+            grantedPowerups.add(def.id);
+            powerups.add({
+              id: def.id, label: def.label, icon: def.icon, cost: def.cost,
+              isAffordable: () => money >= def.cost,
+            });
+          }
+        }
+
+        // Adds the wedge cowcatcher to the front of the train. The sloped face
+        // tips obstacles up/away, which softens collisions (implemented in the
+        // impact handling below).
+        function addCowcatcher() {
+          addDefense({ id: "cowcatcher", valueMph: 1 });
+          const w = 0.85, d = 0.55, h = 0.75; // half-width side, half-depth, height
+          const geo = new THREE.BufferGeometry();
+          geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array([
+            -w, 0,  d,  w, 0,  d, -w, 0, -d,  w, 0, -d, -w, h, -d,  w, h, -d,
+          ]), 3));
+          geo.setIndex([
+            1, 3, 5, // right end
+            0, 2, 4, // left end
+            0, 1, 3, 0, 3, 2, // bottom
+            2, 3, 5, 2, 5, 4, // front vertical
+            0, 1, 5, 0, 5, 4, // slanted
+          ]);
+          geo.computeVertexNormals();
+          const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x9aa0a6, metalness: 0.3, roughness: 0.6 }));
+          mesh.rotation.y = -Math.PI / 2;
+          mesh.position.set(3.6, 0.5, 0);
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          train.mesh.add(mesh);
+        }
 
         // Flying "$" signs that emit from the smokestack at top speed
         const moneySigns = [];
@@ -569,13 +700,17 @@
           // Governor cutoff: at the cap the throttle latches to neutral and stays
           // dead until the player releases W (or lifts their finger on mobile).
           if (throttleLatched) {
-            if (!keys.has("KeyW") && !keys.has("ArrowUp")) {
+            if (!keys.has("KeyW") && !keys.has("ArrowUp") && !autoThrottle) {
               throttleLatched = false;
             }
-          } else if (keys.has("KeyW") || keys.has("ArrowUp")) {
+          } else if (autoThrottle || keys.has("KeyW") || keys.has("ArrowUp")) {
+            // Auto Throttle pushes the lever up whenever below top speed, then
+            // holds at the cap — just like a player mashing W.
             const next = currentSpeed + accelRate * dt;
             currentSpeed = governor.limit(next);
-            if (currentSpeed >= governor.getCapMps() - 1e-6) {
+            if (autoThrottle && currentSpeed >= governor.getCapMps() - 1e-6) {
+              currentSpeed = governor.getCapMps(); // hold exactly at the cap
+            } else if (currentSpeed >= governor.getCapMps() - 1e-6) {
               throttleLatched = true; // reached the cap: cut off
             }
           } else if (keys.has("KeyS") || keys.has("ArrowDown")) {
@@ -601,6 +736,9 @@
               spawnMoneySign();
             }
           }
+
+          // Grant any powerup whose condition is now met
+          grantPowerups();
 
           // Animate flying money signs upward and despawn them after 1s
           for (let i = moneySigns.length - 1; i >= 0; i--) {
@@ -793,8 +931,8 @@
                         }
 
                         // Giant Megalith Boulder takes off exactly 500 mph (min 0)
-                        const speedLoss500MphInMps = 500 / 2.237;
-                        currentSpeed = Math.max(0, currentSpeed - speedLoss500MphInMps);
+                        const effGiantMph = Math.max(0, 500 - totalDefenseMph());
+                        currentSpeed = Math.max(0, currentSpeed - effGiantMph / 2.237);
                         screenShake = Math.min(1.4, screenShake + 1.2);
                         follower.speed = currentSpeed;
                         continue;
@@ -845,18 +983,12 @@
 
                       // Subtract velocity commensurate with obstacle mass & apply impact feedback
                       if (obs.type === "log") {
-                        const speedLoss = Math.max(5.0, currentSpeed * 0.22);
-                        currentSpeed = Math.max(0, currentSpeed - speedLoss);
-                        screenShake = Math.min(0.35, screenShake + 0.22);
+                        applyImpact(Math.max(5.0, currentSpeed * 0.22), 0.22, 0.35);
                       } else if (obs.type === "tiny-rock") {
                         // Tiny rocks: negligible impact, just a small rattle
-                        const speedLoss = Math.max(0.5, currentSpeed * 0.05);
-                        currentSpeed = Math.max(0, currentSpeed - speedLoss);
-                        screenShake = Math.min(0.15, screenShake + 0.08);
+                        applyImpact(Math.max(0.4, currentSpeed * 0.05), 0.08, 0.15);
                       } else {
-                        const speedLoss = Math.max(14.0, currentSpeed * 0.45);
-                        currentSpeed = Math.max(0, currentSpeed - speedLoss);
-                        screenShake = Math.min(0.75, screenShake + 0.55);
+                        applyImpact(Math.max(14.0, currentSpeed * 0.45), 0.55, 0.75);
                       }
                       follower.speed = currentSpeed;
 

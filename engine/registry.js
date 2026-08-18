@@ -14,6 +14,7 @@ import {
   createSphere,
   createCylinder,
   createRock,
+  createTriangle,
   createPlayer,
 } from "./primitives.js";
 
@@ -96,6 +97,22 @@ export const ENTRIES = [
       { key: "color", label: "Color", type: "color", default: "0x6e7278" },
       { key: "mass", label: "Mass", type: "number", default: 10, min: 0, max: 100, step: 1 },
       { key: "scale", label: "Scale [x,y,z]", type: "vector", default: [1, 0.8, 1] },
+      { key: "position", label: "Position [x,y,z]", type: "vector", default: [0, 0, 0] },
+      { key: "rotation", label: "Rotation [x,y,z]", type: "vector", default: [0, 0, 0] },
+    ],
+  },
+  {
+    category: "primitive",
+    key: "triangle",
+    label: "Triangle",
+    desc: "Triangular wedge / ramp (cowcatcher)",
+    fn: createTriangle,
+    opts: [
+      { key: "width", label: "Width", type: "number", default: 1, min: 0.1, max: 5, step: 0.1 },
+      { key: "depth", label: "Depth", type: "number", default: 1, min: 0.1, max: 5, step: 0.1 },
+      { key: "height", label: "Height", type: "number", default: 1, min: 0.1, max: 5, step: 0.1 },
+      { key: "color", label: "Color", type: "color", default: "0xcccccc" },
+      { key: "mass", label: "Mass", type: "number", default: 1, min: 0, max: 50, step: 1 },
       { key: "position", label: "Position [x,y,z]", type: "vector", default: [0, 0, 0] },
       { key: "rotation", label: "Rotation [x,y,z]", type: "vector", default: [0, 0, 0] },
     ],
