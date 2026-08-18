@@ -88,6 +88,44 @@
       } from "engine/components.js";
       import {} from "engine/materials.js";
       import { Input } from "engine/input.js";
+      import { createCameraControls } from "engine/cameraControls.js";
+
+      // Speed governor: caps max speed. governor.setCap(90), getCap(), etc.
+      class Governor {
+        constructor(capMph = 70) {
+          this.enabled = true;
+          this._capMph = capMph;
+          this._capMps = capMph / 2.237;
+        }
+        setCap(mph) {
+          this._capMph = mph;
+          this._capMps = mph / 2.237;
+          return this;
+        }
+        getCap() {
+          return this._capMph;
+        }
+        getCapMps() {
+          return this._capMps;
+        }
+        setEnabled(on) {
+          this.enabled = !!on;
+          return this;
+        }
+        enable() {
+          return this.setEnabled(true);
+        }
+        disable() {
+          return this.setEnabled(false);
+        }
+        limit(speedMps) {
+          if (!this.enabled) return speedMps;
+          return Math.min(speedMps, this._capMps);
+        }
+        apply(speedMps, deltaMps) {
+          return this.limit(speedMps + deltaMps);
+        }
+      }
 
       // 2. Initialize Core Engine with Options
       const sim = new Simulation({
@@ -451,7 +489,12 @@
         let currentTilt = 0;
         let screenShake = 0;
         let leverAngle = 0;
+        // Governor cutoff: once the cap is hit, throttle is neutral until W is released
+        let throttleLatched = false;
         const speedValueEl = document.getElementById("speed-value");
+
+        // Governor caps max speed (default 70 mph); adjust with governor.setCap()
+        const governor = new Governor(70);
 
         // 3D master-controller lever (bottom-right screen overlay)
         const lever = createLever();
@@ -465,16 +508,29 @@
           train.mesh.updateMatrixWorld(true);
         }
 
-        // Camera offsets (front & rear views)
-        const camOffsetForward = new THREE.Vector3(-3.5, 5.5, 0);
-        const lookOffsetForward = new THREE.Vector3(25, 3.5, 0);
-        const camOffsetRear = new THREE.Vector3(2.5, 5.5, 0);
-        const lookOffsetRear = new THREE.Vector3(-25, 3.5, 0);
+        // Camera rig with draggable FOV/offset sliders (bottom-right panel)
+        const camCtrl = createCameraControls(sim, {
+          mesh: train.mesh,
+          fov: 60,
+          offset: [-3.2, 5.4, 0],
+          look: [2.0, 3.2, 0],
+          visible: false,
+        });
 
         train.updateFn = (dt, entity, simulation) => {
-          // Master controller lever: W/S accelerate/decelerate, no input coasts
-          if (keys.has("KeyW") || keys.has("ArrowUp")) {
-            currentSpeed += accelRate * dt;
+          // Master controller lever: W/S accelerate/decelerate, no input coasts.
+          // Governor cutoff: at the cap the throttle latches to neutral and stays
+          // dead until the player releases W (or lifts their finger on mobile).
+          if (throttleLatched) {
+            if (!keys.has("KeyW") && !keys.has("ArrowUp")) {
+              throttleLatched = false;
+            }
+          } else if (keys.has("KeyW") || keys.has("ArrowUp")) {
+            const next = currentSpeed + accelRate * dt;
+            currentSpeed = governor.limit(next);
+            if (currentSpeed >= governor.getCapMps() - 1e-6) {
+              throttleLatched = true; // reached the cap: cut off
+            }
           } else if (keys.has("KeyS") || keys.has("ArrowDown")) {
             currentSpeed = Math.max(0, currentSpeed - decelRate * dt);
           }
@@ -736,20 +792,21 @@
             ground.mesh.position.z = entity.mesh.position.z;
           }
 
-          // Update camera pose (front vs rear view based on Space key)
+          // Update camera pose (Space toggles front/rear rig)
           const isRearView = keys.has("Space");
-          const activeCamOffset = isRearView ? camOffsetRear : camOffsetForward;
-          const activeLookOffset = isRearView ? lookOffsetRear : lookOffsetForward;
+          camCtrl.update({ mirror: isRearView });
+
+          // FOV scales exponentially with speed: 60° at rest → 80° at 250 mph
+          const fovBase = camCtrl.state.fov;
+          const speedRatio = Math.min(1, Math.max(0, speedMph / 250));
+          simulation.camera.fov = fovBase * Math.pow(80 / fovBase, speedRatio);
+          simulation.camera.updateProjectionMatrix();
 
           // Dynamic fog adjustment: bring fog closer in rear view to hide limited rear draw distance
           const targetFogNear = isRearView ? 15 : 50;
           const targetFogFar = isRearView ? 95 : 220;
           simulation.scene.fog.near += (targetFogNear - simulation.scene.fog.near) * Math.min(1, dt * 10);
           simulation.scene.fog.far += (targetFogFar - simulation.scene.fog.far) * Math.min(1, dt * 10);
-
-          const m = entity.mesh.matrixWorld;
-          simulation.camera.position.copy(activeCamOffset.clone().applyMatrix4(m));
-          simulation.camera.lookAt(activeLookOffset.clone().applyMatrix4(m));
 
           // Impact screen shake
           if (screenShake > 0.001) {
@@ -779,18 +836,21 @@
           lever.lookAt(simulation.camera.position);
           lever.updateMatrixWorld(true);
 
-          // Tilt toward/away from the user based on throttle input
-          let targetLever = 0;
-          if (keys.has("KeyW") || keys.has("ArrowUp")) targetLever = -0.7; // into screen (away from user)
-          else if (keys.has("KeyS") || keys.has("ArrowDown")) targetLever = 0.7; // toward user
-          leverAngle += (targetLever - leverAngle) * Math.min(1, dt * 8);
-          lever.userData.pivot.rotation.x = leverAngle;
+          // Hide the accel lever in reverse view
+          lever.visible = !isRearView;
+          if (lever.visible) {
+            // Tilt toward/away from the user based on throttle input.
+            // When governor-cut off, the lever snaps back to neutral.
+            let targetLever = 0;
+            if (!throttleLatched && (keys.has("KeyW") || keys.has("ArrowUp"))) targetLever = -0.7; // into screen (away from user)
+            else if (!throttleLatched && (keys.has("KeyS") || keys.has("ArrowDown"))) targetLever = 0.7; // toward user
+            leverAngle += (targetLever - leverAngle) * Math.min(1, dt * 8);
+            lever.userData.pivot.rotation.x = leverAngle;
+          }
         };
 
         // Initial camera pose
-        const m = train.mesh.matrixWorld;
-        sim.camera.position.copy(camOffsetForward.clone().applyMatrix4(m));
-        sim.camera.lookAt(lookOffsetForward.clone().applyMatrix4(m));
+        camCtrl.update({ mirror: false });
       }
 
       // Run
