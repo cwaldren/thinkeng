@@ -60,7 +60,7 @@
         Crazy Train
       </h1>
       <p style="margin: 4px 0 0; font-size: 0.85rem; opacity: 0.7">
-        Hold <strong>W</strong> to accelerate &bull; Hold <strong>Space</strong> for rear camera
+        <strong>W</strong> accelerate &bull; <strong>S</strong> decelerate &bull; no input coasts &bull; <strong>Space</strong> rear camera
       </p>
     </div>
 
@@ -331,6 +331,41 @@
         return seg;
       }
 
+      // Train master-controller lever (3D overlay fixed to bottom-right of screen)
+      function createLever() {
+        const group = new THREE.Group();
+
+        const baseMat = new THREE.MeshStandardMaterial({ color: 0x334455, roughness: 0.6, metalness: 0.3 });
+        const armMat = new THREE.MeshStandardMaterial({ color: 0xcc8833, roughness: 0.5, metalness: 0.1 });
+        const gripMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.4 });
+
+        // Stationary mount (flat cylinder pedestal)
+        const base = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.65, 0.35, 12), baseMat);
+        base.position.y = 0.175;
+        base.castShadow = true;
+        base.receiveShadow = true;
+        group.add(base);
+
+        // Rotating pivot at the top of the pedestal
+        const pivot = new THREE.Group();
+        pivot.position.y = 0.35;
+
+        // Lever arm + grip
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.7, 0.16), armMat);
+        arm.position.y = 0.85;
+        arm.castShadow = true;
+        pivot.add(arm);
+
+        const grip = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 12), gripMat);
+        grip.position.y = 1.7;
+        grip.castShadow = true;
+        pivot.add(grip);
+
+        group.add(pivot);
+        group.userData.pivot = pivot;
+        return group;
+      }
+
       // 3. Game-Specific Setup (The LLM focus area)
       function setup(sim) {
         // FPS Counter
@@ -415,7 +450,12 @@
         let currentSpeed = 0;
         let currentTilt = 0;
         let screenShake = 0;
+        let leverAngle = 0;
         const speedValueEl = document.getElementById("speed-value");
+
+        // 3D master-controller lever (bottom-right screen overlay)
+        const lever = createLever();
+        sim.scene.add(lever);
 
         // Initial train position
         const initPose = follower.getPose();
@@ -432,12 +472,13 @@
         const lookOffsetRear = new THREE.Vector3(-25, 3.5, 0);
 
         train.updateFn = (dt, entity, simulation) => {
-          // Handle acceleration & deceleration
+          // Master controller lever: W/S accelerate/decelerate, no input coasts
           if (keys.has("KeyW") || keys.has("ArrowUp")) {
             currentSpeed += accelRate * dt;
-          } else {
+          } else if (keys.has("KeyS") || keys.has("ArrowDown")) {
             currentSpeed = Math.max(0, currentSpeed - decelRate * dt);
           }
+          // else: neutral — maintain current velocity (coasting)
           follower.speed = currentSpeed;
 
           const speedMph = currentSpeed * 2.237;
@@ -560,7 +601,7 @@
                           [-0.4, 0.6, 1.2],
                           [0.4, 0.6, -1.2],
                         ];
-                        const hitSpeed = Math.max(20, follower.speed * 0.5 + 8);
+                        const hitSpeed = follower.speed * 0.5;
 
                         for (const offset of shardOffsets) {
                           const rockMesh = new THREE.Mesh(
@@ -603,7 +644,7 @@
                           shardDir.normalize();
                           rockBody.velocity.set(
                             shardDir.x * hitSpeed + fwdDir.z * (Math.random() - 0.5) * 10,
-                            follower.speed * 0.35 + 6 + Math.random() * 4,
+                            follower.speed * 0.3 + 1.5 + Math.random() * 2,
                             shardDir.z * hitSpeed - fwdDir.x * (Math.random() - 0.5) * 10,
                           );
                           rockBody.angularVelocity.set(
@@ -650,11 +691,11 @@
                       // Impulse scaled to obstacle mass & inertia
                       {
                         // Standard obstacles (logs and regular boulders) tumble dynamically
-                        const lateralSide = (Math.random() < 0.5 ? 1 : -1) * (15 + Math.random() * 25);
-                        const hitSpeed = Math.max(25, follower.speed * 1.8 + 15);
+                        const lateralSide = (Math.random() < 0.5 ? 1 : -1) * (follower.speed * 0.4 + Math.random() * 8);
+                        const hitSpeed = follower.speed * 0.9;
                         body.velocity.set(
                           fwdDir.x * hitSpeed + fwdDir.z * lateralSide,
-                          follower.speed * 0.45 + 10 + Math.random() * 6,
+                          follower.speed * 0.3 + 2 + Math.random() * 3,
                           fwdDir.z * hitSpeed - fwdDir.x * lateralSide,
                         );
                         body.angularVelocity.set(
@@ -716,6 +757,34 @@
             simulation.camera.position.y += (Math.random() - 0.5) * screenShake;
             screenShake *= Math.exp(-dt * 9.0);
           }
+
+          // Master-controller lever: pinned to bottom-right of the screen
+          const camQuat = simulation.camera.quaternion;
+          const vRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camQuat);
+          const vUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camQuat);
+          const vFwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camQuat);
+
+          const leverDist = 7;
+          const halfH = Math.tan((simulation.camera.fov * Math.PI) / 360) * leverDist;
+          const halfW = halfH * simulation.camera.aspect;
+          const nx = 0.73;
+          const ny = -0.6;
+
+          lever.position
+            .copy(simulation.camera.position)
+            .addScaledVector(vFwd, leverDist)
+            .addScaledVector(vRight, nx * halfW)
+            .addScaledVector(vUp, ny * halfH);
+          lever.scale.setScalar(1.1);
+          lever.lookAt(simulation.camera.position);
+          lever.updateMatrixWorld(true);
+
+          // Tilt toward/away from the user based on throttle input
+          let targetLever = 0;
+          if (keys.has("KeyW") || keys.has("ArrowUp")) targetLever = -0.7; // into screen (away from user)
+          else if (keys.has("KeyS") || keys.has("ArrowDown")) targetLever = 0.7; // toward user
+          leverAngle += (targetLever - leverAngle) * Math.min(1, dt * 8);
+          lever.userData.pivot.rotation.x = leverAngle;
         };
 
         // Initial camera pose
