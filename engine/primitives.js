@@ -130,6 +130,42 @@ export function createSphere(sim, opts = {}) {
   return sim.addEntity(mesh, body);
 }
 
+export function createRock(sim, opts = {}) {
+  const {
+    radius = 1,
+    detail = 0,
+    color = 0x6e7278,
+    roughness = 0.9,
+    mass = 10,
+    scale = [1, 0.8, 1],
+    position = [0, 0, 0],
+    rotation = [0, 0, 0],
+    friction = 0.5,
+  } = opts;
+
+  const geometry = new THREE.DodecahedronGeometry(radius, detail);
+  const material = new THREE.MeshStandardMaterial({ color, roughness });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.position.set(position[0], position[1], position[2]);
+  mesh.rotation.set(rotation[0], rotation[1], rotation[2]);
+  const s = Array.isArray(scale) ? scale : [scale, scale, scale];
+  mesh.scale.set(s[0], s[1], s[2]);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+
+  const avgR = radius * ((s[0] + s[1] + s[2]) / 3);
+  const body = new CANNON.Body({
+    mass,
+    shape: new CANNON.Sphere(avgR * 0.95),
+  });
+  body.position.set(position[0], position[1], position[2]);
+  body.quaternion.setFromEuler(rotation[0], rotation[1], rotation[2]);
+  body.material = new CANNON.Material("rock");
+  body.updateMassProperties();
+
+  return sim.addEntity(mesh, body);
+}
+
 export function createPlayer(sim, opts = {}) {
   const {
     size = 1,
