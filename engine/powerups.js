@@ -21,8 +21,29 @@ function ensureStyles() {
   const style = document.createElement("style");
   style.textContent = `
     @media (max-width: 600px), (pointer: coarse) {
+      .powerups-panel {
+        left: 0 !important;
+        margin-left: 0 !important;
+        padding-left: 0 !important;
+      }
       .powerup-icon {
         display: none !important;
+      }
+      .powerup-pill {
+        padding: 6px 10px 6px 8px !important;
+        font-size: 0.82rem !important;
+        gap: 6px !important;
+        border-radius: 0 16px 16px 0 !important;
+        border-left: none !important;
+        width: fit-content !important;
+        max-width: 190px !important;
+        margin-left: 0 !important;
+      }
+      .powerup-cost {
+        font-size: 0.75rem !important;
+        padding: 1px 6px !important;
+        margin-left: 4px !important;
+        border-radius: 10px !important;
       }
     }
   `;
@@ -71,6 +92,7 @@ export function createPowerups(options = {}) {
     add({ id, label, icon = "", cost = 0, unit = "$", isAffordable = null } = {}) {
       const item = { id, label, icon, cost, unit, isAffordable };
       const pill = document.createElement("div");
+      pill.className = "powerup-pill";
       Object.assign(pill.style, {
         display: "flex",
         alignItems: "center",
@@ -109,6 +131,7 @@ export function createPowerups(options = {}) {
 
       if (cost > 0) {
         const costEl = document.createElement("span");
+        costEl.className = "powerup-cost";
         costEl.textContent = `${unit}${cost}`;
         costEl.style.marginLeft = "6px";
         costEl.style.padding = "2px 10px";

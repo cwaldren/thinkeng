@@ -668,6 +668,7 @@ import {
 
         // Renewable purchase pill appended to the powerup panel (revealed once $50 is reached).
         const dynamiteBuy = document.createElement("div");
+        dynamiteBuy.className = "powerup-pill";
         Object.assign(dynamiteBuy.style, {
           display: "none",
           alignItems: "center",
@@ -696,6 +697,7 @@ import {
         dynamiteBuyLabel.textContent = "Buy Dynamite";
         dynamiteBuy.appendChild(dynamiteBuyLabel);
         const dynamiteBuyCost = document.createElement("span");
+        dynamiteBuyCost.className = "powerup-cost";
         dynamiteBuyCost.textContent = `$${DYNAMITE_COST}`;
         Object.assign(dynamiteBuyCost.style, {
           marginLeft: "6px",
