@@ -18,7 +18,10 @@ export class Simulation {
       powerPreference: "high-performance",
     });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // Cap pixel ratio to save fill rate on high-DPI/mobile displays.
+    const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+    const maxPR = isMobile ? 1.5 : 2;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, maxPR));
     this.renderer.setClearColor(clearColor);
 
     if (enableShadows) {
