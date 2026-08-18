@@ -181,13 +181,44 @@ import {
         }
       }
 
+      // Reusable shared geometries and lightweight Lambert materials for scenery & obstacles
+      const sharedTrunkGeo = new THREE.CylinderGeometry(0.3, 0.45, 3, 5);
+      const sharedFoliage1Geo = new THREE.ConeGeometry(1.8, 4, 5);
+      const sharedFoliage2Geo = new THREE.ConeGeometry(1.35, 3, 5);
+      const sharedRockGeo = new THREE.DodecahedronGeometry(1, 0);
+      const sharedTinyRockGeo = new THREE.DodecahedronGeometry(0.28, 0);
+      const sharedGrassGeo = new THREE.ConeGeometry(0.1, 1.0, 3);
+      const sharedBranchGeo = new THREE.ConeGeometry(0.7, 1.8, 4);
+      const sharedBoulderGeo = new THREE.DodecahedronGeometry(0.95, 0);
+      const sharedGiantMainGeo = new THREE.DodecahedronGeometry(2.4, 0);
+      const sharedGiantSub1Geo = new THREE.DodecahedronGeometry(1.4, 0);
+      const sharedGiantSub2Geo = new THREE.DodecahedronGeometry(1.3, 0);
+      const sharedShardGeo = new THREE.DodecahedronGeometry(0.9, 0);
+
+      const sharedTrunkMat = new THREE.MeshLambertMaterial({ color: 0x5c4033 });
+      const sharedRockMat = new THREE.MeshLambertMaterial({ color: 0x75787b });
+      const sharedTinyMat = new THREE.MeshLambertMaterial({ color: 0x8a8e93 });
+      const sharedGrassMat = new THREE.MeshLambertMaterial({ color: 0x56a442 });
+      const sharedLogMat = new THREE.MeshLambertMaterial({ color: 0x4a3324 });
+      const sharedBranchMat = new THREE.MeshLambertMaterial({ color: 0x2e6035 });
+      const sharedBoulderMat = new THREE.MeshLambertMaterial({ color: 0x6e7278 });
+      const sharedGiantMat = new THREE.MeshLambertMaterial({ color: 0x2a2d30 });
+
+      const sharedTreePalettes = [
+        { foliage1: new THREE.MeshLambertMaterial({ color: 0x1a4524 }), foliage2: new THREE.MeshLambertMaterial({ color: 0x245a30 }) },
+        { foliage1: new THREE.MeshLambertMaterial({ color: 0x286337 }), foliage2: new THREE.MeshLambertMaterial({ color: 0x367e47 }) },
+        { foliage1: new THREE.MeshLambertMaterial({ color: 0x3d7e32 }), foliage2: new THREE.MeshLambertMaterial({ color: 0x519e42 }) },
+        { foliage1: new THREE.MeshLambertMaterial({ color: 0x4f8c3e }), foliage2: new THREE.MeshLambertMaterial({ color: 0x65ab50 }) },
+        { foliage1: new THREE.MeshLambertMaterial({ color: 0x3b5930 }), foliage2: new THREE.MeshLambertMaterial({ color: 0x4c703e }) },
+      ];
+
       function createSceneryRailSegment(simulation, opts = {}) {
         const seg = createRailSegment(simulation, opts);
         const group = seg.mesh;
         const { length = 40, radius = 0 } = opts;
 
         // Place random trees, rocks, and grass along the sides of the track
-        const count = 24 + Math.floor(Math.random() * 10);
+        const count = 16 + Math.floor(Math.random() * 8);
         const grassTransforms = [];
 
         for (let i = 0; i < count; i++) {
@@ -203,58 +234,41 @@ import {
 
           const rand = Math.random();
           if (rand < 0.28) {
-            // Pine tree with varied natural foliage hues (deep pines, bright spring greens, olive/moss)
+            // Pine tree with varied natural foliage hues
             const treeGroup = new THREE.Group();
             treeGroup.position.set(x, 0, z);
             const scale = 0.8 + Math.random() * 0.7;
             treeGroup.scale.set(scale, scale, scale);
 
-            const treePalettes = [
-              { base: 0x1a4524, highlight: 0x245a30 }, // Deep forest pine
-              { base: 0x286337, highlight: 0x367e47 }, // Classic evergreen
-              { base: 0x3d7e32, highlight: 0x519e42 }, // Vibrant green
-              { base: 0x4f8c3e, highlight: 0x65ab50 }, // Light spring green
-              { base: 0x3b5930, highlight: 0x4c703e }, // Olive moss
-            ];
-            const pal = treePalettes[Math.floor(Math.random() * treePalettes.length)];
+            const pal = sharedTreePalettes[Math.floor(Math.random() * sharedTreePalettes.length)];
 
-            const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.9 });
-            const foliageMat1 = new THREE.MeshStandardMaterial({ color: pal.base, roughness: 0.8 });
-            const foliageMat2 = new THREE.MeshStandardMaterial({ color: pal.highlight, roughness: 0.8 });
-
-            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.45, 3, 6), trunkMat);
+            const trunk = new THREE.Mesh(sharedTrunkGeo, sharedTrunkMat);
             trunk.position.y = 1.5;
-            trunk.castShadow = true;
             treeGroup.add(trunk);
 
-            const foliage1 = new THREE.Mesh(new THREE.ConeGeometry(1.8, 4, 6), foliageMat1);
+            const foliage1 = new THREE.Mesh(sharedFoliage1Geo, pal.foliage1);
             foliage1.position.y = 4.0;
-            foliage1.castShadow = true;
             treeGroup.add(foliage1);
 
-            const foliage2 = new THREE.Mesh(new THREE.ConeGeometry(1.35, 3, 6), foliageMat2);
+            const foliage2 = new THREE.Mesh(sharedFoliage2Geo, pal.foliage2);
             foliage2.position.y = 5.6;
-            foliage2.castShadow = true;
             treeGroup.add(foliage2);
 
             group.add(treeGroup);
           } else if (rand < 0.48) {
             // Rock
-            const rockMat = new THREE.MeshStandardMaterial({ color: 0x75787b, roughness: 0.9 });
-            const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(1, 0), rockMat);
+            const rock = new THREE.Mesh(sharedRockGeo, sharedRockMat);
             const sX = 0.8 + Math.random() * 1.4;
             const sY = 0.6 + Math.random() * 0.9;
             const sZ = 0.8 + Math.random() * 1.4;
             rock.scale.set(sX, sY, sZ);
             rock.position.set(x, sY * 0.6, z);
             rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
-            rock.castShadow = true;
-            rock.receiveShadow = true;
             group.add(rock);
           } else {
-            // Large lush grass patch - collect blade transforms for InstancedMesh
-            const patchRadius = 2.0 + Math.random() * 2.2;
-            const bladeCount = 35 + Math.floor(Math.random() * 20);
+            // Lush grass patch - collect blade transforms for InstancedMesh
+            const patchRadius = 2.0 + Math.random() * 2.0;
+            const bladeCount = 20 + Math.floor(Math.random() * 12);
 
             for (let b = 0; b < bladeCount; b++) {
               const ang = Math.random() * Math.PI * 2;
@@ -278,9 +292,7 @@ import {
 
         // Create single instanced mesh for all grass in this segment (1 draw call)
         if (grassTransforms.length > 0) {
-          const grassGeo = new THREE.ConeGeometry(0.1, 1.0, 4);
-          const grassMat = new THREE.MeshStandardMaterial({ color: 0x56a442, roughness: 0.7 });
-          const instancedGrass = new THREE.InstancedMesh(grassGeo, grassMat, grassTransforms.length);
+          const instancedGrass = new THREE.InstancedMesh(sharedGrassGeo, sharedGrassMat, grassTransforms.length);
           const dummy = new THREE.Object3D();
 
           for (let i = 0; i < grassTransforms.length; i++) {
@@ -292,22 +304,19 @@ import {
             instancedGrass.setMatrixAt(i, dummy.matrix);
           }
           instancedGrass.instanceMatrix.needsUpdate = true;
-          instancedGrass.castShadow = true;
-          instancedGrass.receiveShadow = true;
           group.add(instancedGrass);
         }
 
         // Occasional on-track obstacles (fallen trees & track boulders)
         seg.obstacles = seg.obstacles || [];
 
-        // Tiny rocks: extremely common, low mass, littered right on the rails
-        const tinyCount = 2 + Math.floor(Math.random() * 3);
-        const tinyMat = new THREE.MeshStandardMaterial({ color: 0x8a8e93, roughness: 0.9 });
+        // Tiny rocks: low mass, littered right on the rails
+        const tinyCount = 1 + Math.floor(Math.random() * 3);
         for (let i = 0; i < tinyCount; i++) {
           const tS = length * (0.05 + Math.random() * 0.9);
           const tPose = getLocalSpinePose(radius, length, tS);
           const edge = (Math.random() < 0.5 ? 1 : -1) * Math.random() * 0.7;
-          const tiny = new THREE.Mesh(new THREE.DodecahedronGeometry(0.28, 0), tinyMat);
+          const tiny = new THREE.Mesh(sharedTinyRockGeo, sharedTinyMat);
           tiny.scale.set(
             0.6 + Math.random() * 0.9,
             0.55 + Math.random() * 0.7,
@@ -315,8 +324,6 @@ import {
           );
           tiny.position.set(tPose.position.x, 0.28, tPose.position.z + edge);
           tiny.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
-          tiny.castShadow = true;
-          tiny.receiveShadow = true;
           group.add(tiny);
           seg.obstacles.push({
             mesh: tiny,
@@ -334,22 +341,17 @@ import {
           if (randObs < 0.33) {
             // Fallen Tree across the rails
             const logLen = 3.8 + Math.random() * 1.6;
-            const logMat = new THREE.MeshStandardMaterial({ color: 0x4a3324, roughness: 0.95 });
-            const logMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.42, logLen, 8), logMat);
+            const logMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.42, logLen, 6), sharedLogMat);
             logMesh.rotation.z = Math.PI / 2;
-            logMesh.castShadow = true;
-            logMesh.receiveShadow = true;
 
             const logGroup = new THREE.Group();
             logGroup.position.set(localPose.position.x, 0.55, localPose.position.z);
             logGroup.rotation.y = -localPose.heading + Math.PI / 2 + (Math.random() - 0.5) * 0.4;
             logGroup.add(logMesh);
 
-            const branchMat = new THREE.MeshStandardMaterial({ color: 0x2e6035, roughness: 0.8 });
-            const branch = new THREE.Mesh(new THREE.ConeGeometry(0.7, 1.8, 5), branchMat);
+            const branch = new THREE.Mesh(sharedBranchGeo, sharedBranchMat);
             branch.position.set(logLen / 2 - 0.2, 0.35, 0);
             branch.rotation.z = -Math.PI / 3;
-            branch.castShadow = true;
             logGroup.add(branch);
 
             group.add(logGroup);
@@ -362,13 +364,10 @@ import {
             });
           } else if (randObs < 0.55) {
             // Regular Track Boulder
-            const boulderMat = new THREE.MeshStandardMaterial({ color: 0x6e7278, roughness: 0.9 });
-            const boulder = new THREE.Mesh(new THREE.DodecahedronGeometry(0.95, 0), boulderMat);
+            const boulder = new THREE.Mesh(sharedBoulderGeo, sharedBoulderMat);
             boulder.scale.set(1.1 + Math.random() * 0.3, 0.75 + Math.random() * 0.25, 1.1 + Math.random() * 0.3);
             boulder.position.set(localPose.position.x, 0.85, localPose.position.z);
             boulder.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
-            boulder.castShadow = true;
-            boulder.receiveShadow = true;
 
             group.add(boulder);
             seg.obstacles.push({
@@ -383,24 +382,19 @@ import {
             giantGroup.position.set(localPose.position.x, 0, localPose.position.z);
             giantGroup.rotation.y = -localPose.heading + (Math.random() - 0.5) * 0.5;
 
-            const giantMat = new THREE.MeshStandardMaterial({ color: 0x2a2d30, roughness: 0.95 });
-            const mainRock = new THREE.Mesh(new THREE.DodecahedronGeometry(2.4, 0), giantMat);
+            const mainRock = new THREE.Mesh(sharedGiantMainGeo, sharedGiantMat);
             mainRock.scale.set(1.4, 1.6, 1.3);
             mainRock.position.set(0, 2.6, 0);
             mainRock.rotation.set(Math.random() * 0.5, Math.random() * Math.PI, 0);
-            mainRock.castShadow = true;
-            mainRock.receiveShadow = true;
             giantGroup.add(mainRock);
 
             // Side support boulders forming a massive barrier
-            const subRock1 = new THREE.Mesh(new THREE.DodecahedronGeometry(1.4, 0), giantMat);
+            const subRock1 = new THREE.Mesh(sharedGiantSub1Geo, sharedGiantMat);
             subRock1.position.set(-1.4, 1.3, 0.4);
-            subRock1.castShadow = true;
             giantGroup.add(subRock1);
 
-            const subRock2 = new THREE.Mesh(new THREE.DodecahedronGeometry(1.3, 0), giantMat);
+            const subRock2 = new THREE.Mesh(sharedGiantSub2Geo, sharedGiantMat);
             subRock2.position.set(1.4, 1.2, -0.3);
-            subRock2.castShadow = true;
             giantGroup.add(subRock2);
 
             group.add(giantGroup);
@@ -411,7 +405,6 @@ import {
               hit: false,
             });
           }
-          // else (randObs >= 0.63): no on-track obstacle in this spot
         }
 
         return seg;
@@ -505,7 +498,7 @@ import {
         const rearSegments = 3; // Keep 3 segments of track/scenery active behind the train
         const track = new InfiniteTrack(sim, {
           segmentLength: segmentLen,
-          windowCount: 22,
+          windowCount: 11,
           segmentFactory: createSceneryRailSegment,
           camera: null, // Camera managed directly by train
           curveGenerator: generateTrackCurve,
@@ -835,7 +828,6 @@ import {
 
         // Shatters a Giant Megalith Boulder into smaller rock fragments
         function shatterMegalith(obsWorldPos, baseFwdDir, baseSpeed = 15) {
-          const shatterMat = new THREE.MeshStandardMaterial({ color: 0x2a2d30, roughness: 0.95 });
           const shardOffsets = [
             [-1.2, 1.0, 0.4],
             [1.2, 1.0, -0.4],
@@ -844,10 +836,7 @@ import {
           ];
 
           for (const offset of shardOffsets) {
-            const rockMesh = new THREE.Mesh(
-              new THREE.DodecahedronGeometry(0.9, 0),
-              shatterMat,
-            );
+            const rockMesh = new THREE.Mesh(sharedShardGeo, sharedGiantMat);
             rockMesh.scale.set(
               0.9 + Math.random() * 0.4,
               0.8 + Math.random() * 0.3,
@@ -863,8 +852,6 @@ import {
               Math.random() * Math.PI,
               Math.random() * Math.PI,
             );
-            rockMesh.castShadow = true;
-            rockMesh.receiveShadow = true;
             sim.scene.add(rockMesh);
 
             const rockBody = new CANNON.Body({
@@ -1070,6 +1057,15 @@ import {
           visible: false,
         });
 
+        // Pre-allocated scratch objects for update loop to prevent GC pauses
+        const _invMat = new THREE.Matrix4();
+        const _obsWorldPos = new THREE.Vector3();
+        const _obsWorldQuat = new THREE.Quaternion();
+        const _cowcatcherWorldPos = new THREE.Vector3();
+        const _rollQuat = new THREE.Quaternion();
+        const _fwdDir = new THREE.Vector3();
+        const _frontLocal = new THREE.Vector3(4.0, 0.85, 0);
+
         train.updateFn = (dt, entity, simulation) => {
           const isRearView = keys.has("Space");
 
@@ -1233,22 +1229,25 @@ import {
             entity.mesh.position.copy(pose.position);
             entity.mesh.quaternion.setFromUnitVectors(follower.forwardAxis, pose.forward);
 
-            // Track curvature ahead/behind for train & camera dynamics
+            // Track curvature ahead/behind for train visual tilt
             const poseAhead = track.getPoseAt(follower.s + 1.6);
             const poseBehind = track.getPoseAt(Math.max(0, follower.s - 1.6));
             let dHeading = 0;
             if (poseAhead && poseBehind) {
-              dHeading = (poseAhead.heading - poseBehind.heading) / 3.2;
+              let dh = poseAhead.heading - poseBehind.heading;
+              dh = Math.atan2(Math.sin(dh), Math.cos(dh));
+              dHeading = dh / 3.2;
             }
 
-            // Sample track curve ahead to look around upcoming bends
+            // Sample track curve ahead to look around upcoming bends without matrix lag
             const aheadDist = 26;
             const lookPoseAhead = track.getPoseAt(follower.s + aheadDist);
             let curveLateralAhead = 0;
             if (lookPoseAhead && !isRearView) {
-              const invMatrix = new THREE.Matrix4().copy(entity.mesh.matrixWorld).invert();
-              const localAhead = lookPoseAhead.position.clone().applyMatrix4(invMatrix);
-              curveLateralAhead = localAhead.z;
+              const dx = lookPoseAhead.position.x - pose.position.x;
+              const dz = lookPoseAhead.position.z - pose.position.z;
+              // Local +Z lateral offset in train reference frame: cross(forward, up) = (-fwd.z, 0, fwd.x)
+              curveLateralAhead = -dx * pose.forward.z + dz * pose.forward.x;
             }
 
             // Dynamic camera look-ahead aiming and lateral lean to gently see around corners
@@ -1270,16 +1269,13 @@ import {
             currentTilt += (targetTilt - currentTilt) * Math.min(1, dt * 8);
 
             // Apply corner tilt along train's forward axis
-            const rollQuat = new THREE.Quaternion().setFromAxisAngle(
-              follower.forwardAxis,
-              currentTilt,
-            );
-            entity.mesh.quaternion.multiply(rollQuat);
+            _rollQuat.setFromAxisAngle(follower.forwardAxis, currentTilt);
+            entity.mesh.quaternion.multiply(_rollQuat);
             entity.mesh.updateMatrixWorld(true);
 
             // Sync kinematic cowcatcher collider to front of locomotive
-            const cowcatcherWorldPos = new THREE.Vector3(4.0, 0.85, 0).applyMatrix4(entity.mesh.matrixWorld);
-            cowcatcherBody.position.set(cowcatcherWorldPos.x, cowcatcherWorldPos.y, cowcatcherWorldPos.z);
+            _cowcatcherWorldPos.copy(_frontLocal).applyMatrix4(entity.mesh.matrixWorld);
+            cowcatcherBody.position.set(_cowcatcherWorldPos.x, _cowcatcherWorldPos.y, _cowcatcherWorldPos.z);
             cowcatcherBody.quaternion.set(
               entity.mesh.quaternion.x,
               entity.mesh.quaternion.y,
@@ -1288,12 +1284,12 @@ import {
             );
 
             // Give kinematic collider forward/upward impulse velocity
-            const fwdDir = follower.forwardAxis.clone().applyQuaternion(entity.mesh.quaternion);
+            _fwdDir.copy(follower.forwardAxis).applyQuaternion(entity.mesh.quaternion);
             const impulseSpeed = follower.speed * 1.6 + 10;
             cowcatcherBody.velocity.set(
-              fwdDir.x * impulseSpeed,
+              _fwdDir.x * impulseSpeed,
               follower.speed * 0.35 + 5,
-              fwdDir.z * impulseSpeed,
+              _fwdDir.z * impulseSpeed,
             );
 
             // Impact detection: when locomotive cowcatcher reaches an obstacle, launch it with physics
@@ -1301,22 +1297,20 @@ import {
               if (sSeg.obstacles) {
                 for (const obs of sSeg.obstacles) {
                   if (!obs.hit && obs.mesh.parent) {
-                    const obsWorldPos = new THREE.Vector3();
-                    obs.mesh.getWorldPosition(obsWorldPos);
-                    const dist = cowcatcherWorldPos.distanceTo(obsWorldPos);
+                    obs.mesh.getWorldPosition(_obsWorldPos);
+                    const dist = _cowcatcherWorldPos.distanceTo(_obsWorldPos);
 
                     if (dist < 3.0) {
                       obs.hit = true;
 
-                      const obsWorldQuat = new THREE.Quaternion();
-                      obs.mesh.getWorldQuaternion(obsWorldQuat);
+                      obs.mesh.getWorldQuaternion(_obsWorldQuat);
 
                       // Detach from segment and promote to world simulation
                       obs.mesh.parent.remove(obs.mesh);
 
                       // Giant Megalith Boulder shatters into smaller rocks on impact
                       if (obs.type === "giant-boulder") {
-                        shatterMegalith(obsWorldPos, fwdDir, follower.speed * 0.5);
+                        shatterMegalith(_obsWorldPos, _fwdDir, follower.speed * 0.5);
 
                         // Giant Megalith Boulder takes off exactly 500 mph (min 0)
                         const effGiantMph = Math.max(0, 500 - totalDefenseMph());
@@ -1327,8 +1321,8 @@ import {
                       }
 
                       simulation.scene.add(obs.mesh);
-                      obs.mesh.position.copy(obsWorldPos);
-                      obs.mesh.quaternion.copy(obsWorldQuat);
+                      obs.mesh.position.copy(_obsWorldPos);
+                      obs.mesh.quaternion.copy(_obsWorldQuat);
 
                       let body;
                       if (obs.type === "log") {
@@ -1349,18 +1343,17 @@ import {
                           shape: new CANNON.Sphere(0.95),
                         });
                       }
-                      body.position.set(obsWorldPos.x, obsWorldPos.y, obsWorldPos.z);
-                      body.quaternion.set(obsWorldQuat.x, obsWorldQuat.y, obsWorldQuat.z, obsWorldQuat.w);
+                      body.position.set(_obsWorldPos.x, _obsWorldPos.y, _obsWorldPos.z);
+                      body.quaternion.set(_obsWorldQuat.x, _obsWorldQuat.y, _obsWorldQuat.z, _obsWorldQuat.w);
 
                       // Impulse scaled to obstacle mass & inertia
                       {
-                        // Standard obstacles (logs and regular boulders) tumble dynamically
                         const lateralSide = (Math.random() < 0.5 ? 1 : -1) * (follower.speed * 0.4 + Math.random() * 8);
                         const hitSpeed = follower.speed * 0.9;
                         body.velocity.set(
-                          fwdDir.x * hitSpeed + fwdDir.z * lateralSide,
+                          _fwdDir.x * hitSpeed + _fwdDir.z * lateralSide,
                           follower.speed * 0.3 + 2 + Math.random() * 3,
-                          fwdDir.z * hitSpeed - fwdDir.x * lateralSide,
+                          _fwdDir.z * hitSpeed - _fwdDir.x * lateralSide,
                         );
                         body.angularVelocity.set(
                           (Math.random() - 0.5) * 15,
