@@ -87,6 +87,7 @@
         createFPSCounter,
       } from "engine/components.js";
       import {} from "engine/materials.js";
+      import { Input } from "engine/input.js";
 
       // 2. Initialize Core Engine with Options
       const sim = new Simulation({
@@ -404,16 +405,10 @@
         });
         sim.world.addBody(cowcatcherBody);
 
-        // Keyboard controls
-        const keys = new Set();
-        window.addEventListener("keydown", (e) => {
-          if (e.code === "Space") e.preventDefault();
-          keys.add(e.code);
-        });
-        window.addEventListener("keyup", (e) => {
-          if (e.code === "Space") e.preventDefault();
-          keys.delete(e.code);
-        });
+        // Input: shared key state + tap-to-accelerate on mobile
+        const input = new Input();
+        input.mapTouchToKey("KeyW");
+        const keys = input.keys;
 
         const accelRate = 30; // m/s^2 acceleration (no max cap)
         const decelRate = accelRate * 2; // deceleration is twice acceleration (60 m/s^2)
