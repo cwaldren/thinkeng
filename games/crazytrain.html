@@ -828,6 +828,15 @@ function updateDynamiteCounter() {
         }
 
         // Shatters a Giant Megalith Boulder into smaller rock fragments
+                // Monetary damage dealt by destroying a megalith scales with the cowcatcher
+        // tier currently installed (a better cowcatcher reduces the cost).
+        function megalithDamage() {
+          if (COWCATCHER_DEFENSE_IDS.has("wedge-plow")) return 60;
+          if (COWCATCHER_DEFENSE_IDS.has("big-cowcatcher")) return 70;
+          if (COWCATCHER_DEFENSE_IDS.has("cowcatcher")) return 80;
+          return MEGALITH_DAMAGE;
+        }
+
         function shatterMegalith(obsWorldPos, baseFwdDir, baseSpeed = 15) {
           const shardOffsets = [
             [-1.2, 1.0, 0.4],
@@ -936,18 +945,20 @@ function updateDynamiteCounter() {
             activeExplosions.add(expl);
           }
 
-          // Check for Megaliths in blast radius
+          // Check for Megaliths and boulders in blast radius
           const fwdDir = follower.forwardAxis.clone().applyQuaternion(train.mesh.quaternion);
           for (const sSeg of track.segments) {
             if (sSeg.obstacles) {
               for (const obs of sSeg.obstacles) {
-                if (!obs.hit && obs.mesh.parent && obs.type === "giant-boulder") {
+                if (!obs.hit && obs.mesh.parent && (obs.type === "giant-boulder" || obs.type === "boulder")) {
                   const obsWorldPos = new THREE.Vector3();
                   obs.mesh.getWorldPosition(obsWorldPos);
                   if (pos.distanceTo(obsWorldPos) <= maxRadius + 3.0) {
                     obs.hit = true;
                     obs.mesh.parent.remove(obs.mesh);
-                    shatterMegalith(obsWorldPos, fwdDir, Math.max(16, follower.speed * 0.5));
+                    if (obs.type === "giant-boulder") {
+                      shatterMegalith(obsWorldPos, fwdDir, Math.max(16, follower.speed * 0.5));
+                    }
                   }
                 }
               }
@@ -1056,6 +1067,37 @@ function updateDynamiteCounter() {
           moneySigns.push(sprite);
         }
 
+        // Red "-$X" that flashes at dead-center screen and flies up like the
+        // smokestack money, then fades. Used for monetary damage (e.g. megaliths).
+        const MEGALITH_DAMAGE = 100;
+        function spawnDamageSign(amount = MEGALITH_DAMAGE) {
+          const el = document.createElement("div");
+          el.textContent = `-$${amount}`;
+          Object.assign(el.style, {
+            position: "fixed",
+            left: "50%",
+            top: "50%",
+            transform: "translate(-50%, -50%)",
+            color: "#ff4444",
+            fontFamily: "monospace, sans-serif",
+            fontSize: "2.4rem",
+            fontWeight: "900",
+            textShadow: "0 0 12px rgba(255,0,0,0.7)",
+            pointerEvents: "none",
+            zIndex: "120",
+            userSelect: "none",
+            willChange: "transform, opacity",
+          });
+          document.body.appendChild(el);
+          el.animate(
+            [
+              { transform: "translate(-50%, -50%)", opacity: 1 },
+              { transform: "translate(-50%, -90%)", opacity: 0 },
+            ],
+            { duration: 1000, easing: "ease-out" },
+          ).onfinish = () => el.remove();
+        }
+
         // 3D master-controller lever (bottom-right screen overlay)
         const lever = createLever();
         sim.scene.add(lever);
@@ -1111,9 +1153,11 @@ function updateDynamiteCounter() {
 
           // Money is earned flat at 1/s below top speed, and scales with speed
           // once at top speed. The smokestack emits one "$" per dollar earned.
+          // When the train is stopped, no money is earned (and no smoke signs).
           const atMaxSpeed = currentSpeed >= governor.getCapMps() - 1e-6;
           gauge.setMax(atMaxSpeed);
-          const moneyRate = atMaxSpeed ? speedMph * 0.14 : 1.0;
+          const moving = currentSpeed > 0.22; // ~0.5 mph
+          const moneyRate = !moving ? 0 : (atMaxSpeed ? speedMph * 0.14 : 1.0);
           money += dt * moneyRate;
           moneyCounter.setValue(money);
           powerups.refresh();
@@ -1181,7 +1225,7 @@ function updateDynamiteCounter() {
               for (const sSeg of track.segments) {
                 if (sSeg.obstacles) {
                   for (const obs of sSeg.obstacles) {
-                    if (!obs.hit && obs.mesh.parent && obs.type === "giant-boulder") {
+                    if (!obs.hit && obs.mesh.parent && (obs.type === "giant-boulder" || obs.type === "boulder")) {
                       const obsWorldPos = new THREE.Vector3();
                       obs.mesh.getWorldPosition(obsWorldPos);
                       const contactRadius = obs.contactRadius ?? 3.6;
@@ -1345,6 +1389,13 @@ function updateDynamiteCounter() {
 
                       // Giant Megalith Boulder shatters into smaller rocks on impact
                       if (obs.type === "giant-boulder") {
+                        // Cowcatcher impacts cost money (tiered discount), shown
+                        // as a red "-$X" at screen center. Dynamite blows are free.
+                        const cost = megalithDamage();
+                        money -= cost;
+                        moneyCounter.setValue(money);
+                        spawnDamageSign(cost);
+
                         shatterMegalith(_obsWorldPos, _fwdDir, follower.speed * 0.5);
 
                         // Giant Megalith Boulder takes off exactly 500 mph (min 0)

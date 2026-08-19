@@ -227,7 +227,14 @@ export function createMoneyCounter(options = {}) {
   wrapper.appendChild(valueEl);
 
   function setValue(v) {
-    valueEl.textContent = `${symbol}${Math.floor(v).toLocaleString()}`;
+    const n = Math.floor(v);
+    if (n < 0) {
+      valueEl.textContent = `-${symbol}${Math.abs(n).toLocaleString()}`;
+      valueEl.style.color = "#ff4444";
+    } else {
+      valueEl.textContent = `${symbol}${n.toLocaleString()}`;
+      valueEl.style.color = "";
+    }
   }
 
   function setVisible(on) {
