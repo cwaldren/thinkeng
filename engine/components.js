@@ -558,9 +558,20 @@ export function createBunny(sim, opts = {}) {
   addSphere(0.3, color, [-0.18, 1.55, 0.35], [0.3, 1.3, 0.2], [0.1, 0, -0.15]);
   addSphere(0.3, color, [0.18, 1.55, 0.35], [0.3, 1.3, 0.2], [0.1, 0, 0.15]);
 
-  // Eyes
-  addSphere(0.05, eyeColor, [-0.18, 1.02, 0.68]);
-  addSphere(0.05, eyeColor, [0.18, 1.02, 0.68]);
+  // Eyes: black eyeballs on the sides of the head, each with a smaller white
+  // pupil dot on its forward-facing surface so the eye reads from the front.
+  const eyeBlackR = 0.085;
+  const eyeWhiteR = 0.045;
+  const eyeY = 1.02;
+  const eyeZ = 0.6;
+  const sideX = 0.33;
+  // Pupil center sits just inside the eyeball's front surface (not poking out).
+  const pupilOut = eyeBlackR - eyeWhiteR - 0.01;
+  const eyeRot = [0, 0, Math.PI / 2];
+  addSphere(eyeBlackR, eyeColor, [-sideX, eyeY, eyeZ], [1, 1, 1], eyeRot);
+  addSphere(eyeBlackR, eyeColor, [sideX, eyeY, eyeZ], [1, 1, 1], eyeRot);
+  addSphere(eyeWhiteR, 0xffffff, [-sideX * 0.92, eyeY + 0.02, eyeZ + pupilOut], [1, 1, 1], eyeRot);
+  addSphere(eyeWhiteR, 0xffffff, [sideX * 0.92, eyeY + 0.02, eyeZ + pupilOut], [1, 1, 1], eyeRot);
 
   // Tail
   addSphere(0.26, color, [0, 0.5, -0.72]);

@@ -68,6 +68,11 @@
       import { createCameraControls } from "engine/cameraControls.js";
       import { createGauge, createMoneyCounter } from "engine/ui.js";
       import { createPowerups } from "engine/powerups.js";
+      import {
+        heartGeometry,
+        createHeartMaterial,
+        createHeartMesh,
+      } from "engine/primitives.js";
 
       // Speed governor: caps max speed. governor.setCap(90), getCap(), etc.
       class Governor {
@@ -500,9 +505,11 @@
         if (Math.random() < 0.08) {
           const bunnyS = length * (0.3 + Math.random() * 0.4);
           const bPose = getLocalSpinePose(radius, length, bunnyS);
+          // 50% of bunnies face the other way (away from the oncoming train).
+          const faceOtherWay = Math.random() < 0.5;
           const bunny = createBunny(simulation, {
             position: [bPose.position.x, 0, bPose.position.z],
-            rotation: [0, -bPose.heading, 0],
+            rotation: [0, -bPose.heading + (faceOtherWay ? Math.PI : 0), 0],
             mass: 0,
           });
           group.add(bunny.mesh);
@@ -512,6 +519,7 @@
             s: bunnyS,
             hit: false,
             hopped: false,
+            faceOtherWay,
           });
         }
 
@@ -1157,17 +1165,20 @@
           mesh.quaternion.copy(worldQuat);
 
           const yaw = new THREE.Euler().setFromQuaternion(worldQuat, "YXZ").y;
+          // Hop along the bunny's actual facing (already flipped at spawn), so it
+          // clears into the forest rather than hopping back toward the train.
+          const hopYaw = yaw;
           // The bunny faces its local +Z; rotate that by its yaw to get the true
           // world direction it's looking, and hop along that.
           const dir = new THREE.Vector3(
-            Math.sin(yaw),
+            Math.sin(hopYaw),
             0,
-            Math.cos(yaw),
+            Math.cos(hopYaw),
           ).normalize();
 
           hoppingBunnies.add({
             mesh,
-            yaw,
+            yaw: hopYaw,
             dir,
             start: worldPos.clone(),
             t: 0,
@@ -1176,6 +1187,7 @@
             duration: 0.45,
             hopDist: 2.4,
             hopHeight: 1.4,
+            heartAccum: 0,
           });
         }
 
@@ -1507,6 +1519,36 @@
           moneySigns.push(sprite);
         }
 
+        // Red 3D hearts that emit from a hopping bunny's head and float upward,
+        // matching the smokestack "$" sign style. They use the same sculpted
+        // heart contour as the heart primitive, rising above the bunny and
+        // gently shrinking as they fade.
+        const bunnyHearts = [];
+        const HEART_LIFETIME = 1.0;
+
+        function spawnBunnyHeart(position, yaw) {
+          const heartM = createHeartMaterial({
+            color: 0xff3344,
+            roughness: 0.3,
+            metalness: 0.1,
+          });
+          heartM.transparent = true;
+          heartM.opacity = 1;
+          const heart = createHeartMesh({
+            scale: [0.84, 0.84, 0.84],
+            material: heartM,
+          });
+          heart.position.copy(position);
+          heart.position.y += 1.5; // above the bunny's head
+          heart.userData.age = 0;
+          heart.userData.yaw = yaw;
+          // The bunny hops away from the train, so face the heart's front (+Z)
+          // back toward the train (the opposite of the hop direction).
+          heart.rotation.y = yaw + Math.PI;
+          sim.scene.add(heart);
+          bunnyHearts.push(heart);
+        }
+
         // Red "-$X" that flashes at dead-center screen and flies up like the
         // smokestack money, then fades. Used for monetary damage (e.g. megaliths).
         const MEGALITH_DAMAGE = 100;
@@ -1785,6 +1827,14 @@
             );
             bunny.mesh.quaternion.setFromAxisAngle(_levelAxis, bunny.yaw);
 
+            // Emit a red heart above the bunny's head on walk away, roughly
+            // every hop-blink, floating up as the bunny hops into the forest.
+            bunny.heartAccum += dt;
+            while (bunny.heartAccum >= 0.22) {
+              bunny.heartAccum -= 0.22;
+              spawnBunnyHeart(bunny.mesh.position, bunny.yaw);
+            }
+
             if (bunny.t >= bunny.duration) {
               bunny.hopNum++;
               if (bunny.hopNum >= bunny.hops) {
@@ -1797,6 +1847,24 @@
                 bunny.hopHeight *= 0.82;
                 bunny.duration = Math.max(0.3, bunny.duration * 0.85);
               }
+            }
+          }
+
+          // Animate the hopping bunny's hearts: rise straight up, gently wobble
+          // in yaw, shrink, and fade before despawning.
+          for (let i = bunnyHearts.length - 1; i >= 0; i--) {
+            const heart = bunnyHearts[i];
+            heart.userData.age += dt;
+            const t = heart.userData.age / HEART_LIFETIME;
+            heart.position.y += 2.2 * dt;
+            heart.rotation.y = heart.userData.yaw + Math.PI + t * 0.8;
+            const s = 0.84 * (1 - t * 0.55);
+            heart.scale.setScalar(s);
+            heart.material.opacity = 1 - t;
+            if (t >= 1) {
+              sim.scene.remove(heart);
+              heart.material.dispose();
+              bunnyHearts.splice(i, 1);
             }
           }
 

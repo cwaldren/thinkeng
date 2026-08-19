@@ -298,6 +298,63 @@ export function createPlayer(sim, opts = {}) {
   return sim.addEntity(mesh, body, updateFn);
 }
 
+// Smooth symmetric heart contour in the XY plane
+const _heartShape = new THREE.Shape();
+_heartShape.moveTo(0, 0.35);
+// Left lobe top curve
+_heartShape.bezierCurveTo(-0.15, 0.72, -0.7, 0.72, -0.7, 0.25);
+// Left flank down to bottom tip
+_heartShape.bezierCurveTo(-0.7, -0.15, -0.35, -0.45, 0, -0.75);
+// Right flank up from bottom tip
+_heartShape.bezierCurveTo(0.35, -0.45, 0.7, -0.15, 0.7, 0.25);
+// Right lobe top curve back to top notch
+_heartShape.bezierCurveTo(0.7, 0.72, 0.15, 0.72, 0, 0.35);
+
+const _heartExtrudeSettings = {
+  depth: 0.18,
+  bevelEnabled: true,
+  bevelSegments: 10,
+  steps: 1,
+  bevelSize: 0.12,
+  bevelThickness: 0.14,
+  curveSegments: 48,
+};
+
+// Reusable heart geometry, centered with computed normals. Shared by createHeart
+// (and any transient heart visuals) so geometry isn't rebuilt on every call.
+export const heartGeometry = (() => {
+  const g = new THREE.ExtrudeGeometry(_heartShape, _heartExtrudeSettings);
+  g.center();
+  g.computeVertexNormals();
+  return g;
+})();
+
+export function createHeartMaterial(opts = {}) {
+  const { color = 0xff3344, roughness = 0.3, metalness = 0.1 } = opts;
+  return new THREE.MeshStandardMaterial({ color, roughness, metalness });
+}
+
+// Builds a heart mesh (no physics body) from the shared geometry. Useful for
+// transient decoration hearts that only need to render, e.g. floating effects.
+export function createHeartMesh(opts = {}) {
+  const {
+    scale = 1,
+    position = [0, 0, 0],
+    rotation = [0, 0, 0],
+    material = createHeartMaterial(opts),
+  } = opts;
+
+  const mesh = new THREE.Mesh(heartGeometry, material);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+
+  const s = Array.isArray(scale) ? scale : [scale, scale, scale];
+  mesh.scale.set(s[0], s[1], s[2]);
+  mesh.position.set(position[0], position[1], position[2]);
+  mesh.rotation.set(rotation[0], rotation[1], rotation[2]);
+  return mesh;
+}
+
 // A smooth, sculpted 3D heart primitive with soft rounded bevels and plump lobes.
 export function createHeart(sim, opts = {}) {
   const {
@@ -311,46 +368,16 @@ export function createHeart(sim, opts = {}) {
     friction = 0.3,
   } = opts;
 
-  const shape = new THREE.Shape();
-  // Smooth symmetric heart contour in the XY plane
-  shape.moveTo(0, 0.35);
-  // Left lobe top curve
-  shape.bezierCurveTo(-0.15, 0.72, -0.7, 0.72, -0.7, 0.25);
-  // Left flank down to bottom tip
-  shape.bezierCurveTo(-0.7, -0.15, -0.35, -0.45, 0, -0.75);
-  // Right flank up from bottom tip
-  shape.bezierCurveTo(0.35, -0.45, 0.7, -0.15, 0.7, 0.25);
-  // Right lobe top curve back to top notch
-  shape.bezierCurveTo(0.7, 0.72, 0.15, 0.72, 0, 0.35);
-
-  const extrudeSettings = {
-    depth: 0.18,
-    bevelEnabled: true,
-    bevelSegments: 10,
-    steps: 1,
-    bevelSize: 0.12,
-    bevelThickness: 0.14,
-    curveSegments: 48,
-  };
-
-  const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-  geometry.center();
-  geometry.computeVertexNormals();
-
-  const material = new THREE.MeshStandardMaterial({
+  const mesh = createHeartMesh({
+    scale,
     color,
     roughness,
     metalness,
+    position,
+    rotation,
   });
 
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-
   const s = Array.isArray(scale) ? scale : [scale, scale, scale];
-  mesh.scale.set(s[0], s[1], s[2]);
-  mesh.position.set(position[0], position[1], position[2]);
-  mesh.rotation.set(rotation[0], rotation[1], rotation[2]);
 
   const body = new CANNON.Body({
     mass,
