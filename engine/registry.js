@@ -24,6 +24,7 @@ import {
   createTrain,
   createDynamite,
   createCowcatcher,
+  createBunny,
 } from "./components.js";
 
 import { createPowerupsPreview } from "./powerups.js";
@@ -640,6 +641,28 @@ export const ENTRIES = [
       {
         key: "position",
         label: "Position [x,y,z]",
+        type: "vector",
+        default: [0, 0, 0],
+      },
+    ],
+  },
+  {
+    category: "component",
+    key: "bunny",
+    label: "Bunny",
+    desc: "A cute bunny composed of spheres and ellipsoids (component)",
+    fn: createBunny,
+    opts: [
+      { key: "color", label: "Color", type: "color", default: "0xffffff" },
+      {
+        key: "position",
+        label: "Position [x,y,z]",
+        type: "vector",
+        default: [0, 0, 0],
+      },
+      {
+        key: "rotation",
+        label: "Rotation [x,y,z]",
         type: "vector",
         default: [0, 0, 0],
       },

@@ -4,7 +4,7 @@
 
 import * as THREE from "three";
 import * as CANNON from "cannon-es";
-import { createCylinder } from "./primitives.js";
+import { createCylinder, createSphere } from "./primitives.js";
 import {
   TrackSegment,
   Track,
@@ -517,3 +517,79 @@ export function createFPSCounter(sim, opts = {}) {
   }
   return entity;
 }
+
+// A simple bunny composite made of spheres and ellipsoids.
+// Decorative by default (mass = 0), or can have a physics body if mass > 0.
+export function createBunny(sim, opts = {}) {
+  const {
+    color = 0xffffff,
+    eyeColor = 0x222222,
+    position = [0, 0, 0],
+    rotation = [0, 0, 0],
+    mass = 0,
+  } = opts;
+
+  const group = new THREE.Group();
+  group.position.set(position[0], position[1], position[2]);
+  group.rotation.set(rotation[0], rotation[1], rotation[2]);
+  const children = [];
+
+  const addSphere = (radius, col, pos, scale = [1, 1, 1], rot = [0, 0, 0]) => {
+    const part = createSphere(sim, {
+      radius,
+      color: col,
+      mass: 0,
+      position: pos,
+    });
+    part.mesh.scale.set(scale[0], scale[1], scale[2]);
+    part.mesh.rotation.set(rot[0], rot[1], rot[2]);
+    group.add(part.mesh);
+    children.push(part);
+    return part;
+  };
+
+  // Body (ellipsoid)
+  addSphere(0.55, color, [0, 0.5, 0], [1.0, 0.9, 1.15]);
+
+  // Head
+  addSphere(0.38, color, [0, 0.95, 0.42], [1.0, 0.95, 1.0]);
+
+  // Ears (single ellipsoid each)
+  addSphere(0.3, color, [-0.18, 1.55, 0.35], [0.3, 1.3, 0.2], [0.1, 0, -0.15]);
+  addSphere(0.3, color, [0.18, 1.55, 0.35], [0.3, 1.3, 0.2], [0.1, 0, 0.15]);
+
+  // Eyes
+  addSphere(0.05, eyeColor, [-0.18, 1.02, 0.68]);
+  addSphere(0.05, eyeColor, [0.18, 1.02, 0.68]);
+
+  // Tail
+  addSphere(0.26, color, [0, 0.5, -0.72]);
+
+  // Paws & feet
+  addSphere(0.12, color, [-0.2, 0.06, 0.35], [0.8, 0.5, 1.2]);
+  addSphere(0.12, color, [0.2, 0.06, 0.35], [0.8, 0.5, 1.2]);
+  addSphere(0.18, color, [-0.35, 0.09, -0.15], [0.7, 0.5, 1.4], [0, -0.15, 0]);
+  addSphere(0.18, color, [0.35, 0.09, -0.15], [0.7, 0.5, 1.4], [0, 0.15, 0]);
+
+  const entity = sim.addEntity(group, null, null);
+  entity.children = children;
+
+  if (mass > 0) {
+    const body = new CANNON.Body({
+      mass,
+      shape: new CANNON.Sphere(0.65),
+      linearDamping: 0.1,
+      angularDamping: 0.2,
+    });
+    body.position.set(position[0], position[1], position[2]);
+    body.quaternion.setFromEuler(rotation[0], rotation[1], rotation[2]);
+    body.updateMassProperties();
+    sim.world.addBody(body);
+    entity.body = body;
+  }
+
+  return entity;
+}
+
+export const createBunnie = createBunny;
+
