@@ -1046,6 +1046,8 @@ function updateDynamiteCounter() {
         const _invMat = new THREE.Matrix4();
         const _obsWorldPos = new THREE.Vector3();
         const _obsWorldQuat = new THREE.Quaternion();
+        const _rearCamPos = new THREE.Vector3();
+        const _rearCamLook = new THREE.Vector3();
         const _cowcatcherWorldPos = new THREE.Vector3();
         const _rollQuat = new THREE.Quaternion();
         const _fwdDir = new THREE.Vector3();
@@ -1374,8 +1376,17 @@ function updateDynamiteCounter() {
             ground.mesh.position.z = entity.mesh.position.z;
           }
 
-          // Update camera pose (Space toggles front/rear rig)
-          camCtrl.update({ mirror: isRearView });
+          // Update camera pose. Space swaps to the reverse rig: a camera mounted
+          // in front of the train that looks back down its length to frame the
+          // whole train.
+          if (isRearView) {
+            _rearCamPos.set(7.5, 4.8, 0).applyMatrix4(entity.mesh.matrixWorld);
+            _rearCamLook.set(1.6, 1.9, 0).applyMatrix4(entity.mesh.matrixWorld);
+            simulation.camera.position.copy(_rearCamPos);
+            simulation.camera.lookAt(_rearCamLook);
+          } else {
+            camCtrl.update({ mirror: false });
+          }
 
           // FOV scales exponentially with speed: 60° at rest → 80° at 250 mph
           const fovBase = camCtrl.state.fov;
