@@ -51,12 +51,26 @@ export class Input {
    */
   mapTouchToKey(code) {
     const isInteractive = (target) => {
-      if (!target || target === document.body || target === document.documentElement) return false;
+      if (
+        !target ||
+        target === document.body ||
+        target === document.documentElement
+      )
+        return false;
       if (target.tagName === "CANVAS") return false;
-      if (target.closest("button, a, input, select, textarea, [role='button'], [data-interactive]")) return true;
+      if (
+        target.closest(
+          "button, a, input, select, textarea, [role='button'], [data-interactive]",
+        )
+      )
+        return true;
       let cur = target;
       while (cur && cur !== document.body) {
-        if (cur.style?.cursor === "pointer" || cur.style?.pointerEvents === "auto" || window.getComputedStyle(cur).cursor === "pointer") {
+        if (
+          cur.style?.cursor === "pointer" ||
+          cur.style?.pointerEvents === "auto" ||
+          window.getComputedStyle(cur).cursor === "pointer"
+        ) {
           return true;
         }
         cur = cur.parentElement;

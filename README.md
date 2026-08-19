@@ -28,3 +28,4 @@ my-web-sims/
 │   ├── core.js               # Main game loop, scene manager, physics syncer
 │   └── primitives.js         # Standard mesh generators & behaviors (Boids, Controls)
 └── index.html                # Main portal / scene switcher
+```

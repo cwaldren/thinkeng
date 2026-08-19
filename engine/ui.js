@@ -73,61 +73,115 @@ export function createGauge(options = {}) {
   const body = el("g", { "clip-path": "url(#gauge-semi)" }, svg);
 
   // Left half (grey) / right half (black) wedges joined at the vertical diameter.
-  el("path", {
-    d: `M ${cx},${cy} L ${cx - r},${cy} A ${r},${r} 0 0 1 ${cx + r},${cy} L ${cx},${cy} Z`,
-    fill: "rgba(0,0,0,0.55)",
-  }, body);
-  const arc = el("path", {
-    d: `M ${cx - r},${cy} A ${r},${r} 0 0 1 ${cx + r},${cy}`,
-    fill: "none",
-    stroke: "rgba(255,255,255,0.25)",
-    "stroke-width": "2",
-  }, body);
+  el(
+    "path",
+    {
+      d: `M ${cx},${cy} L ${cx - r},${cy} A ${r},${r} 0 0 1 ${cx + r},${cy} L ${cx},${cy} Z`,
+      fill: "rgba(0,0,0,0.55)",
+    },
+    body,
+  );
+  const arc = el(
+    "path",
+    {
+      d: `M ${cx - r},${cy} A ${r},${r} 0 0 1 ${cx + r},${cy}`,
+      fill: "none",
+      stroke: "rgba(255,255,255,0.25)",
+      "stroke-width": "2",
+    },
+    body,
+  );
   arc.style.transition = "stroke 0.2s";
 
   // Needle: points left at min, rotates clockwise to straight up at max.
   const needle = el("g", { id: "gauge-needle" }, body);
   needle.style.transformOrigin = `${cx}px ${cy}px`;
-  el("line", {
-    x1: cx, y1: cy, x2: cx - r + 12, y2: cy,
-    stroke: "#ffd24a", "stroke-width": "5", "stroke-linecap": "round",
-  }, needle);
+  el(
+    "line",
+    {
+      x1: cx,
+      y1: cy,
+      x2: cx - r + 12,
+      y2: cy,
+      stroke: "#ffd24a",
+      "stroke-width": "5",
+      "stroke-linecap": "round",
+    },
+    needle,
+  );
 
   el("circle", { cx, cy, r: 7, fill: "#fff" }, body);
 
   // Red notch marking a danger/threshold value on the gauge arc (hidden by default).
-  const threshold = el("line", {
-    x1: cx - r - 5, y1: cy, x2: cx - r + 5, y2: cy,
-    stroke: "#e23b3b", "stroke-width": "4", "stroke-linecap": "round",
-    visibility: "hidden",
-  }, body);
+  const threshold = el(
+    "line",
+    {
+      x1: cx - r - 5,
+      y1: cy,
+      x2: cx - r + 5,
+      y2: cy,
+      stroke: "#e23b3b",
+      "stroke-width": "4",
+      "stroke-linecap": "round",
+      visibility: "hidden",
+    },
+    body,
+  );
   threshold.style.transformOrigin = `${cx}px ${cy}px`;
   threshold.style.transition = "transform 0.15s";
 
   // Readout text below the gauge.
-  const valueText = el("text", {
-    id: "gauge-value", x: cx, y: cy + 30,
-    "text-anchor": "middle", fill: "#fff", "font-size": "34",
-    "font-weight": "900", "font-family": "monospace",
-  }, svg);
+  const valueText = el(
+    "text",
+    {
+      id: "gauge-value",
+      x: cx,
+      y: cy + 30,
+      "text-anchor": "middle",
+      fill: "#fff",
+      "font-size": "34",
+      "font-weight": "900",
+      "font-family": "monospace",
+    },
+    svg,
+  );
   valueText.textContent = "0";
 
   if (unit) {
-    const unitText = el("text", {
-      x: cx, y: cy + 50, "text-anchor": "middle", fill: "#fff",
-      opacity: "0.8", "font-size": "12", "font-weight": "700",
-      "font-family": "monospace",
-    }, svg);
+    const unitText = el(
+      "text",
+      {
+        x: cx,
+        y: cy + 50,
+        "text-anchor": "middle",
+        fill: "#fff",
+        opacity: "0.8",
+        "font-size": "12",
+        "font-weight": "700",
+        "font-family": "monospace",
+      },
+      svg,
+    );
     unitText.textContent = unit;
   }
 
   // "2x" earnings badge, always shown in the blank area of the semicircle to the
   // right of the full-throttle line. Turns gold and sways when at top speed.
-  const rate2x = el("text", {
-    x: cx, y: cy + 72, "text-anchor": "middle", fill: "#777",
-    opacity: "1", "font-size": "17", "font-weight": "900",
-    "font-family": "monospace", "class": "gauge-2x",
-  }, svg);
+  const rate2x = el(
+    "text",
+    {
+      x: cx,
+      y: cy + 72,
+      "text-anchor": "middle",
+      fill: "#777",
+      opacity: "1",
+      "font-size": "17",
+      "font-weight": "900",
+      "font-family": "monospace",
+      class: "gauge-2x",
+    },
+    svg,
+  );
   rate2x.textContent = "2x";
 
   // Inject the sway keyframes/style once for the 2x badge.
@@ -206,11 +260,12 @@ export function createMoneyCounter(options = {}) {
   const hasBottom = options.bottom != null;
   Object.assign(wrapper.style, {
     position: "fixed",
-    top: anchor ? null : (hasBottom ? null : (options.top ?? "64px")),
+    top: anchor ? null : hasBottom ? null : (options.top ?? "64px"),
     left: anchor ? null : (options.left ?? "16px"),
     bottom: anchor ? null : (options.bottom ?? null),
     color: "#e7d984",
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace, sans-serif',
+    fontFamily:
+      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace, sans-serif',
     fontSize: size,
     fontWeight: "900",
     lineHeight: "1",

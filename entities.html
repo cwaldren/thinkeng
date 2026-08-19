@@ -175,7 +175,6 @@
         background: #12121a;
         padding: 0;
       }
-
     </style>
 
     <script type="importmap">
@@ -249,9 +248,7 @@
       function applyOrbit() {
         sim.camera.position.set(
           orbitTarget.x +
-            orbit.distance *
-              Math.sin(orbit.phi) *
-              Math.sin(orbit.theta),
+            orbit.distance * Math.sin(orbit.phi) * Math.sin(orbit.theta),
           orbitTarget.y + orbit.distance * Math.cos(orbit.phi),
           orbitTarget.z +
             orbit.distance * Math.sin(orbit.phi) * Math.cos(orbit.theta),
@@ -432,8 +429,7 @@
           type === ""
             ? `<span class="badge ${entry.category}">${entry.category}</span>`
             : "";
-        card.innerHTML =
-          `<h3>${entry.label}${tag}</h3><p>${entry.desc}</p>`;
+        card.innerHTML = `<h3>${entry.label}${tag}</h3><p>${entry.desc}</p>`;
         card.addEventListener("click", () => setActive(entry));
         listEl.appendChild(card);
       }

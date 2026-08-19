@@ -84,7 +84,8 @@ export function createPowerups(options = {}) {
     item.pill.style.pointerEvents = unavailable ? "none" : "auto";
     item.pill.style.cursor = unavailable ? "default" : "pointer";
     item.labelEl.style.color = unavailable ? unavailableColor : textColor;
-    if (item.costEl) item.costEl.style.color = unavailable ? unavailableColor : costColor;
+    if (item.costEl)
+      item.costEl.style.color = unavailable ? unavailableColor : costColor;
   }
 
   const panel = document.createElement("div");
@@ -96,7 +97,8 @@ export function createPowerups(options = {}) {
     flexDirection: "column",
     gap: "6px",
     color: textColor,
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace, sans-serif',
+    fontFamily:
+      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace, sans-serif',
     fontSize: "0.85rem",
     fontWeight: "700",
     pointerEvents: "auto",
@@ -116,7 +118,16 @@ export function createPowerups(options = {}) {
       return () => listeners.delete(cb);
     },
     add({ id, label, icon = "", cost = 0, unit = "$" } = {}) {
-      const item = { id, label, icon, cost, unit, available: bankGet() >= cost, bg: resolveBg(state.background), showIcon: state.showIcon };
+      const item = {
+        id,
+        label,
+        icon,
+        cost,
+        unit,
+        available: bankGet() >= cost,
+        bg: resolveBg(state.background),
+        showIcon: state.showIcon,
+      };
       const pill = document.createElement("div");
       pill.className = "powerup-pill";
       Object.assign(pill.style, {
@@ -137,22 +148,41 @@ export function createPowerups(options = {}) {
         webkitTapHighlightColor: "transparent",
       });
       pill.addEventListener("mouseenter", () => {
-        if (item.bg === "transparent") pill.style.background = "rgba(255, 255, 255, 0.1)";
+        if (item.bg === "transparent")
+          pill.style.background = "rgba(255, 255, 255, 0.1)";
       });
       pill.addEventListener("mouseleave", () => {
         pill.style.background = item.bg;
       });
-      pill.addEventListener("mousedown", () => (pill.style.transform = "scale(0.96)"));
-      pill.addEventListener("mouseup", () => (pill.style.transform = "scale(1)"));
-      pill.addEventListener("touchstart", (e) => {
-        pill.style.transform = "scale(0.96)";
-        buyPowerup();
-        if (e.cancelable) {
-          e.preventDefault();
-        }
-      }, { passive: false });
-      pill.addEventListener("touchend", () => (pill.style.transform = "scale(1)"), { passive: true });
-      pill.addEventListener("touchcancel", () => (pill.style.transform = "scale(1)"), { passive: true });
+      pill.addEventListener(
+        "mousedown",
+        () => (pill.style.transform = "scale(0.96)"),
+      );
+      pill.addEventListener(
+        "mouseup",
+        () => (pill.style.transform = "scale(1)"),
+      );
+      pill.addEventListener(
+        "touchstart",
+        (e) => {
+          pill.style.transform = "scale(0.96)";
+          buyPowerup();
+          if (e.cancelable) {
+            e.preventDefault();
+          }
+        },
+        { passive: false },
+      );
+      pill.addEventListener(
+        "touchend",
+        () => (pill.style.transform = "scale(1)"),
+        { passive: true },
+      );
+      pill.addEventListener(
+        "touchcancel",
+        () => (pill.style.transform = "scale(1)"),
+        { passive: true },
+      );
 
       const iconEl = document.createElement("span");
       iconEl.className = "powerup-icon";
@@ -232,7 +262,8 @@ export function createPowerups(options = {}) {
     setShowIcon(on) {
       state.showIcon = on;
       for (const item of items.values()) {
-        if (item.iconEl) item.iconEl.style.display = on ? "inline-block" : "none";
+        if (item.iconEl)
+          item.iconEl.style.display = on ? "inline-block" : "none";
       }
     },
     dispose() {
@@ -256,7 +287,13 @@ export function createPowerupsPreview(sim, values = {}) {
   });
   powerups.setBank(200);
   const canned = [
-    { id: "auto-throttle", label: "Auto Throttle", icon: "↑", cost: 100, unit: "$" },
+    {
+      id: "auto-throttle",
+      label: "Auto Throttle",
+      icon: "↑",
+      cost: 100,
+      unit: "$",
+    },
     { id: "cowcatcher", label: "Cowcatcher", icon: "▴", cost: 50, unit: "$" },
     { id: "governor", label: "Governor", icon: "◆", cost: 1000, unit: "$" },
   ];

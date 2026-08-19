@@ -33,11 +33,13 @@
   </head>
   <body>
     <div id="ui">
-      <h1 style="margin: 0; font-size: 1.2rem; opacity: 0.8">
-        Crazy Train
-      </h1>
-      <p id="controls-hint" style="margin: 4px 0 0; font-size: 0.85rem; opacity: 0.7">
-        <strong>W</strong> accelerate &bull; release to decelerate &bull; <strong>Space</strong> rear camera
+      <h1 style="margin: 0; font-size: 1.2rem; opacity: 0.8">Crazy Train</h1>
+      <p
+        id="controls-hint"
+        style="margin: 4px 0 0; font-size: 0.85rem; opacity: 0.7"
+      >
+        <strong>W</strong> accelerate &bull; release to decelerate &bull;
+        <strong>Space</strong> rear camera
       </p>
     </div>
 
@@ -51,17 +53,16 @@
         createSphere,
         createRock,
       } from "engine/primitives.js";
-import {
-    createTrain,
-    createRailSegment,
-    createDynamite,
-    createCowcatcher,
-    InfiniteTrack,
-    TrackFollower,
-    getLocalSpinePose,
-    createFPSCounter,
-  } from "engine/components.js";
-      import {} from "engine/materials.js";
+      import {
+        createTrain,
+        createRailSegment,
+        createDynamite,
+        createCowcatcher,
+        InfiniteTrack,
+        TrackFollower,
+        getLocalSpinePose,
+        createFPSCounter,
+      } from "engine/components.js";
       import { Input } from "engine/input.js";
       import { createCameraControls } from "engine/cameraControls.js";
       import { createGauge, createMoneyCounter } from "engine/ui.js";
@@ -120,65 +121,45 @@ import {
       // Active explosion spheres that rapidly expand and despawn
       const activeExplosions = new Set();
 
-      function rebaseActiveFlyers(origin, heading) {
+      // Rebase world-space objects (flying obstacles, dynamite, explosions) so
+      // they track with the train as track segments recycle. Items with a physics
+      // `body` have their quaternion and velocity rebased too; items with only a
+      // `mesh` (explosions) get just their position rebased.
+      function rebaseItems(items, origin, heading) {
         const ca = Math.cos(heading);
         const sa = Math.sin(heading);
         const qRebase = new CANNON.Quaternion();
         qRebase.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), -heading);
 
-        for (const flyer of activeFlyers) {
-          const b = flyer.body;
-          const dx = b.position.x - origin.x;
-          const dz = b.position.z - origin.z;
-          b.position.x = dx * ca + dz * sa;
-          b.position.z = -dx * sa + dz * ca;
-          b.quaternion = qRebase.mult(b.quaternion);
+        for (const item of items) {
+          const b = item.body;
+          const src = b || item.mesh;
+          const dx = src.position.x - origin.x;
+          const dz = src.position.z - origin.z;
+          const nx = dx * ca + dz * sa;
+          const nz = -dx * sa + dz * ca;
 
-          const vx = b.velocity.x;
-          const vz = b.velocity.z;
-          b.velocity.x = vx * ca + vz * sa;
-          b.velocity.z = -vx * sa + vz * ca;
+          if (b) {
+            b.position.x = nx;
+            b.position.z = nz;
+            b.quaternion = qRebase.mult(b.quaternion);
 
-          flyer.mesh.position.set(b.position.x, b.position.y, b.position.z);
-          flyer.mesh.quaternion.set(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w);
-        }
-      }
+            const vx = b.velocity.x;
+            const vz = b.velocity.z;
+            b.velocity.x = vx * ca + vz * sa;
+            b.velocity.z = -vx * sa + vz * ca;
 
-      // Rebase floating dynamite sticks the same way so they track with the train.
-      function rebaseThrownDynamites(origin, heading) {
-        const ca = Math.cos(heading);
-        const sa = Math.sin(heading);
-        const qRebase = new CANNON.Quaternion();
-        qRebase.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), -heading);
-
-        for (const dyn of thrownDynamites) {
-          const b = dyn.body;
-          const dx = b.position.x - origin.x;
-          const dz = b.position.z - origin.z;
-          b.position.x = dx * ca + dz * sa;
-          b.position.z = -dx * sa + dz * ca;
-          b.quaternion = qRebase.mult(b.quaternion);
-
-          const vx = b.velocity.x;
-          const vz = b.velocity.z;
-          b.velocity.x = vx * ca + vz * sa;
-          b.velocity.z = -vx * sa + vz * ca;
-
-          dyn.mesh.position.set(b.position.x, b.position.y, b.position.z);
-          dyn.mesh.quaternion.set(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w);
-        }
-      }
-
-      // Rebase active explosions the same way so they track with the train.
-      function rebaseActiveExplosions(origin, heading) {
-        const ca = Math.cos(heading);
-        const sa = Math.sin(heading);
-
-        for (const expl of activeExplosions) {
-          const dx = expl.mesh.position.x - origin.x;
-          const dz = expl.mesh.position.z - origin.z;
-          expl.mesh.position.x = dx * ca + dz * sa;
-          expl.mesh.position.z = -dx * sa + dz * ca;
+            item.mesh.position.set(b.position.x, b.position.y, b.position.z);
+            item.mesh.quaternion.set(
+              b.quaternion.x,
+              b.quaternion.y,
+              b.quaternion.z,
+              b.quaternion.w,
+            );
+          } else {
+            item.mesh.position.x = nx;
+            item.mesh.position.z = nz;
+          }
         }
       }
 
@@ -201,16 +182,35 @@ import {
       const sharedTinyMat = new THREE.MeshLambertMaterial({ color: 0x8a8e93 });
       const sharedGrassMat = new THREE.MeshLambertMaterial({ color: 0x56a442 });
       const sharedLogMat = new THREE.MeshLambertMaterial({ color: 0x4a3324 });
-      const sharedBranchMat = new THREE.MeshLambertMaterial({ color: 0x2e6035 });
-      const sharedBoulderMat = new THREE.MeshLambertMaterial({ color: 0x6e7278 });
+      const sharedBranchMat = new THREE.MeshLambertMaterial({
+        color: 0x2e6035,
+      });
+      const sharedBoulderMat = new THREE.MeshLambertMaterial({
+        color: 0x6e7278,
+      });
       const sharedGiantMat = new THREE.MeshLambertMaterial({ color: 0x2a2d30 });
 
       const sharedTreePalettes = [
-        { foliage1: new THREE.MeshLambertMaterial({ color: 0x1a4524 }), foliage2: new THREE.MeshLambertMaterial({ color: 0x245a30 }) },
-        { foliage1: new THREE.MeshLambertMaterial({ color: 0x286337 }), foliage2: new THREE.MeshLambertMaterial({ color: 0x367e47 }) },
-        { foliage1: new THREE.MeshLambertMaterial({ color: 0x3d7e32 }), foliage2: new THREE.MeshLambertMaterial({ color: 0x519e42 }) },
-        { foliage1: new THREE.MeshLambertMaterial({ color: 0x4f8c3e }), foliage2: new THREE.MeshLambertMaterial({ color: 0x65ab50 }) },
-        { foliage1: new THREE.MeshLambertMaterial({ color: 0x3b5930 }), foliage2: new THREE.MeshLambertMaterial({ color: 0x4c703e }) },
+        {
+          foliage1: new THREE.MeshLambertMaterial({ color: 0x1a4524 }),
+          foliage2: new THREE.MeshLambertMaterial({ color: 0x245a30 }),
+        },
+        {
+          foliage1: new THREE.MeshLambertMaterial({ color: 0x286337 }),
+          foliage2: new THREE.MeshLambertMaterial({ color: 0x367e47 }),
+        },
+        {
+          foliage1: new THREE.MeshLambertMaterial({ color: 0x3d7e32 }),
+          foliage2: new THREE.MeshLambertMaterial({ color: 0x519e42 }),
+        },
+        {
+          foliage1: new THREE.MeshLambertMaterial({ color: 0x4f8c3e }),
+          foliage2: new THREE.MeshLambertMaterial({ color: 0x65ab50 }),
+        },
+        {
+          foliage1: new THREE.MeshLambertMaterial({ color: 0x3b5930 }),
+          foliage2: new THREE.MeshLambertMaterial({ color: 0x4c703e }),
+        },
       ];
 
       function createSceneryRailSegment(simulation, opts = {}) {
@@ -229,7 +229,12 @@ import {
           giantGroup.getWorldPosition(worldPos);
           const min = box.min.clone().sub(worldPos);
           const max = box.max.clone().sub(worldPos);
-          return Math.max(Math.abs(min.x), Math.abs(max.x), Math.abs(min.z), Math.abs(max.z));
+          return Math.max(
+            Math.abs(min.x),
+            Math.abs(max.x),
+            Math.abs(min.z),
+            Math.abs(max.z),
+          );
         }
 
         // Place random trees, rocks, and grass along the sides of the track
@@ -239,7 +244,10 @@ import {
         for (let i = 0; i < count; i++) {
           const s = Math.random() * length;
           const local = getLocalSpinePose(radius, length, s);
-          const perp = { x: -Math.sin(local.heading), z: Math.cos(local.heading) };
+          const perp = {
+            x: -Math.sin(local.heading),
+            z: Math.cos(local.heading),
+          };
 
           // Keep scenery safely off the rails (at least 4.5m away)
           const side = Math.random() < 0.5 ? 1 : -1;
@@ -255,7 +263,10 @@ import {
             const scale = 0.8 + Math.random() * 0.7;
             treeGroup.scale.set(scale, scale, scale);
 
-            const pal = sharedTreePalettes[Math.floor(Math.random() * sharedTreePalettes.length)];
+            const pal =
+              sharedTreePalettes[
+                Math.floor(Math.random() * sharedTreePalettes.length)
+              ];
 
             const trunk = new THREE.Mesh(sharedTrunkGeo, sharedTrunkMat);
             trunk.position.y = 1.5;
@@ -278,7 +289,11 @@ import {
             const sZ = 0.8 + Math.random() * 1.4;
             rock.scale.set(sX, sY, sZ);
             rock.position.set(x, sY * 0.6, z);
-            rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+            rock.rotation.set(
+              Math.random() * Math.PI,
+              Math.random() * Math.PI,
+              0,
+            );
             group.add(rock);
           } else {
             // Lush grass patch - collect blade transforms for InstancedMesh
@@ -307,7 +322,11 @@ import {
 
         // Create single instanced mesh for all grass in this segment (1 draw call)
         if (grassTransforms.length > 0) {
-          const instancedGrass = new THREE.InstancedMesh(sharedGrassGeo, sharedGrassMat, grassTransforms.length);
+          const instancedGrass = new THREE.InstancedMesh(
+            sharedGrassGeo,
+            sharedGrassMat,
+            grassTransforms.length,
+          );
           const dummy = new THREE.Object3D();
 
           for (let i = 0; i < grassTransforms.length; i++) {
@@ -338,7 +357,11 @@ import {
             0.6 + Math.random() * 0.9,
           );
           tiny.position.set(tPose.position.x, 0.28, tPose.position.z + edge);
-          tiny.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+          tiny.rotation.set(
+            Math.random() * Math.PI,
+            Math.random() * Math.PI,
+            Math.random() * Math.PI,
+          );
           group.add(tiny);
           seg.obstacles.push({
             mesh: tiny,
@@ -356,12 +379,20 @@ import {
           if (randObs < 0.33) {
             // Fallen Tree across the rails
             const logLen = 3.8 + Math.random() * 1.6;
-            const logMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.42, logLen, 6), sharedLogMat);
+            const logMesh = new THREE.Mesh(
+              new THREE.CylinderGeometry(0.35, 0.42, logLen, 6),
+              sharedLogMat,
+            );
             logMesh.rotation.z = Math.PI / 2;
 
             const logGroup = new THREE.Group();
-            logGroup.position.set(localPose.position.x, 0.55, localPose.position.z);
-            logGroup.rotation.y = -localPose.heading + Math.PI / 2 + (Math.random() - 0.5) * 0.4;
+            logGroup.position.set(
+              localPose.position.x,
+              0.55,
+              localPose.position.z,
+            );
+            logGroup.rotation.y =
+              -localPose.heading + Math.PI / 2 + (Math.random() - 0.5) * 0.4;
             logGroup.add(logMesh);
 
             const branch = new THREE.Mesh(sharedBranchGeo, sharedBranchMat);
@@ -380,9 +411,21 @@ import {
           } else if (randObs < 0.55) {
             // Regular Track Boulder
             const boulder = new THREE.Mesh(sharedBoulderGeo, sharedBoulderMat);
-            boulder.scale.set(1.1 + Math.random() * 0.3, 0.75 + Math.random() * 0.25, 1.1 + Math.random() * 0.3);
-            boulder.position.set(localPose.position.x, 0.85, localPose.position.z);
-            boulder.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+            boulder.scale.set(
+              1.1 + Math.random() * 0.3,
+              0.75 + Math.random() * 0.25,
+              1.1 + Math.random() * 0.3,
+            );
+            boulder.position.set(
+              localPose.position.x,
+              0.85,
+              localPose.position.z,
+            );
+            boulder.rotation.set(
+              Math.random() * Math.PI,
+              Math.random() * Math.PI,
+              0,
+            );
 
             group.add(boulder);
             seg.obstacles.push({
@@ -394,13 +437,22 @@ import {
           } else if (randObs < 0.63) {
             // Massive Giant Megalith Boulder (towering monolithic mountain rock)
             const giantGroup = new THREE.Group();
-            giantGroup.position.set(localPose.position.x, 0, localPose.position.z);
-            giantGroup.rotation.y = -localPose.heading + (Math.random() - 0.5) * 0.5;
+            giantGroup.position.set(
+              localPose.position.x,
+              0,
+              localPose.position.z,
+            );
+            giantGroup.rotation.y =
+              -localPose.heading + (Math.random() - 0.5) * 0.5;
 
             const mainRock = new THREE.Mesh(sharedGiantMainGeo, sharedGiantMat);
             mainRock.scale.set(1.4, 1.6, 1.3);
             mainRock.position.set(0, 2.6, 0);
-            mainRock.rotation.set(Math.random() * 0.5, Math.random() * Math.PI, 0);
+            mainRock.rotation.set(
+              Math.random() * 0.5,
+              Math.random() * Math.PI,
+              0,
+            );
             giantGroup.add(mainRock);
 
             // Per-megalith material clone so its color can signal danger vs. safe.
@@ -436,12 +488,26 @@ import {
       function createLever() {
         const group = new THREE.Group();
 
-        const baseMat = new THREE.MeshStandardMaterial({ color: 0x334455, roughness: 0.6, metalness: 0.3 });
-        const armMat = new THREE.MeshStandardMaterial({ color: 0xcc8833, roughness: 0.5, metalness: 0.1 });
-        const gripMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.4 });
+        const baseMat = new THREE.MeshStandardMaterial({
+          color: 0x334455,
+          roughness: 0.6,
+          metalness: 0.3,
+        });
+        const armMat = new THREE.MeshStandardMaterial({
+          color: 0xcc8833,
+          roughness: 0.5,
+          metalness: 0.1,
+        });
+        const gripMat = new THREE.MeshStandardMaterial({
+          color: 0x222222,
+          roughness: 0.4,
+        });
 
         // Stationary mount (flat cylinder pedestal)
-        const base = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.65, 0.35, 12), baseMat);
+        const base = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.55, 0.65, 0.35, 12),
+          baseMat,
+        );
         base.position.y = 0.175;
         base.castShadow = true;
         base.receiveShadow = true;
@@ -452,12 +518,18 @@ import {
         pivot.position.y = 0.35;
 
         // Lever arm + grip
-        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.7, 0.16), armMat);
+        const arm = new THREE.Mesh(
+          new THREE.BoxGeometry(0.16, 1.7, 0.16),
+          armMat,
+        );
         arm.position.y = 0.85;
         arm.castShadow = true;
         pivot.add(arm);
 
-        const grip = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 12), gripMat);
+        const grip = new THREE.Mesh(
+          new THREE.SphereGeometry(0.24, 12, 12),
+          gripMat,
+        );
         grip.position.y = 1.7;
         grip.castShadow = true;
         pivot.add(grip);
@@ -481,7 +553,11 @@ import {
         sim.scene.fog = new THREE.Fog(skyColor, 50, 220);
 
         // Ground plane
-        const ground = createGround(sim, { size: 2000, color: 0x4e8a4a, position: [0, -0.5, 0] });
+        const ground = createGround(sim, {
+          size: 2000,
+          color: 0x4e8a4a,
+          position: [0, -0.5, 0],
+        });
 
         // Track generation with winding sections & high-speed straightaways (>= 10 segments)
         let straightawayCount = 6; // Start with a straight runway
@@ -542,9 +618,13 @@ import {
         sim.world.addBody(cowcatcherBody);
 
         // Input: shared key state + tap-to-accelerate on mobile
-        if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) {
+        if (
+          window.matchMedia &&
+          window.matchMedia("(pointer: coarse)").matches
+        ) {
           const hint = document.getElementById("controls-hint");
-          if (hint) hint.innerText = "Tap to accelerate \u2022 release to decelerate";
+          if (hint)
+            hint.innerText = "Tap to accelerate \u2022 release to decelerate";
         }
         const input = new Input();
         input.mapTouchToKey("KeyW");
@@ -593,7 +673,11 @@ import {
         const governor = new Governor(70);
 
         // Speed gauge (circular semicircle, full scale = governor cap)
-        let gauge = createGauge({ min: 0, max: governor.getCap(), unit: "MPH" });
+        let gauge = createGauge({
+          min: 0,
+          max: governor.getCap(),
+          unit: "MPH",
+        });
         // Red line marks the boulder-damage threshold; hide until a cowcatcher exists.
         gauge.setThreshold(null);
         // Rebuild the gauge so its full scale tracks a raised governor cap.
@@ -616,60 +700,113 @@ import {
         // until the prerequisite is purchased.
         const POWERUPS = [
           {
-            id: "cowcatcher", label: "Cowcatcher", icon: "▴", cost: 50,
+            id: "cowcatcher",
+            label: "Cowcatcher",
+            icon: "▴",
+            cost: 50,
             grantWhen: () => money >= 50,
-            onBuy: () => setCowcatcherTier({ defenseId: "cowcatcher", valueMph: 1, scale: 1 }),
+            onBuy: () =>
+              setCowcatcherTier({
+                defenseId: "cowcatcher",
+                valueMph: 1,
+                scale: 1,
+              }),
           },
           {
-            id: "big-cowcatcher", label: "Big Cowcatcher", icon: "▴", cost: 150,
+            id: "big-cowcatcher",
+            label: "Big Cowcatcher",
+            icon: "▴",
+            cost: 150,
             grantWhen: () => money >= 150,
             requires: "cowcatcher",
-            onBuy: () => setCowcatcherTier({ defenseId: "big-cowcatcher", valueMph: 3, scale: 1.45 }),
+            onBuy: () =>
+              setCowcatcherTier({
+                defenseId: "big-cowcatcher",
+                valueMph: 3,
+                scale: 1.45,
+              }),
           },
           {
-            id: "wedge-plow", label: "Wedge Plow", icon: "▴", cost: 400,
+            id: "wedge-plow",
+            label: "Wedge Plow",
+            icon: "▴",
+            cost: 400,
             grantWhen: () => money >= 400,
             requires: "big-cowcatcher",
-            onBuy: () => setCowcatcherTier({ defenseId: "wedge-plow", valueMph: 6, scale: 1.9 }),
+            onBuy: () =>
+              setCowcatcherTier({
+                defenseId: "wedge-plow",
+                valueMph: 6,
+                scale: 1.9,
+              }),
           },
           {
-            id: "sandbox-1", label: "Better Accel I", icon: "▲", cost: 5,
+            id: "sandbox-1",
+            label: "Better Accel I",
+            icon: "▲",
+            cost: 5,
             grantWhen: () => money >= 5,
-            onBuy: () => { accelRate += 5; },
+            onBuy: () => {
+              accelRate += 5;
+            },
           },
           {
-            id: "sandbox-2", label: "Better Accel II", icon: "▲", cost: 50,
+            id: "sandbox-2",
+            label: "Better Accel II",
+            icon: "▲",
+            cost: 50,
             grantWhen: () => money >= 50,
             requires: "sandbox-1",
-            onBuy: () => { accelRate += 5; },
+            onBuy: () => {
+              accelRate += 5;
+            },
           },
           {
-            id: "sandbox-3", label: "Better Accel III", icon: "▲", cost: 500,
+            id: "sandbox-3",
+            label: "Better Accel III",
+            icon: "▲",
+            cost: 500,
             grantWhen: () => money >= 500,
             requires: "sandbox-2",
-            onBuy: () => { accelRate += 5; },
+            onBuy: () => {
+              accelRate += 5;
+            },
           },
           {
-            id: "governor-1", label: "Governor I", icon: "◆", cost: 100,
+            id: "governor-1",
+            label: "Governor I",
+            icon: "◆",
+            cost: 100,
             grantWhen: () => money >= 100,
             onBuy: () => setGovernorCap(85),
           },
           {
-            id: "governor-2", label: "Governor II", icon: "◆", cost: 200,
+            id: "governor-2",
+            label: "Governor II",
+            icon: "◆",
+            cost: 200,
             grantWhen: () => money >= 200,
             requires: "governor-1",
             onBuy: () => setGovernorCap(100),
           },
           {
-            id: "governor-3", label: "Governor III", icon: "◆", cost: 300,
+            id: "governor-3",
+            label: "Governor III",
+            icon: "◆",
+            cost: 300,
             grantWhen: () => money >= 300,
             requires: "governor-2",
             onBuy: () => setGovernorCap(150),
           },
-{
-            id: "big-bangs", label: "Big Bangs", icon: "💥", cost: 200,
+          {
+            id: "big-bangs",
+            label: "Big Bangs",
+            icon: "💥",
+            cost: 200,
             grantWhen: () => money >= 200,
-            onBuy: () => { bigBangs = true; },
+            onBuy: () => {
+              bigBangs = true;
+            },
           },
         ];
 
@@ -735,7 +872,7 @@ import {
           border: "none",
           borderRadius: "6px",
           cursor: "pointer",
-          fontFamily: 'monospace, sans-serif',
+          fontFamily: "monospace, sans-serif",
           fontSize: "0.9rem",
           fontWeight: "900",
           lineHeight: "1.1",
@@ -745,21 +882,39 @@ import {
           webkitTapHighlightColor: "transparent",
           transition: "background 0.15s, transform 0.05s",
         });
-        dynamiteBtn.addEventListener("mousedown", () => (dynamiteBtn.style.transform = "scale(0.96)"));
-        dynamiteBtn.addEventListener("mouseup", () => (dynamiteBtn.style.transform = "scale(1)"));
-        dynamiteBtn.addEventListener("touchstart", (e) => {
-          dynamiteBtn.style.transform = "scale(0.96)";
-          throwDynamite();
-          if (e.cancelable) {
-            e.preventDefault();
-          }
-        }, { passive: false });
-        dynamiteBtn.addEventListener("touchend", () => (dynamiteBtn.style.transform = "scale(1)"), { passive: true });
-        dynamiteBtn.addEventListener("touchcancel", () => (dynamiteBtn.style.transform = "scale(1)"), { passive: true });
+        dynamiteBtn.addEventListener(
+          "mousedown",
+          () => (dynamiteBtn.style.transform = "scale(0.96)"),
+        );
+        dynamiteBtn.addEventListener(
+          "mouseup",
+          () => (dynamiteBtn.style.transform = "scale(1)"),
+        );
+        dynamiteBtn.addEventListener(
+          "touchstart",
+          (e) => {
+            dynamiteBtn.style.transform = "scale(0.96)";
+            throwDynamite();
+            if (e.cancelable) {
+              e.preventDefault();
+            }
+          },
+          { passive: false },
+        );
+        dynamiteBtn.addEventListener(
+          "touchend",
+          () => (dynamiteBtn.style.transform = "scale(1)"),
+          { passive: true },
+        );
+        dynamiteBtn.addEventListener(
+          "touchcancel",
+          () => (dynamiteBtn.style.transform = "scale(1)"),
+          { passive: true },
+        );
         dynamiteBtn.addEventListener("click", throwDynamite);
         document.body.appendChild(dynamiteBtn);
 
-function updateDynamiteCounter() {
+        function updateDynamiteCounter() {
           dynamiteBtn.textContent = `THROW\nDYNAMITE\n(x${dynamiteCount})`;
           dynamiteBtn.style.opacity = dynamiteCount > 0 ? "1" : "0.4";
           dynamiteBtn.style.cursor = dynamiteCount > 0 ? "pointer" : "default";
@@ -786,12 +941,20 @@ function updateDynamiteCounter() {
           const mesh = ent.mesh;
           const body = ent.body;
 
-          const spawn = new THREE.Vector3(-2.6, 4.0, 0).applyMatrix4(train.mesh.matrixWorld);
+          const spawn = new THREE.Vector3(-2.6, 4.0, 0).applyMatrix4(
+            train.mesh.matrixWorld,
+          );
           mesh.position.copy(spawn);
           body.position.copy(spawn);
-          body.quaternion.setFromEuler(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+          body.quaternion.setFromEuler(
+            Math.random() * Math.PI,
+            Math.random() * Math.PI,
+            0,
+          );
 
-          const fwd = follower.forwardAxis.clone().applyQuaternion(train.mesh.quaternion);
+          const fwd = follower.forwardAxis
+            .clone()
+            .applyQuaternion(train.mesh.quaternion);
 
           // Aim at the point on the track 2 segments ahead of the train
           const targetPose = track.getPoseAt(follower.s + 2 * segmentLen);
@@ -812,18 +975,21 @@ function updateDynamiteCounter() {
 
           // Launch with a low, fast trajectory toward the track target ahead
           const launchSpeed = follower.speed + 35;
-          body.velocity.set(
-            aimDir.x * launchSpeed,
-            5,
-            aimDir.z * launchSpeed,
-          );
+          body.velocity.set(aimDir.x * launchSpeed, 5, aimDir.z * launchSpeed);
           body.angularVelocity.set(
             (Math.random() - 0.5) * 8,
             (Math.random() - 0.5) * 8,
             (Math.random() - 0.5) * 8,
           );
 
-          const dyn = { mesh, body, ent, landed: false, exploded: false, collided: false };
+          const dyn = {
+            mesh,
+            body,
+            ent,
+            landed: false,
+            exploded: false,
+            collided: false,
+          };
           body.addEventListener("collide", () => {
             dyn.collided = true;
           });
@@ -831,7 +997,7 @@ function updateDynamiteCounter() {
         }
 
         // Shatters a Giant Megalith Boulder into smaller rock fragments
-                // Monetary damage dealt by destroying a megalith scales with the cowcatcher
+        // Monetary damage dealt by destroying a megalith scales with the cowcatcher
         // tier currently installed (a better cowcatcher reduces the cost).
         function megalithDamage() {
           if (COWCATCHER_DEFENSE_IDS.has("wedge-plow")) return 60;
@@ -860,12 +1026,27 @@ function updateDynamiteCounter() {
         function updateMegalithColors() {
           const speedMph = currentSpeed * 2.237;
           const threshold = megalithRollThreshold();
-          const t = Math.max(0, Math.min(1, (speedMph - (threshold - MEGALITH_COLOR_BAND)) / (2 * MEGALITH_COLOR_BAND)));
-          const target = MEGALITH_SAFE_COLOR.clone().lerp(MEGALITH_DANGER_COLOR, t);
+          const t = Math.max(
+            0,
+            Math.min(
+              1,
+              (speedMph - (threshold - MEGALITH_COLOR_BAND)) /
+                (2 * MEGALITH_COLOR_BAND),
+            ),
+          );
+          const target = MEGALITH_SAFE_COLOR.clone().lerp(
+            MEGALITH_DANGER_COLOR,
+            t,
+          );
           for (const sSeg of track.segments) {
             if (!sSeg.obstacles) continue;
             for (const obs of sSeg.obstacles) {
-              if (obs.type === "giant-boulder" && obs.mat && !obs.hit && obs.mesh.parent) {
+              if (
+                obs.type === "giant-boulder" &&
+                obs.mat &&
+                !obs.hit &&
+                obs.mesh.parent
+              ) {
                 obs.mat.color.copy(target);
               }
             }
@@ -881,31 +1062,42 @@ function updateDynamiteCounter() {
           mesh.quaternion.copy(worldQuat);
 
           const body = new CANNON.Body({
-            mass: 20000,
+            mass: 40000,
             shape: new CANNON.Sphere(2.6),
-            linearDamping: 0.6,
-            angularDamping: 0.4,
+            linearDamping: 0.7,
+            angularDamping: 0.45,
           });
           body.position.set(worldPos.x, worldPos.y, worldPos.z);
-          body.quaternion.set(worldQuat.x, worldQuat.y, worldQuat.z, worldQuat.w);
+          body.quaternion.set(
+            worldQuat.x,
+            worldQuat.y,
+            worldQuat.z,
+            worldQuat.w,
+          );
 
           // Perpendicular (lateral) direction to the forward axis, in XZ plane.
           const lateralSide = Math.random() < 0.5 ? 1 : -1;
           const latX = -fwdDir.z * lateralSide;
           const latZ = fwdDir.x * lateralSide;
-          const lateralSpeed = speed * 0.9 + 12 + Math.random() * 6;
-          const fwdSpeed = speed * 0.25;
-          const upSpeed = speed * 0.25 + 4 + Math.random() * 3;
+          const lateralSpeed = speed * 0.6 + 6 + Math.random() * 4;
+          const fwdSpeed = speed * 0.2;
 
-          body.velocity.set(
-            fwdDir.x * fwdSpeed + latX * lateralSpeed,
-            upSpeed,
-            fwdDir.z * fwdSpeed + latZ * lateralSpeed,
-          );
+          // Pin to the ground: no vertical launch. The megalith slides/rolls
+          // horizontally along the ground instead of bouncing into the air.
+          const vx = fwdDir.x * fwdSpeed + latX * lateralSpeed;
+          const vz = fwdDir.z * fwdSpeed + latZ * lateralSpeed;
+
+          body.velocity.set(vx, 0, vz);
+
+          // Give it a true rolling spin about the horizontal axis perpendicular
+          // to its direction of travel (omega = v / radius), so it rolls like a
+          // huge boulder rather than tumbling wildly.
+          const speedMag = Math.abs(vx) + Math.abs(vz);
+          const rollMag = speedMag > 0.01 ? speedMag / 2.6 : 0;
           body.angularVelocity.set(
-            (Math.random() - 0.5) * 12,
-            (Math.random() - 0.5) * 12,
-            (Math.random() - 0.5) * 12,
+            (speedMag > 0.01 ? -vz / speedMag : 0) * rollMag,
+            0,
+            (speedMag > 0.01 ? vx / speedMag : 0) * rollMag,
           );
 
           sim.world.addBody(body);
@@ -959,9 +1151,11 @@ function updateDynamiteCounter() {
             );
             shardDir.normalize();
             rockBody.velocity.set(
-              shardDir.x * baseSpeed + baseFwdDir.z * (Math.random() - 0.5) * 10,
+              shardDir.x * baseSpeed +
+                baseFwdDir.z * (Math.random() - 0.5) * 10,
               follower.speed * 0.3 + 1.5 + Math.random() * 2,
-              shardDir.z * baseSpeed - baseFwdDir.x * (Math.random() - 0.5) * 10,
+              shardDir.z * baseSpeed -
+                baseFwdDir.x * (Math.random() - 0.5) * 10,
             );
             rockBody.angularVelocity.set(
               (Math.random() - 0.5) * 14,
@@ -997,7 +1191,9 @@ function updateDynamiteCounter() {
 
           for (let i = 0; i < count; i++) {
             const mesh = new THREE.Mesh(geo, mat);
-            let px = pos.x, py = baseY, pz = pos.z;
+            let px = pos.x,
+              py = baseY,
+              pz = pos.z;
             // Sphere size and start delay: with Big Bangs, vary each sphere's
             // radius and stagger them 100ms apart for a more interesting blast.
             const radius = bigBangs
@@ -1025,18 +1221,28 @@ function updateDynamiteCounter() {
           }
 
           // Check for Megaliths and boulders in blast radius
-          const fwdDir = follower.forwardAxis.clone().applyQuaternion(train.mesh.quaternion);
+          const fwdDir = follower.forwardAxis
+            .clone()
+            .applyQuaternion(train.mesh.quaternion);
           for (const sSeg of track.segments) {
             if (sSeg.obstacles) {
               for (const obs of sSeg.obstacles) {
-                if (!obs.hit && obs.mesh.parent && (obs.type === "giant-boulder" || obs.type === "boulder")) {
+                if (
+                  !obs.hit &&
+                  obs.mesh.parent &&
+                  (obs.type === "giant-boulder" || obs.type === "boulder")
+                ) {
                   const obsWorldPos = new THREE.Vector3();
                   obs.mesh.getWorldPosition(obsWorldPos);
                   if (pos.distanceTo(obsWorldPos) <= maxRadius + 3.0) {
                     obs.hit = true;
                     obs.mesh.parent.remove(obs.mesh);
                     if (obs.type === "giant-boulder") {
-                      shatterMegalith(obsWorldPos, fwdDir, Math.max(16, follower.speed * 0.5));
+                      shatterMegalith(
+                        obsWorldPos,
+                        fwdDir,
+                        Math.max(16, follower.speed * 0.5),
+                      );
                     }
                   }
                 }
@@ -1052,7 +1258,10 @@ function updateDynamiteCounter() {
         }
         // Award any powerup whose grant condition is now met (each only once).
         function grantPowerups() {
-          if (!dynamiteUnlocked && (money >= DYNAMITE_COST || dynamiteCount > 0)) {
+          if (
+            !dynamiteUnlocked &&
+            (money >= DYNAMITE_COST || dynamiteCount > 0)
+          ) {
             dynamiteUnlocked = true;
             ensureDynamite();
             updateDynamiteCounter();
@@ -1063,14 +1272,17 @@ function updateDynamiteCounter() {
             if (!def.grantWhen()) continue;
             grantedPowerups.add(def.id);
             powerups.add({
-              id: def.id, label: def.label, icon: def.icon, cost: def.cost,
+              id: def.id,
+              label: def.label,
+              icon: def.icon,
+              cost: def.cost,
             });
           }
         }
 
         // Renders the wedge cowcatcher at the front of the train and applies its
-// defense. Upgrades replace the previous one with a larger one. The sloped
-// teeth tip obstacles up/away, softening collisions.
+        // defense. Upgrades replace the previous one with a larger one. The sloped
+        // teeth tip obstacles up/away, softening collisions.
         let cowcatcherEntity = null;
         const COWCATCHER_DEFENSE_IDS = new Set();
         function setCowcatcherTier({ defenseId, valueMph, scale }) {
@@ -1175,7 +1387,10 @@ function updateDynamiteCounter() {
         const initPose = follower.getPose();
         if (initPose) {
           train.mesh.position.copy(initPose.position);
-          train.mesh.quaternion.setFromUnitVectors(follower.forwardAxis, initPose.forward);
+          train.mesh.quaternion.setFromUnitVectors(
+            follower.forwardAxis,
+            initPose.forward,
+          );
           train.mesh.updateMatrixWorld(true);
         }
 
@@ -1226,7 +1441,7 @@ function updateDynamiteCounter() {
           const atMaxSpeed = currentSpeed >= governor.getCapMps() - 1e-6;
           gauge.setMax(atMaxSpeed);
           const moving = currentSpeed > 0.22; // ~0.5 mph
-          const moneyRate = !moving ? 0 : (atMaxSpeed ? speedMph * 0.14 : 1.0);
+          const moneyRate = !moving ? 0 : atMaxSpeed ? speedMph * 0.14 : 1.0;
           money += dt * moneyRate;
           moneyCounter.setValue(money);
           powerups.refresh();
@@ -1272,15 +1487,19 @@ function updateDynamiteCounter() {
             track.advance();
 
             if (nextOrigin) {
-              rebaseActiveFlyers(nextOrigin, nextHeading);
-              rebaseThrownDynamites(nextOrigin, nextHeading);
-              rebaseActiveExplosions(nextOrigin, nextHeading);
+              rebaseItems(activeFlyers, nextOrigin, nextHeading);
+              rebaseItems(thrownDynamites, nextOrigin, nextHeading);
+              rebaseItems(activeExplosions, nextOrigin, nextHeading);
             }
           }
 
           // Sync & despawn thrown dynamite sticks (spawn explosion on ground contact)
           for (const dyn of thrownDynamites) {
-            dyn.mesh.position.set(dyn.body.position.x, dyn.body.position.y, dyn.body.position.z);
+            dyn.mesh.position.set(
+              dyn.body.position.x,
+              dyn.body.position.y,
+              dyn.body.position.z,
+            );
             dyn.mesh.quaternion.set(
               dyn.body.quaternion.x,
               dyn.body.quaternion.y,
@@ -1297,7 +1516,11 @@ function updateDynamiteCounter() {
               for (const sSeg of track.segments) {
                 if (sSeg.obstacles) {
                   for (const obs of sSeg.obstacles) {
-                    if (!obs.hit && obs.mesh.parent && (obs.type === "giant-boulder" || obs.type === "boulder")) {
+                    if (
+                      !obs.hit &&
+                      obs.mesh.parent &&
+                      (obs.type === "giant-boulder" || obs.type === "boulder")
+                    ) {
                       const obsWorldPos = new THREE.Vector3();
                       obs.mesh.getWorldPosition(obsWorldPos);
                       const contactRadius = obs.contactRadius ?? 3.6;
@@ -1343,7 +1566,9 @@ function updateDynamiteCounter() {
               expl.mesh.material?.dispose();
               activeExplosions.delete(expl);
             } else if (progress > 0) {
-              const currentScale = 0.1 + (expl.maxRadius - 0.1) * Math.sin((progress * Math.PI) / 2);
+              const currentScale =
+                0.1 +
+                (expl.maxRadius - 0.1) * Math.sin((progress * Math.PI) / 2);
               expl.mesh.scale.setScalar(currentScale);
               expl.mesh.material.opacity = 0.9 * (1 - progress * 0.7);
             }
@@ -1351,7 +1576,11 @@ function updateDynamiteCounter() {
 
           // Update & sync active flying obstacles
           for (const flyer of activeFlyers) {
-            flyer.mesh.position.set(flyer.body.position.x, flyer.body.position.y, flyer.body.position.z);
+            flyer.mesh.position.set(
+              flyer.body.position.x,
+              flyer.body.position.y,
+              flyer.body.position.z,
+            );
             flyer.mesh.quaternion.set(
               flyer.body.quaternion.x,
               flyer.body.quaternion.y,
@@ -1365,7 +1594,8 @@ function updateDynamiteCounter() {
               flyer.mesh.traverse((child) => {
                 if (child.isMesh) {
                   child.geometry?.dispose();
-                  if (Array.isArray(child.material)) child.material.forEach((m) => m.dispose());
+                  if (Array.isArray(child.material))
+                    child.material.forEach((m) => m.dispose());
                   else child.material?.dispose();
                 }
               });
@@ -1377,7 +1607,10 @@ function updateDynamiteCounter() {
           const pose = follower.getPose();
           if (pose) {
             entity.mesh.position.copy(pose.position);
-            entity.mesh.quaternion.setFromUnitVectors(follower.forwardAxis, pose.forward);
+            entity.mesh.quaternion.setFromUnitVectors(
+              follower.forwardAxis,
+              pose.forward,
+            );
 
             // Track curvature ahead/behind for train visual tilt
             const poseAhead = track.getPoseAt(follower.s + 1.6);
@@ -1401,10 +1634,18 @@ function updateDynamiteCounter() {
             }
 
             // Dynamic camera look-ahead aiming and lateral lean to gently see around corners
-            const targetLookZ = Math.max(-3.0, Math.min(3.0, curveLateralAhead * 0.25));
-            const targetOffsetZ = -Math.max(-1.0, Math.min(1.0, curveLateralAhead * 0.08));
-            currentCameraLookZ += (targetLookZ - currentCameraLookZ) * Math.min(1, dt * 4.5);
-            currentCameraOffsetZ += (targetOffsetZ - currentCameraOffsetZ) * Math.min(1, dt * 4.5);
+            const targetLookZ = Math.max(
+              -3.0,
+              Math.min(3.0, curveLateralAhead * 0.25),
+            );
+            const targetOffsetZ = -Math.max(
+              -1.0,
+              Math.min(1.0, curveLateralAhead * 0.08),
+            );
+            currentCameraLookZ +=
+              (targetLookZ - currentCameraLookZ) * Math.min(1, dt * 4.5);
+            currentCameraOffsetZ +=
+              (targetOffsetZ - currentCameraOffsetZ) * Math.min(1, dt * 4.5);
 
             camCtrl.state.offset.z = currentCameraOffsetZ;
             camCtrl.state.look.z = currentCameraLookZ;
@@ -1425,8 +1666,14 @@ function updateDynamiteCounter() {
             entity.mesh.updateMatrixWorld(true);
 
             // Sync kinematic cowcatcher collider to front of locomotive
-            _cowcatcherWorldPos.copy(_frontLocal).applyMatrix4(entity.mesh.matrixWorld);
-            cowcatcherBody.position.set(_cowcatcherWorldPos.x, _cowcatcherWorldPos.y, _cowcatcherWorldPos.z);
+            _cowcatcherWorldPos
+              .copy(_frontLocal)
+              .applyMatrix4(entity.mesh.matrixWorld);
+            cowcatcherBody.position.set(
+              _cowcatcherWorldPos.x,
+              _cowcatcherWorldPos.y,
+              _cowcatcherWorldPos.z,
+            );
             cowcatcherBody.quaternion.set(
               entity.mesh.quaternion.x,
               entity.mesh.quaternion.y,
@@ -1435,7 +1682,9 @@ function updateDynamiteCounter() {
             );
 
             // Give kinematic collider forward/upward impulse velocity
-            _fwdDir.copy(follower.forwardAxis).applyQuaternion(entity.mesh.quaternion);
+            _fwdDir
+              .copy(follower.forwardAxis)
+              .applyQuaternion(entity.mesh.quaternion);
             const impulseSpeed = follower.speed * 1.6 + 10;
             cowcatcherBody.velocity.set(
               _fwdDir.x * impulseSpeed,
@@ -1467,8 +1716,14 @@ function updateDynamiteCounter() {
                         // Low-speed hit: roll the megalith off to the side (free of
                         // money, but a heavy 90% speed bleed) instead of exploding.
                         if (impactMph <= rollThreshold) {
-                          rollMegalithAside(obs.mesh, _obsWorldPos, _obsWorldQuat, _fwdDir, follower.speed);
-                          currentSpeed = Math.max(0, currentSpeed * 0.10);
+                          rollMegalithAside(
+                            obs.mesh,
+                            _obsWorldPos,
+                            _obsWorldQuat,
+                            _fwdDir,
+                            follower.speed,
+                          );
+                          currentSpeed = Math.max(0, currentSpeed * 0.1);
                           screenShake = Math.min(1.4, screenShake + 0.5);
                           follower.speed = currentSpeed;
                           continue;
@@ -1481,10 +1736,14 @@ function updateDynamiteCounter() {
                         moneyCounter.setValue(money);
                         spawnDamageSign(cost);
 
-                        shatterMegalith(_obsWorldPos, _fwdDir, follower.speed * 0.5);
+                        shatterMegalith(
+                          _obsWorldPos,
+                          _fwdDir,
+                          follower.speed * 0.5,
+                        );
 
                         // Above the threshold the megalith explodes; only 50% speed bleed.
-                        currentSpeed = Math.max(0, currentSpeed * 0.50);
+                        currentSpeed = Math.max(0, currentSpeed * 0.5);
                         screenShake = Math.min(1.4, screenShake + 1.2);
                         follower.speed = currentSpeed;
                         continue;
@@ -1498,7 +1757,9 @@ function updateDynamiteCounter() {
                       if (obs.type === "log") {
                         body = new CANNON.Body({
                           mass: 400,
-                          shape: new CANNON.Box(new CANNON.Vec3(obs.logLen / 2, 0.4, 0.4)),
+                          shape: new CANNON.Box(
+                            new CANNON.Vec3(obs.logLen / 2, 0.4, 0.4),
+                          ),
                         });
                       } else if (obs.type === "tiny-rock") {
                         body = new CANNON.Body({
@@ -1513,12 +1774,23 @@ function updateDynamiteCounter() {
                           shape: new CANNON.Sphere(0.95),
                         });
                       }
-                      body.position.set(_obsWorldPos.x, _obsWorldPos.y, _obsWorldPos.z);
-                      body.quaternion.set(_obsWorldQuat.x, _obsWorldQuat.y, _obsWorldQuat.z, _obsWorldQuat.w);
+                      body.position.set(
+                        _obsWorldPos.x,
+                        _obsWorldPos.y,
+                        _obsWorldPos.z,
+                      );
+                      body.quaternion.set(
+                        _obsWorldQuat.x,
+                        _obsWorldQuat.y,
+                        _obsWorldQuat.z,
+                        _obsWorldQuat.w,
+                      );
 
                       // Impulse scaled to obstacle mass & inertia
                       {
-                        const lateralSide = (Math.random() < 0.5 ? 1 : -1) * (follower.speed * 0.4 + Math.random() * 8);
+                        const lateralSide =
+                          (Math.random() < 0.5 ? 1 : -1) *
+                          (follower.speed * 0.4 + Math.random() * 8);
                         const hitSpeed = follower.speed * 0.9;
                         body.velocity.set(
                           _fwdDir.x * hitSpeed + _fwdDir.z * lateralSide,
@@ -1538,16 +1810,28 @@ function updateDynamiteCounter() {
                         // no speed bleed — just a light rattle for feedback.
                         screenShake = Math.min(0.15, screenShake + 0.08);
                       } else if (obs.type === "log") {
-                        applyImpact(Math.max(5.0, currentSpeed * 0.22), 0.22, 0.35);
+                        applyImpact(
+                          Math.max(5.0, currentSpeed * 0.22),
+                          0.22,
+                          0.35,
+                        );
                       } else if (obs.type === "tiny-rock") {
                         // Tiny rocks: negligible impact, just a small rattle
-                        applyImpact(Math.max(0.4, currentSpeed * 0.05), 0.08, 0.15);
+                        applyImpact(
+                          Math.max(0.4, currentSpeed * 0.05),
+                          0.08,
+                          0.15,
+                        );
                       } else {
-                        applyImpact(Math.max(14.0, currentSpeed * 0.45), 0.55, 0.75);
+                        applyImpact(
+                          Math.max(14.0, currentSpeed * 0.45),
+                          0.55,
+                          0.75,
+                        );
                       }
                       follower.speed = currentSpeed;
 
-          sim.world.addBody(body);
+                      sim.world.addBody(body);
                       activeFlyers.add({
                         mesh: obs.mesh,
                         body,
@@ -1593,8 +1877,10 @@ function updateDynamiteCounter() {
           // Dynamic fog adjustment: bring fog closer in rear view to hide limited rear draw distance
           const targetFogNear = isRearView ? 15 : 50;
           const targetFogFar = isRearView ? 95 : 220;
-          simulation.scene.fog.near += (targetFogNear - simulation.scene.fog.near) * Math.min(1, dt * 10);
-          simulation.scene.fog.far += (targetFogFar - simulation.scene.fog.far) * Math.min(1, dt * 10);
+          simulation.scene.fog.near +=
+            (targetFogNear - simulation.scene.fog.near) * Math.min(1, dt * 10);
+          simulation.scene.fog.far +=
+            (targetFogFar - simulation.scene.fog.far) * Math.min(1, dt * 10);
 
           // Impact screen shake
           if (screenShake > 0.001) {
@@ -1610,7 +1896,8 @@ function updateDynamiteCounter() {
           const vFwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camQuat);
 
           const leverDist = 7;
-          const halfH = Math.tan((simulation.camera.fov * Math.PI) / 360) * leverDist;
+          const halfH =
+            Math.tan((simulation.camera.fov * Math.PI) / 360) * leverDist;
           const halfW = halfH * simulation.camera.aspect;
           const nx = 0.73;
           const ny = -0.6;
@@ -1629,7 +1916,8 @@ function updateDynamiteCounter() {
           if (lever.visible) {
             // Tilt toward/away from the user based on throttle input.
             let targetLever = 0;
-            if (keys.has("KeyW") || keys.has("ArrowUp")) targetLever = -0.7; // into screen (away from user)
+            if (keys.has("KeyW") || keys.has("ArrowUp"))
+              targetLever = -0.7; // into screen (away from user)
             else targetLever = 0.7; // toward user (decelerating)
             leverAngle += (targetLever - leverAngle) * Math.min(1, dt * 8);
             lever.userData.pivot.rotation.x = leverAngle;

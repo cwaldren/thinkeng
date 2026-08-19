@@ -141,7 +141,8 @@ export class Track {
 
   getLength() {
     return this.segments.reduce((acc, seg) => {
-      const len = seg.length ?? seg.trackSegment?.length ?? seg.segment?.length ?? 0;
+      const len =
+        seg.length ?? seg.trackSegment?.length ?? seg.segment?.length ?? 0;
       return acc + len;
     }, 0);
   }
@@ -159,7 +160,8 @@ export class Track {
     let acc = 0;
     for (let i = 0; i < this.segments.length; i++) {
       const seg = this.segments[i];
-      const len = seg.length ?? seg.trackSegment?.length ?? seg.segment?.length ?? 0;
+      const len =
+        seg.length ?? seg.trackSegment?.length ?? seg.segment?.length ?? 0;
       if (s <= acc + len || i === this.segments.length - 1) {
         return seg.getPoseAt(s - acc);
       }
@@ -261,15 +263,27 @@ export class InfiniteTrack {
 
     for (const seg of this.segments) {
       const ts = seg.trackSegment || seg;
-      ts.entryPose.position = rebasePoint(ts.entryPose.position, origin, heading);
+      ts.entryPose.position = rebasePoint(
+        ts.entryPose.position,
+        origin,
+        heading,
+      );
       ts.entryPose.heading -= heading;
       ts.exitPose.position = rebasePoint(ts.exitPose.position, origin, heading);
       ts.exitPose.heading -= heading;
 
       if (seg.segment) {
-        seg.segment.entryPose.point = [ts.entryPose.position.x, ts.entryPose.position.y, ts.entryPose.position.z];
+        seg.segment.entryPose.point = [
+          ts.entryPose.position.x,
+          ts.entryPose.position.y,
+          ts.entryPose.position.z,
+        ];
         seg.segment.entryPose.heading = ts.entryPose.heading;
-        seg.segment.exitPose.point = [ts.exitPose.position.x, ts.exitPose.position.y, ts.exitPose.position.z];
+        seg.segment.exitPose.point = [
+          ts.exitPose.position.x,
+          ts.exitPose.position.y,
+          ts.exitPose.position.z,
+        ];
         seg.segment.exitPose.heading = ts.exitPose.heading;
       }
 
@@ -279,7 +293,9 @@ export class InfiniteTrack {
     }
 
     if (this.camera) {
-      this.camera.position.copy(rebasePoint(this.camera.position, origin, heading));
+      this.camera.position.copy(
+        rebasePoint(this.camera.position, origin, heading),
+      );
     }
   }
 
@@ -304,7 +320,8 @@ export class InfiniteTrack {
     let acc = 0;
     for (let i = 0; i < this.segments.length; i++) {
       const seg = this.segments[i];
-      const len = seg.length ?? seg.trackSegment?.length ?? seg.segment?.length ?? 0;
+      const len =
+        seg.length ?? seg.trackSegment?.length ?? seg.segment?.length ?? 0;
       if (s <= acc + len || i === this.segments.length - 1) {
         return seg.getPoseAt(s - acc);
       }

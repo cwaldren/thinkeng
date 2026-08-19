@@ -17,6 +17,7 @@ generated deterministically on the fly.
 ## Core ideas
 
 ### 1. Chunk along the track, not the world
+
 A train on a track only travels in one dimension, so we don't chunk 3D
 space. We chunk along the track's **arc-length `s`** — a one-dimensional
 stream of segments:
@@ -29,6 +30,7 @@ stream of segments:
   distances.
 
 ### 2. Keep the train near origin; move the world around it (floating origin)
+
 The train's cumulative distance `s` grows unboundedly. To keep all
 coordinates small, we **rebase**:
 
@@ -38,12 +40,13 @@ coordinates small, we **rebase**:
   visible world just slides back by `L`.
 - Reuses `removeEntity` (which disposes GPU geometry) for recycling.
 - **Frame update order rule:** Always advance distance `s += speed * dt` and
-  perform `track.advance()` (rebasing) *before* sampling `follower.getPose()` and
+  perform `track.advance()` (rebasing) _before_ sampling `follower.getPose()` and
   updating train/camera matrices. Sampling before rebasing leaves transforms
   in the prior coordinate space for a single frame, causing a noticeable 1-frame
   track jerk.
 
 ### 3. Stitch segments with pose continuity
+
 Each segment stores an **entry pose** `{point, heading, bank}` and an
 **exit pose**. On spawn, the next segment receives the prior segment's exit
 pose as its entry pose and lays out its spine to continue smoothly:
@@ -54,11 +57,13 @@ pose as its entry pose and lays out its spine to continue smoothly:
   seams.
 
 ### 4. Deterministic segments (seeded PRNG)
+
 Seed a PRNG with the segment's index so a given segment always generates the
 same content (tree/rock placement off the sides). The world is infinite but
 regenerable and consistent.
 
 ### 5. Robustness: drive the train analytically, not by physics
+
 Rails + general physics invite jitter and derails. Instead:
 
 - `speed += input · accel · dt`, then `s += speed · dt`.
@@ -70,6 +75,7 @@ Rails + general physics invite jitter and derails. Instead:
 ## Proposed implementation shape
 
 ### Engine helpers — `engine/components.js`
+
 - `createRailSegment(sim, opts)` — one track chunk (arc length ~50), built
   by composing `primitives.js`:
   - Rails: two long thin `createBox` strips following the sampled spine.
@@ -82,6 +88,7 @@ Rails + general physics invite jitter and derails. Instead:
   smokestack, wheels); driven analytically (no physics body).
 
 ### New game — `games/train/infinite-train.html`
+
 Copied from `engine/template.html` (keeps import map + `Simulation` init),
 adding:
 
@@ -96,10 +103,12 @@ adding:
   forward with a slight look-down.
 
 ### Registration
+
 Add a card to `index.html` linking to the game (per the `new-game` skill's
 gallery step).
 
 ## Files touched
+
 - `engine/components.js` — add `createRailSegment`, `createTrain`.
 - `games/train/infinite-train.html` — new game.
 - `index.html` — gallery card.
@@ -107,6 +116,7 @@ gallery step).
   `createCylinder`).
 
 ## Out of scope for the first pass
+
 - No on-foot free walking.
 - No junctions / steering at splits.
 - No obstacles or collectibles.

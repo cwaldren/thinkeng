@@ -50,7 +50,8 @@ export function createCameraControls(sim, options = {}) {
     padding: "10px 12px",
     background: "rgba(10, 12, 20, 0.75)",
     color: "#e8e8ea",
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace, sans-serif',
+    fontFamily:
+      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace, sans-serif',
     fontSize: "11px",
     lineHeight: "1.4",
     borderRadius: "10px",
@@ -114,13 +115,62 @@ export function createCameraControls(sim, options = {}) {
     panel.appendChild(row);
   }
 
-  addRow("FOV°", fovMin, fovMax, 1, () => state.fov, (v) => (state.fov = v));
-  addRow("Offset X", offsetMin, offsetMax, 0.1, () => state.offset.x, (v) => (state.offset.x = v));
-  addRow("Offset Y", offsetMin, offsetMax, 0.1, () => state.offset.y, (v) => (state.offset.y = v));
-  addRow("Offset Z", offsetMin, offsetMax, 0.1, () => state.offset.z, (v) => (state.offset.z = v));
-  addRow("Look X", offsetMin, offsetMax, 0.1, () => state.look.x, (v) => (state.look.x = v));
-  addRow("Look Y", offsetMin, offsetMax, 0.1, () => state.look.y, (v) => (state.look.y = v));
-  addRow("Look Z", offsetMin, offsetMax, 0.1, () => state.look.z, (v) => (state.look.z = v));
+  addRow(
+    "FOV°",
+    fovMin,
+    fovMax,
+    1,
+    () => state.fov,
+    (v) => (state.fov = v),
+  );
+  addRow(
+    "Offset X",
+    offsetMin,
+    offsetMax,
+    0.1,
+    () => state.offset.x,
+    (v) => (state.offset.x = v),
+  );
+  addRow(
+    "Offset Y",
+    offsetMin,
+    offsetMax,
+    0.1,
+    () => state.offset.y,
+    (v) => (state.offset.y = v),
+  );
+  addRow(
+    "Offset Z",
+    offsetMin,
+    offsetMax,
+    0.1,
+    () => state.offset.z,
+    (v) => (state.offset.z = v),
+  );
+  addRow(
+    "Look X",
+    offsetMin,
+    offsetMax,
+    0.1,
+    () => state.look.x,
+    (v) => (state.look.x = v),
+  );
+  addRow(
+    "Look Y",
+    offsetMin,
+    offsetMax,
+    0.1,
+    () => state.look.y,
+    (v) => (state.look.y = v),
+  );
+  addRow(
+    "Look Z",
+    offsetMin,
+    offsetMax,
+    0.1,
+    () => state.look.z,
+    (v) => (state.look.z = v),
+  );
 
   container.appendChild(panel);
 

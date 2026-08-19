@@ -113,8 +113,10 @@
 
         update(dt) {
           if (dt > 0.1) dt = 0.1;
-          const accel = this.keys.has("KeyW") || this.keys.has("ArrowUp") ? 1 : 0;
-          const brake = this.keys.has("KeyS") || this.keys.has("ArrowDown") ? 1 : 0;
+          const accel =
+            this.keys.has("KeyW") || this.keys.has("ArrowUp") ? 1 : 0;
+          const brake =
+            this.keys.has("KeyS") || this.keys.has("ArrowDown") ? 1 : 0;
           this.speed += (accel * this.ACCEL - brake * this.BRAKE) * dt;
           this.speed = Math.max(0, Math.min(this.MAX_SPEED, this.speed));
 

@@ -218,8 +218,14 @@ export function createTriangle(sim, opts = {}) {
   }
 
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(positions), 3));
-  geometry.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(normals), 3));
+  geometry.setAttribute(
+    "position",
+    new THREE.BufferAttribute(new Float32Array(positions), 3),
+  );
+  geometry.setAttribute(
+    "normal",
+    new THREE.BufferAttribute(new Float32Array(normals), 3),
+  );
 
   const material = new THREE.MeshStandardMaterial({ color });
   const mesh = new THREE.Mesh(geometry, material);
