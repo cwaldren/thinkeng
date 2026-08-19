@@ -74,11 +74,7 @@ export function createGauge(options = {}) {
 
   // Left half (grey) / right half (black) wedges joined at the vertical diameter.
   el("path", {
-    d: `M ${cx},${cy} L ${cx - r},${cy} A ${r},${r} 0 0 1 ${cx},${cy - r} L ${cx},${cy} Z`,
-    fill: "#555",
-  }, body);
-  el("path", {
-    d: `M ${cx},${cy} L ${cx},${cy - r} A ${r},${r} 0 0 1 ${cx + r},${cy} L ${cx},${cy} Z`,
+    d: `M ${cx},${cy} L ${cx - r},${cy} A ${r},${r} 0 0 1 ${cx + r},${cy} L ${cx},${cy} Z`,
     fill: "rgba(0,0,0,0.55)",
   }, body);
   const arc = el("path", {
@@ -99,6 +95,15 @@ export function createGauge(options = {}) {
 
   el("circle", { cx, cy, r: 7, fill: "#fff" }, body);
 
+  // Red notch marking a danger/threshold value on the gauge arc (hidden by default).
+  const threshold = el("line", {
+    x1: cx - r - 5, y1: cy, x2: cx - r + 5, y2: cy,
+    stroke: "#e23b3b", "stroke-width": "4", "stroke-linecap": "round",
+    visibility: "hidden",
+  }, body);
+  threshold.style.transformOrigin = `${cx}px ${cy}px`;
+  threshold.style.transition = "transform 0.15s";
+
   // Readout text below the gauge.
   const valueText = el("text", {
     id: "gauge-value", x: cx, y: cy + 30,
@@ -116,19 +121,10 @@ export function createGauge(options = {}) {
     unitText.textContent = unit;
   }
 
-  if (showLabel && label) {
-    const maxText = el("text", {
-      x: cx, y: 2, "text-anchor": "middle", fill: "#fff",
-      opacity: "0.55", "font-size": "15", "font-weight": "700",
-      "font-family": "monospace",
-    }, svg);
-    maxText.textContent = label;
-  }
-
   // "2x" earnings badge, always shown in the blank area of the semicircle to the
   // right of the full-throttle line. Turns gold and sways when at top speed.
   const rate2x = el("text", {
-    x: cx + 46, y: 56, "text-anchor": "middle", fill: "#777",
+    x: cx, y: cy + 72, "text-anchor": "middle", fill: "#777",
     opacity: "1", "font-size": "17", "font-weight": "900",
     "font-family": "monospace", "class": "gauge-2x",
   }, svg);
@@ -140,7 +136,7 @@ export function createGauge(options = {}) {
     const style = document.createElement("style");
     style.textContent = `
       .gauge-2x {
-        transform-origin: ${cx + 46}px ${56}px;
+        transform-origin: ${cx}px ${cy + 72}px;
       }
       .gauge-2x.swaying {
         animation: gauge-2x-sway 0.6s ease-in-out infinite;
@@ -159,7 +155,7 @@ export function createGauge(options = {}) {
   function setValue(v) {
     const clamped = Math.max(min, Math.min(max, v));
     valueText.textContent = clamped.toFixed(0);
-    const rotation = ((clamped - min) / (max - min)) * 90;
+    const rotation = ((clamped - min) / (max - min)) * 180;
     needle.style.transform = `rotate(${rotation}deg)`;
   }
 
@@ -170,6 +166,17 @@ export function createGauge(options = {}) {
     rate2x.classList.toggle("swaying", !!on);
   }
 
+  // Place the red threshold line at `v` on the gauge scale. Pass `null` to hide.
+  function setThreshold(v) {
+    if (v == null) {
+      threshold.style.visibility = "hidden";
+      return;
+    }
+    const clamped = Math.max(min, Math.min(max, v));
+    threshold.style.visibility = "visible";
+    threshold.style.transform = `rotate(${((clamped - min) / (max - min)) * 180}deg)`;
+  }
+
   function setVisible(on) {
     wrapper.style.display = on ? "block" : "none";
   }
@@ -178,7 +185,7 @@ export function createGauge(options = {}) {
     wrapper.remove();
   }
 
-  return { wrapper, setValue, setMax, setVisible, dispose };
+  return { wrapper, setValue, setMax, setThreshold, setVisible, dispose };
 }
 
 // # createMoneyCounter
