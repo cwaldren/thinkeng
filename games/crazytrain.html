@@ -1533,7 +1533,11 @@ function updateDynamiteCounter() {
                       }
 
                       // Subtract velocity commensurate with obstacle mass & apply impact feedback
-                      if (obs.type === "log") {
+                      if (COWCATCHER_DEFENSE_IDS.has("wedge-plow")) {
+                        // Wedge plow: branch, boulder, and rock are knocked aside with
+                        // no speed bleed — just a light rattle for feedback.
+                        screenShake = Math.min(0.15, screenShake + 0.08);
+                      } else if (obs.type === "log") {
                         applyImpact(Math.max(5.0, currentSpeed * 0.22), 0.22, 0.35);
                       } else if (obs.type === "tiny-rock") {
                         // Tiny rocks: negligible impact, just a small rattle
