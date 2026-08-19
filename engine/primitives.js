@@ -297,3 +297,72 @@ export function createPlayer(sim, opts = {}) {
 
   return sim.addEntity(mesh, body, updateFn);
 }
+
+// A smooth, sculpted 3D heart primitive with soft rounded bevels and plump lobes.
+export function createHeart(sim, opts = {}) {
+  const {
+    scale = 1,
+    color = 0xff3344,
+    mass = 1,
+    roughness = 0.3,
+    metalness = 0.1,
+    position = [0, 0, 0],
+    rotation = [0, 0, 0],
+    friction = 0.3,
+  } = opts;
+
+  const shape = new THREE.Shape();
+  // Smooth symmetric heart contour in the XY plane
+  shape.moveTo(0, 0.35);
+  // Left lobe top curve
+  shape.bezierCurveTo(-0.15, 0.72, -0.7, 0.72, -0.7, 0.25);
+  // Left flank down to bottom tip
+  shape.bezierCurveTo(-0.7, -0.15, -0.35, -0.45, 0, -0.75);
+  // Right flank up from bottom tip
+  shape.bezierCurveTo(0.35, -0.45, 0.7, -0.15, 0.7, 0.25);
+  // Right lobe top curve back to top notch
+  shape.bezierCurveTo(0.7, 0.72, 0.15, 0.72, 0, 0.35);
+
+  const extrudeSettings = {
+    depth: 0.18,
+    bevelEnabled: true,
+    bevelSegments: 10,
+    steps: 1,
+    bevelSize: 0.12,
+    bevelThickness: 0.14,
+    curveSegments: 48,
+  };
+
+  const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+  geometry.center();
+  geometry.computeVertexNormals();
+
+  const material = new THREE.MeshStandardMaterial({
+    color,
+    roughness,
+    metalness,
+  });
+
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+
+  const s = Array.isArray(scale) ? scale : [scale, scale, scale];
+  mesh.scale.set(s[0], s[1], s[2]);
+  mesh.position.set(position[0], position[1], position[2]);
+  mesh.rotation.set(rotation[0], rotation[1], rotation[2]);
+
+  const body = new CANNON.Body({
+    mass,
+    shape: new CANNON.Box(
+      new CANNON.Vec3(0.82 * s[0], 0.82 * s[1], 0.23 * s[2]),
+    ),
+  });
+  body.position.set(position[0], position[1], position[2]);
+  body.quaternion.setFromEuler(rotation[0], rotation[1], rotation[2]);
+  body.material = new CANNON.Material("heart");
+  body.updateMassProperties();
+
+  return sim.addEntity(mesh, body);
+}
+

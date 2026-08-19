@@ -16,6 +16,7 @@ import {
   createRock,
   createTriangle,
   createPlayer,
+  createHeart,
 } from "./primitives.js";
 
 import {
@@ -25,7 +26,6 @@ import {
   createDynamite,
   createCowcatcher,
   createBunny,
-  createHeart,
 } from "./components.js";
 
 import { createPowerupsPreview } from "./powerups.js";
@@ -399,6 +399,46 @@ export const ENTRIES = [
     ],
   },
   {
+    category: "primitive",
+    key: "heart",
+    label: "Heart",
+    desc: "A smooth, sculpted 3D heart with soft rounded curves",
+    fn: createHeart,
+    opts: [
+      { key: "color", label: "Color", type: "color", default: "0xff3344" },
+      {
+        key: "scale",
+        label: "Scale",
+        type: "number",
+        default: 1,
+        min: 0.1,
+        max: 5,
+        step: 0.1,
+      },
+      {
+        key: "mass",
+        label: "Mass",
+        type: "number",
+        default: 1,
+        min: 0,
+        max: 50,
+        step: 0.5,
+      },
+      {
+        key: "position",
+        label: "Position [x,y,z]",
+        type: "vector",
+        default: [0, 0, 0],
+      },
+      {
+        key: "rotation",
+        label: "Rotation [x,y,z]",
+        type: "vector",
+        default: [0, 0, 0],
+      },
+    ],
+  },
+  {
     category: "component",
     key: "grass",
     label: "Grass",
@@ -655,37 +695,6 @@ export const ENTRIES = [
     fn: createBunny,
     opts: [
       { key: "color", label: "Color", type: "color", default: "0xffffff" },
-      {
-        key: "position",
-        label: "Position [x,y,z]",
-        type: "vector",
-        default: [0, 0, 0],
-      },
-      {
-        key: "rotation",
-        label: "Rotation [x,y,z]",
-        type: "vector",
-        default: [0, 0, 0],
-      },
-    ],
-  },
-  {
-    category: "component",
-    key: "heart",
-    label: "Heart",
-    desc: "A 3D heart made of two spheres and a diamond point (component)",
-    fn: createHeart,
-    opts: [
-      { key: "color", label: "Color", type: "color", default: "0xff3344" },
-      {
-        key: "scale",
-        label: "Scale",
-        type: "number",
-        default: 1,
-        min: 0.1,
-        max: 5,
-        step: 0.1,
-      },
       {
         key: "position",
         label: "Position [x,y,z]",
