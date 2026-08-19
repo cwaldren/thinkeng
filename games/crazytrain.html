@@ -217,6 +217,20 @@ import {
         const group = seg.mesh;
         const { length = 40, radius = 0 } = opts;
 
+        // Contact radius for the megalith, measured from the group origin. The
+        // dynamite approaches at low height, so we use the horizontal footprint
+        // (max |x|/|z| of the bounding box) rather than the farthest-corner
+        // distance, which would be inflated by the boulder's upward offset.
+        function megalithContactRadius(giantGroup) {
+          giantGroup.updateMatrixWorld(true);
+          const box = new THREE.Box3().setFromObject(giantGroup);
+          const worldPos = new THREE.Vector3();
+          giantGroup.getWorldPosition(worldPos);
+          const min = box.min.clone().sub(worldPos);
+          const max = box.max.clone().sub(worldPos);
+          return Math.max(Math.abs(min.x), Math.abs(max.x), Math.abs(min.z), Math.abs(max.z));
+        }
+
         // Place random trees, rocks, and grass along the sides of the track
         const count = 16 + Math.floor(Math.random() * 8);
         const grassTransforms = [];
@@ -403,6 +417,7 @@ import {
               type: "giant-boulder",
               s: obsS,
               hit: false,
+              contactRadius: megalithContactRadius(giantGroup),
             });
           }
         }
@@ -1140,7 +1155,10 @@ function updateDynamiteCounter() {
                     if (!obs.hit && obs.mesh.parent && obs.type === "giant-boulder") {
                       const obsWorldPos = new THREE.Vector3();
                       obs.mesh.getWorldPosition(obsWorldPos);
-                      if (dyn.mesh.position.distanceTo(obsWorldPos) < 4.0) {
+                      // Explode on contact with the megalith's surface rather than
+                      // a loose proximity bubble, using its measured footprint.
+                      const contactRadius = obs.contactRadius ?? 3.6;
+                      if (dyn.mesh.position.distanceTo(obsWorldPos) < contactRadius) {
                         dyn.landed = true;
                         break;
                       }
