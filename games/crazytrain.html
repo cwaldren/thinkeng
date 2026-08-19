@@ -37,7 +37,7 @@
         Crazy Train
       </h1>
       <p id="controls-hint" style="margin: 4px 0 0; font-size: 0.85rem; opacity: 0.7">
-        <strong>W</strong> accelerate &bull; <strong>S</strong> decelerate &bull; no input coasts &bull; <strong>Space</strong> rear camera
+        <strong>W</strong> accelerate &bull; release to decelerate &bull; <strong>Space</strong> rear camera
       </p>
     </div>
 
@@ -537,7 +537,7 @@ import {
         // Input: shared key state + tap-to-accelerate on mobile
         if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) {
           const hint = document.getElementById("controls-hint");
-          if (hint) hint.innerText = "Tap to accelerate \u2022 release to coast";
+          if (hint) hint.innerText = "Tap to accelerate \u2022 release to decelerate";
         }
         const input = new Input();
         input.mapTouchToKey("KeyW");
@@ -581,9 +581,6 @@ import {
           currentSpeed = Math.max(0, currentSpeed - effMph / 2.237);
           screenShake = Math.min(shakeCap, screenShake + shakeDelta);
         }
-
-        // Governor cutoff: once the cap is hit, throttle is neutral until W is released
-        let throttleLatched = false;
 
         // Governor caps max speed (default 70 mph); adjust with governor.setCap()
         const governor = new Governor(70);
@@ -1057,45 +1054,37 @@ function updateDynamiteCounter() {
         train.updateFn = (dt, entity, simulation) => {
           const isRearView = keys.has("Space");
 
-          // Master controller lever: W/S accelerate/decelerate, no input coasts.
-          // Governor cutoff: at the cap the throttle latches to neutral and stays
-          // dead until the player releases W (or lifts their finger on mobile).
-          if (throttleLatched) {
-            if (!keys.has("KeyW") && !keys.has("ArrowUp") && !autoThrottle) {
-              throttleLatched = false;
-            }
-          } else if (autoThrottle || keys.has("KeyW") || keys.has("ArrowUp")) {
+          // Master controller lever: W (or tap) accelerates, no W decelerates.
+          const throttling = autoThrottle || keys.has("KeyW") || keys.has("ArrowUp");
+          if (throttling) {
             // Auto Throttle pushes the lever up whenever below top speed, then
             // holds at the cap — just like a player mashing W.
             const next = currentSpeed + accelRate * dt;
             currentSpeed = governor.limit(next);
             if (autoThrottle && currentSpeed >= governor.getCapMps() - 1e-6) {
               currentSpeed = governor.getCapMps(); // hold exactly at the cap
-            } else if (currentSpeed >= governor.getCapMps() - 1e-6) {
-              throttleLatched = true; // reached the cap: cut off
             }
-          } else if (keys.has("KeyS") || keys.has("ArrowDown")) {
+          } else {
             currentSpeed = Math.max(0, currentSpeed - decelRate * dt);
           }
-          // else: neutral — maintain current velocity (coasting)
           follower.speed = currentSpeed;
 
           const speedMph = currentSpeed * 2.237;
           gauge.setValue(speedMph);
 
-          // Money is earned proportional to velocity: the faster you're going, the
-          // more you rake in per second. No minimum speed required — coasting
-          // still pays, just less than going flat out.
+          // Money is earned flat at 1/s below top speed, and scales with speed
+          // once at top speed. The smokestack emits one "$" per dollar earned.
           const atMaxSpeed = currentSpeed >= governor.getCapMps() - 1e-6;
           gauge.setMax(atMaxSpeed);
-          money += dt * speedMph * (atMaxSpeed ? 0.14 : 0.07);
+          const moneyRate = atMaxSpeed ? speedMph * 0.14 : 1.0;
+          money += dt * moneyRate;
           moneyCounter.setValue(money);
           powerups.refresh();
 
-          // Emit a "$" sign from the smokestack, with cadence scaling with speed
-          moneySpawnAccum += dt * speedMph;
-          while (moneySpawnAccum >= 14) {
-            moneySpawnAccum -= 14;
+          // Emit a "$" sign from the smokestack, one per dollar earned
+          moneySpawnAccum += dt * moneyRate;
+          while (moneySpawnAccum >= 1) {
+            moneySpawnAccum -= 1;
             spawnMoneySign();
           }
 
@@ -1251,12 +1240,13 @@ function updateDynamiteCounter() {
             camCtrl.state.offset.z = currentCameraOffsetZ;
             camCtrl.state.look.z = currentCameraLookZ;
 
-            // Visual corner tilt on train: 0 tilt below 100 mph, increasing with speed above 100 mph
+            // Visual corner tilt on train: starts at 50 mph and grows sharply with
+            // speed, so the train leans harder into corners the faster it goes.
             let targetTilt = 0;
-            if (speedMph > 100) {
-              const excessSpeed = speedMph - 100;
-              targetTilt = -dHeading * (excessSpeed / 25.0);
-              targetTilt = Math.max(-0.52, Math.min(0.52, targetTilt));
+            if (speedMph > 50) {
+              const excessSpeed = speedMph - 50;
+              targetTilt = -dHeading * (excessSpeed / 15.0);
+              targetTilt = Math.max(-0.9, Math.min(0.9, targetTilt));
             }
             currentTilt += (targetTilt - currentTilt) * Math.min(1, dt * 8);
 
@@ -1431,10 +1421,9 @@ function updateDynamiteCounter() {
           lever.visible = !isRearView;
           if (lever.visible) {
             // Tilt toward/away from the user based on throttle input.
-            // When governor-cut off, the lever snaps back to neutral.
             let targetLever = 0;
-            if (!throttleLatched && (keys.has("KeyW") || keys.has("ArrowUp"))) targetLever = -0.7; // into screen (away from user)
-            else if (!throttleLatched && (keys.has("KeyS") || keys.has("ArrowDown"))) targetLever = 0.7; // toward user
+            if (autoThrottle || keys.has("KeyW") || keys.has("ArrowUp")) targetLever = -0.7; // into screen (away from user)
+            else targetLever = 0.7; // toward user (decelerating)
             leverAngle += (targetLever - leverAngle) * Math.min(1, dt * 8);
             lever.userData.pivot.rotation.x = leverAngle;
           }
