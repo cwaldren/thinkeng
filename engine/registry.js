@@ -25,6 +25,8 @@ import {
   createDynamite,
 } from "./components.js";
 
+import { createPowerupsPreview } from "./powerups.js";
+
 export const ENTRIES = [
   {
     category: "primitive",
@@ -189,5 +191,61 @@ export const ENTRIES = [
       { key: "color", label: "Color", type: "color", default: "0xd93a2b" },
       { key: "position", label: "Position [x,y,z]", type: "vector", default: [0, 0, 0] },
     ],
+  },
+  {
+    category: "ux",
+    key: "powerups",
+    label: "Powerups",
+    desc: "3 canned powerup pills preview",
+    fn: createPowerupsPreview,
+    opts: [],
+    controls(form, getHandle) {
+      const field = (label) => {
+        const div = document.createElement("div");
+        div.className = "field";
+        const lab = document.createElement("label");
+        lab.textContent = label;
+        div.appendChild(lab);
+        form.appendChild(div);
+        return div;
+      };
+
+      // Background: transparent (none) or a solid color.
+      const bgField = field("Background");
+      const noneWrap = document.createElement("label");
+      noneWrap.style.fontSize = "0.78rem";
+      noneWrap.style.opacity = "0.8";
+      noneWrap.style.display = "flex";
+      noneWrap.style.alignItems = "center";
+      noneWrap.style.gap = "6px";
+      const noneBox = document.createElement("input");
+      noneBox.type = "checkbox";
+      noneBox.checked = true;
+      const colorInput = document.createElement("input");
+      colorInput.type = "color";
+      colorInput.value = "#334466";
+      colorInput.disabled = true;
+      const applyBg = () =>
+        getHandle()?.setBackground?.(noneBox.checked ? "none" : colorInput.value);
+      noneBox.addEventListener("change", () => {
+        colorInput.disabled = noneBox.checked;
+        applyBg();
+      });
+      colorInput.addEventListener("input", applyBg);
+      noneWrap.appendChild(noneBox);
+      noneWrap.appendChild(document.createTextNode("Transparent"));
+      bgField.appendChild(noneWrap);
+      bgField.appendChild(colorInput);
+
+      // Show icons/glyphs.
+      const iconField = field("Show icons");
+      const iconBox = document.createElement("input");
+      iconBox.type = "checkbox";
+      iconBox.checked = true;
+      iconBox.addEventListener("change", () =>
+        getHandle()?.setShowIcon?.(iconBox.checked),
+      );
+      iconField.appendChild(iconBox);
+    },
   },
 ];

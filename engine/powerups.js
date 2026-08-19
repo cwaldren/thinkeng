@@ -6,13 +6,20 @@
 // details (id, label, icon, cost, unit) to every subscriber and then
 // automatically removes it from the list.
 // The API knows nothing about what a powerup does; subscribers react to the
-// emitted name however they like. There is no "disengage" once acquired.
+// emitted item however they like. There is no "disengage" once acquired.
+//
+// Affordability is derived internally from a bank account the game registers via
+// `setBank(currentMoney)`. An item is "available" when its cost <= bank; call
+// `refresh()` for the API to recompute availability for all items and restyle
+// them. Unavailable pills are dimmed and non-interactive.
 //
 //   const powerups = createPowerups();
-//   powerups.on((name) => {
-//     if (name === "Auto Throttle") enableAutoThrottle();
+//   powerups.setBank(() => money);
+//   powerups.on(({ id }) => {
+//     if (id === "auto-throttle") enableAutoThrottle();
 //   });
-//   powerups.add({ id: "auto-throttle", label: "Auto Throttle", icon: "↑" });
+//   powerups.add({ id: "auto-throttle", label: "Auto Throttle", icon: "↑", cost: 100 });
+//   // on money change: powerups.refresh();
 
 let stylesInjected = false;
 function ensureStyles() {
@@ -33,10 +40,8 @@ function ensureStyles() {
         padding: 6px 10px 6px 8px !important;
         font-size: 0.82rem !important;
         gap: 6px !important;
-        border-radius: 0 16px 16px 0 !important;
+        border-radius: 0 !important;
         border-left: none !important;
-        width: fit-content !important;
-        max-width: 190px !important;
         margin-left: 0 !important;
       }
       .powerup-cost {
@@ -56,10 +61,31 @@ export function createPowerups(options = {}) {
     container = document.body,
     top = "82px",
     left = "16px",
+    textColor = "#000",
+    costColor = textColor,
+    background = "none", // "none" (transparent) or a CSS color string
+    showIcon = true,
+    unavailableColor = "#8a8a8a",
+    unavailableOpacity = 0.45,
+    width = "230px",
   } = options;
 
   const items = new Map();
   const listeners = new Set();
+  const state = { background, showIcon };
+  let bankGet = () => 0;
+  function resolveBg(bg) {
+    return !bg || bg === "none" ? "transparent" : bg;
+  }
+
+  function applyState(item) {
+    const unavailable = !item.available;
+    item.pill.style.opacity = unavailable ? `${unavailableOpacity}` : "1";
+    item.pill.style.pointerEvents = unavailable ? "none" : "auto";
+    item.pill.style.cursor = unavailable ? "default" : "pointer";
+    item.labelEl.style.color = unavailable ? unavailableColor : textColor;
+    if (item.costEl) item.costEl.style.color = unavailable ? unavailableColor : costColor;
+  }
 
   const panel = document.createElement("div");
   Object.assign(panel.style, {
@@ -69,7 +95,7 @@ export function createPowerups(options = {}) {
     display: "flex",
     flexDirection: "column",
     gap: "6px",
-    color: "#fff",
+    color: textColor,
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace, sans-serif',
     fontSize: "0.85rem",
     fontWeight: "700",
@@ -89,8 +115,8 @@ export function createPowerups(options = {}) {
       listeners.add(cb);
       return () => listeners.delete(cb);
     },
-    add({ id, label, icon = "", cost = 0, unit = "$", isAffordable = null } = {}) {
-      const item = { id, label, icon, cost, unit, isAffordable };
+    add({ id, label, icon = "", cost = 0, unit = "$" } = {}) {
+      const item = { id, label, icon, cost, unit, available: bankGet() >= cost, bg: resolveBg(state.background), showIcon: state.showIcon };
       const pill = document.createElement("div");
       pill.className = "powerup-pill";
       Object.assign(pill.style, {
@@ -98,18 +124,24 @@ export function createPowerups(options = {}) {
         alignItems: "center",
         gap: "10px",
         padding: "12px 20px",
-        background: "rgba(20, 22, 28, 0.20)",
-        border: "1px solid rgba(255, 255, 255, 0.15)",
-        borderRadius: "24px",
+        background: item.bg,
+        border: "1px solid rgba(255, 255, 255, 0.4)",
+        borderRadius: "0",
         cursor: "pointer",
-        backdropFilter: "blur(6px)",
         transition: "background 0.15s, transform 0.05s",
         fontSize: "1.05rem",
+        width,
+        minWidth: width,
+        boxSizing: "border-box",
         touchAction: "manipulation",
         webkitTapHighlightColor: "transparent",
       });
-      pill.addEventListener("mouseenter", () => (pill.style.background = "rgba(40, 44, 54, 0.35)"));
-      pill.addEventListener("mouseleave", () => (pill.style.background = "rgba(20, 22, 28, 0.20)"));
+      pill.addEventListener("mouseenter", () => {
+        if (item.bg === "transparent") pill.style.background = "rgba(255, 255, 255, 0.1)";
+      });
+      pill.addEventListener("mouseleave", () => {
+        pill.style.background = item.bg;
+      });
       pill.addEventListener("mousedown", () => (pill.style.transform = "scale(0.96)"));
       pill.addEventListener("mouseup", () => (pill.style.transform = "scale(1)"));
       pill.addEventListener("touchstart", () => (pill.style.transform = "scale(0.96)"), { passive: true });
@@ -123,36 +155,42 @@ export function createPowerups(options = {}) {
       iconEl.style.lineHeight = "1";
       iconEl.style.width = "1.2em";
       iconEl.style.textAlign = "center";
+      iconEl.style.display = item.showIcon ? "inline-block" : "none";
       pill.appendChild(iconEl);
+      item.iconEl = iconEl;
 
       const labelEl = document.createElement("span");
       labelEl.textContent = label;
       pill.appendChild(labelEl);
+      item.labelEl = labelEl;
 
       if (cost > 0) {
         const costEl = document.createElement("span");
         costEl.className = "powerup-cost";
         costEl.textContent = `${unit}${cost}`;
-        costEl.style.marginLeft = "6px";
+        costEl.style.marginLeft = "auto";
         costEl.style.padding = "2px 10px";
-        costEl.style.background = "rgba(231, 217, 132, 0.16)";
-        costEl.style.border = "1px solid rgba(231, 217, 132, 0.4)";
-        costEl.style.borderRadius = "14px";
-        costEl.style.color = "#e7d984";
+        costEl.style.background = "transparent";
+        costEl.style.border = "none";
+        costEl.style.borderRadius = "0";
+        costEl.style.color = costColor;
         costEl.style.fontSize = "0.95rem";
         pill.appendChild(costEl);
+        item.costEl = costEl;
       }
 
       pill.addEventListener("click", () => {
         if (!items.has(id)) return;
-        if (item.isAffordable && !item.isAffordable()) return; // can't afford yet
+        if (!item.available) return; // not enough in the bank
         items.delete(id);
         pill.remove();
         emit({ id, label, icon, cost, unit });
       });
 
-      items.set(id, { ...item, pill });
+      item.pill = pill;
+      items.set(id, item);
       panel.appendChild(pill);
+      applyState(item);
     },
     remove(id) {
       const item = items.get(id);
@@ -168,8 +206,58 @@ export function createPowerups(options = {}) {
     has(id) {
       return items.has(id);
     },
+    setBank(bank) {
+      bankGet = typeof bank === "function" ? bank : () => bank;
+    },
+    refresh() {
+      for (const item of items.values()) {
+        item.available = bankGet() >= item.cost;
+        applyState(item);
+      }
+    },
+    setBackground(bg) {
+      state.background = bg;
+      for (const item of items.values()) {
+        item.bg = resolveBg(bg);
+        item.pill.style.background = item.bg;
+      }
+    },
+    setShowIcon(on) {
+      state.showIcon = on;
+      for (const item of items.values()) {
+        if (item.iconEl) item.iconEl.style.display = on ? "inline-block" : "none";
+      }
+    },
     dispose() {
       panel.remove();
+    },
+  };
+}
+
+// Gallery preview (entities.html): renders a few canned powerup pills with no
+// interactions. `sim` is ignored; the returned handle carries the powerups API
+// plus a `dispose()` so entities.html can tear the overlay down on switch.
+export function createPowerupsPreview(sim, values = {}) {
+  const powerups = createPowerups({
+    container: document.body,
+    textColor: "#fff",
+  });
+  Object.assign(powerups.panel.style, {
+    top: "82px",
+    left: "50%",
+    transform: "translateX(-50%)",
+  });
+  powerups.setBank(200);
+  const canned = [
+    { id: "auto-throttle", label: "Auto Throttle", icon: "↑", cost: 100, unit: "$" },
+    { id: "cowcatcher", label: "Cowcatcher", icon: "▴", cost: 50, unit: "$" },
+    { id: "governor", label: "Governor", icon: "◆", cost: 1000, unit: "$" },
+  ];
+  for (const item of canned) powerups.add(item);
+  return {
+    ...powerups,
+    dispose() {
+      powerups.dispose();
     },
   };
 }

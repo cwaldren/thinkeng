@@ -196,7 +196,8 @@
       <div id="filter">
         <a href="?" data-type="">All</a
         ><a href="?type=primitive" data-type="primitive">Primitives</a
-        ><a href="?type=component" data-type="component">Components</a>
+        ><a href="?type=component" data-type="component">Components</a
+        ><a href="?type=ux" data-type="ux">UX</a>
       </div>
     </aside>
 
@@ -219,7 +220,11 @@
       //   vector: <input type=text>   (comma-separated numbers -> array)
       // ------------------------------------------------------------------
 
-      const CATEGORIES = { primitive: "Primitives", component: "Components" };
+      const CATEGORIES = {
+        primitive: "Primitives",
+        component: "Components",
+        ux: "UX",
+      };
 
       // Read ?type= from the URL; empty/unknown => combined All view.
       const urlType = new URLSearchParams(location.search).get("type");
@@ -353,6 +358,10 @@
 
       function buildControls() {
         controlsForm.innerHTML = "";
+        if (active.entry.controls) {
+          active.entry.controls(controlsForm, () => liveEntity);
+          return;
+        }
         for (const spec of active.entry.opts) {
           const field = document.createElement("div");
           field.className = "field";
@@ -408,6 +417,7 @@
 
       function rebuild() {
         if (liveEntity) sim.removeEntity(liveEntity);
+        if (liveEntity?.dispose) liveEntity.dispose();
         liveEntity = null;
         if (!active) return;
         liveEntity = active.entry.fn(sim, { ...active.values });
