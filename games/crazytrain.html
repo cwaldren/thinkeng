@@ -1692,6 +1692,23 @@
               rebaseItems(activeFlyers, nextOrigin, nextHeading);
               rebaseItems(thrownDynamites, nextOrigin, nextHeading);
               rebaseItems(activeExplosions, nextOrigin, nextHeading);
+
+              // Rebase hopping bunnies analytically
+              const ca = Math.cos(nextHeading);
+              const sa = Math.sin(nextHeading);
+
+              for (const bunny of hoppingBunnies) {
+                const dx = bunny.start.x - nextOrigin.x;
+                const dz = bunny.start.z - nextOrigin.z;
+
+                // Shift the analytical start position backward
+                bunny.start.x = dx * ca + dz * sa;
+                bunny.start.z = -dx * sa + dz * ca;
+
+                // Rotate the trajectory and facing yaw to match the new segment
+                bunny.yaw -= nextHeading;
+                bunny.dir.set(Math.sin(bunny.yaw), 0, Math.cos(bunny.yaw)).normalize();
+              }
             }
           }
 
