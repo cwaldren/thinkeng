@@ -735,7 +735,13 @@ import {
         });
         dynamiteBtn.addEventListener("mousedown", () => (dynamiteBtn.style.transform = "scale(0.96)"));
         dynamiteBtn.addEventListener("mouseup", () => (dynamiteBtn.style.transform = "scale(1)"));
-        dynamiteBtn.addEventListener("touchstart", () => (dynamiteBtn.style.transform = "scale(0.96)"), { passive: true });
+        dynamiteBtn.addEventListener("touchstart", (e) => {
+          dynamiteBtn.style.transform = "scale(0.96)";
+          throwDynamite();
+          if (e.cancelable) {
+            e.preventDefault();
+          }
+        }, { passive: false });
         dynamiteBtn.addEventListener("touchend", () => (dynamiteBtn.style.transform = "scale(1)"), { passive: true });
         dynamiteBtn.addEventListener("touchcancel", () => (dynamiteBtn.style.transform = "scale(1)"), { passive: true });
         dynamiteBtn.addEventListener("click", throwDynamite);

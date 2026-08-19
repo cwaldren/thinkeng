@@ -144,7 +144,13 @@ export function createPowerups(options = {}) {
       });
       pill.addEventListener("mousedown", () => (pill.style.transform = "scale(0.96)"));
       pill.addEventListener("mouseup", () => (pill.style.transform = "scale(1)"));
-      pill.addEventListener("touchstart", () => (pill.style.transform = "scale(0.96)"), { passive: true });
+      pill.addEventListener("touchstart", (e) => {
+        pill.style.transform = "scale(0.96)";
+        buyPowerup();
+        if (e.cancelable) {
+          e.preventDefault();
+        }
+      }, { passive: false });
       pill.addEventListener("touchend", () => (pill.style.transform = "scale(1)"), { passive: true });
       pill.addEventListener("touchcancel", () => (pill.style.transform = "scale(1)"), { passive: true });
 
@@ -179,13 +185,14 @@ export function createPowerups(options = {}) {
         item.costEl = costEl;
       }
 
-      pill.addEventListener("click", () => {
+      const buyPowerup = () => {
         if (!items.has(id)) return;
         if (!item.available) return; // not enough in the bank
         items.delete(id);
         pill.remove();
         emit({ id, label, icon, cost, unit });
-      });
+      };
+      pill.addEventListener("click", buyPowerup);
 
       item.pill = pill;
       items.set(id, item);
