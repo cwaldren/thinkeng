@@ -630,7 +630,7 @@
         input.mapTouchToKey("KeyW");
         const keys = input.keys;
 
-        let accelRate = 10; // m/s^2 acceleration (no max cap)
+        let accelRate = 5; // m/s^2 baseline acceleration (no max cap)
         const decelRate = accelRate * 2; // deceleration is twice acceleration (60 m/s^2)
         let currentSpeed = 0;
         let currentTilt = 0;
@@ -744,8 +744,8 @@
             id: "sandbox-1",
             label: "Better Accel I",
             icon: "▲",
-            cost: 5,
-            grantWhen: () => money >= 5,
+            cost: 20,
+            grantWhen: () => money >= 20,
             onBuy: () => {
               accelRate += 5;
             },
@@ -754,8 +754,8 @@
             id: "sandbox-2",
             label: "Better Accel II",
             icon: "▲",
-            cost: 50,
-            grantWhen: () => money >= 50,
+            cost: 80,
+            grantWhen: () => money >= 80,
             requires: "sandbox-1",
             onBuy: () => {
               accelRate += 5;
@@ -765,8 +765,8 @@
             id: "sandbox-3",
             label: "Better Accel III",
             icon: "▲",
-            cost: 500,
-            grantWhen: () => money >= 500,
+            cost: 250,
+            grantWhen: () => money >= 250,
             requires: "sandbox-2",
             onBuy: () => {
               accelRate += 5;
