@@ -200,6 +200,81 @@ export function createRailSegment(sim, opts = {}) {
   return seg;
 }
 
+// A cowcatcher: a fan of skinny triangular wedges arranged side by side with
+// small gaps between them, so they act as the teeth of a cowcatcher / plow.
+// Decorative (no physics) — a purely visual attachment meant to be parented
+// under another entity (e.g. a train), so it shares one group and cleans up as
+// a single composite via sim.removeEntity.
+export function createCowcatcher(sim, opts = {}) {
+  const {
+    count = 6,
+    width = 0.32,
+    gap = 0.16,
+    depth = 2.2,
+    height = 1.3,
+    color = 0x222b33,
+    position = [0, 0, 0],
+    rotation = [0, 0, 0],
+  } = opts;
+
+  const group = new THREE.Group();
+  group.position.set(position[0], position[1], position[2]);
+  group.rotation.set(rotation[0], rotation[1], rotation[2]);
+
+  const w = width / 2;
+  const d = depth / 2;
+
+  const sl = Math.hypot(depth, height);
+  const slant = [0, depth / sl, height / sl];
+
+  const v = [
+    [-w, 0, d], // 0 back-bottom-left
+    [w, 0, d], // 1 back-bottom-right
+    [-w, 0, -d], // 2 front-bottom-left
+    [w, 0, -d], // 3 front-bottom-right
+    [-w, height, -d], // 4 front-top-left
+    [w, height, -d], // 5 front-top-right
+  ];
+
+  const faces = [
+    { idx: [1, 3, 5], n: [1, 0, 0] }, // right end
+    { idx: [0, 4, 2], n: [-1, 0, 0] }, // left end
+    { idx: [0, 3, 1], n: [0, -1, 0] }, // bottom half 1
+    { idx: [0, 2, 3], n: [0, -1, 0] }, // bottom half 2
+    { idx: [2, 5, 3], n: [0, 0, -1] }, // front vertical half 1
+    { idx: [2, 4, 5], n: [0, 0, -1] }, // front vertical half 2
+    { idx: [0, 1, 5], n: slant }, // slanted half 1
+    { idx: [0, 5, 4], n: slant }, // slanted half 2
+  ];
+
+  const positions = [];
+  const normals = [];
+  for (const f of faces) {
+    for (const i of f.idx) {
+      positions.push(v[i][0], v[i][1], v[i][2]);
+      normals.push(f.n[0], f.n[1], f.n[2]);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(positions), 3));
+  geometry.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(normals), 3));
+  const material = new THREE.MeshStandardMaterial({ color });
+
+  const step = width + gap;
+  const startX = -((count - 1) * step) / 2;
+
+  for (let i = 0; i < count; i++) {
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(startX + i * step, 0, 0);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    group.add(mesh);
+  }
+
+  return sim.addEntity(group, null, null);
+}
+
 // A bundle of three long, red dynamite sticks. Decorative (no physics).
 // The sticks run parallel along the local +X axis and are arranged in the YZ
 // plane as a triangular (equilateral) packing, so viewed edge-on they form a
@@ -363,16 +438,6 @@ export function createTrain(sim, opts = {}) {
     1.6,
     railY + 0.45 + 0.68 + 0.85,
     0,
-  );
-
-  // Cowcatcher at the front, angled.
-  const cowcatcher = addMesh(
-    new THREE.BoxGeometry(0.7, 0.7, 1.7),
-    trimColor,
-    3.95,
-    railY + 0.45 + 0.35,
-    0,
-    [0, 0, -Math.PI / 4],
   );
 
   // Wheels: three axles, two sides.

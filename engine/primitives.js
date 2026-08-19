@@ -184,49 +184,42 @@ export function createTriangle(sim, opts = {}) {
   const w = width / 2;
   const d = depth / 2;
 
-  const positions = new Float32Array([
-    -w, 0,  d, // 0 back-bottom-left
-     w, 0,  d, // 1 back-bottom-right
-    -w, 0, -d, // 2 front-bottom-left
-     w, 0, -d, // 3 front-bottom-right
-    -w, height, -d, // 4 front-top-left
-     w, height, -d, // 5 front-top-right
-  ]);
-
-  // Precomputed unit normals for each face.
-  const sl = Math.hypot(depth, height);
-  const slX = 0, slY = depth / sl, slZ = height / sl; // slanted (outward up/back)
-
-  const normals = new Float32Array([
-    // right end (x = +w)
-    1, 0, 0, 1, 0, 0, 1, 0, 0,
-    // left end (x = -w)
-    -1, 0, 0, -1, 0, 0, -1, 0, 0,
-    // bottom (y = 0)
-    0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0,
-    // front vertical (z = -d)
-    0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1,
-    // slanted
-    slX, slY, slZ, slX, slY, slZ, slX, slY, slZ, slX, slY, slZ, slX, slY, slZ, slX, slY, slZ,
-  ]);
-
-  const indices = [
-    // right end
-    1, 3, 5,
-    // left end
-    0, 2, 4,
-    // bottom
-    0, 1, 3, 0, 3, 2,
-    // front vertical
-    2, 3, 5, 2, 5, 4,
-    // slanted
-    0, 1, 5, 0, 5, 4,
+  const v = [
+    [-w, 0, d], // 0 back-bottom-left
+    [w, 0, d], // 1 back-bottom-right
+    [-w, 0, -d], // 2 front-bottom-left
+    [w, 0, -d], // 3 front-bottom-right
+    [-w, height, -d], // 4 front-top-left
+    [w, height, -d], // 5 front-top-right
   ];
 
+  const sl = Math.hypot(depth, height);
+  const slant = [0, depth / sl, height / sl]; // slanted face outward (up/back)
+
+  // Each face listed with its own vertices and an outward unit normal.
+  const faces = [
+    { idx: [1, 3, 5], n: [1, 0, 0] }, // right end (x = +w)
+    { idx: [0, 4, 2], n: [-1, 0, 0] }, // left end (x = -w)
+    { idx: [0, 3, 1], n: [0, -1, 0] }, // bottom half 1
+    { idx: [0, 2, 3], n: [0, -1, 0] }, // bottom half 2
+    { idx: [2, 5, 3], n: [0, 0, -1] }, // front vertical (z = -d) half 1
+    { idx: [2, 4, 5], n: [0, 0, -1] }, // front vertical (z = -d) half 2
+    { idx: [0, 1, 5], n: slant }, // slanted half 1
+    { idx: [0, 5, 4], n: slant }, // slanted half 2
+  ];
+
+  const positions = [];
+  const normals = [];
+  for (const f of faces) {
+    for (const i of f.idx) {
+      positions.push(v[i][0], v[i][1], v[i][2]);
+      normals.push(f.n[0], f.n[1], f.n[2]);
+    }
+  }
+
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  geometry.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
-  geometry.setIndex(indices);
+  geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(positions), 3));
+  geometry.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(normals), 3));
 
   const material = new THREE.MeshStandardMaterial({ color });
   const mesh = new THREE.Mesh(geometry, material);

@@ -23,6 +23,7 @@ import {
   createRailSegment,
   createTrain,
   createDynamite,
+  createCowcatcher,
 } from "./components.js";
 
 import { createPowerupsPreview } from "./powerups.js";
@@ -177,6 +178,23 @@ export const ENTRIES = [
       { key: "cabColor", label: "Cab Color", type: "color", default: "0x8a2b22" },
       { key: "accentColor", label: "Accent Color", type: "color", default: "0x334455" },
       { key: "position", label: "Position [x,y,z]", type: "vector", default: [0, 0, 0] },
+    ],
+  },
+  {
+    category: "component",
+    key: "cowcatcher",
+    label: "Cowcatcher",
+    desc: "A fan of skinny triangular wedges (component)",
+    fn: createCowcatcher,
+    opts: [
+      { key: "count", label: "Count", type: "number", default: 6, min: 2, max: 20, step: 1 },
+      { key: "width", label: "Tooth Width", type: "number", default: 0.32, min: 0.005, max: 0.5, step: 0.01 },
+      { key: "gap", label: "Gap", type: "number", default: 0.16, min: 0, max: 0.5, step: 0.01 },
+      { key: "depth", label: "Depth", type: "number", default: 2.2, min: 0.1, max: 5, step: 0.1 },
+      { key: "height", label: "Height", type: "number", default: 1.3, min: 0.1, max: 5, step: 0.1 },
+      { key: "color", label: "Color", type: "color", default: "0x222b33" },
+      { key: "position", label: "Position [x,y,z]", type: "vector", default: [0, 0, 0] },
+      { key: "rotation", label: "Rotation [x,y,z]", type: "vector", default: [0, 0, 0] },
     ],
   },
   {
