@@ -820,9 +820,9 @@ function updateDynamiteCounter() {
             (Math.random() - 0.5) * 8,
           );
 
-          const dyn = { mesh, body, ent, landed: false };
+          const dyn = { mesh, body, ent, landed: false, exploded: false, collided: false };
           body.addEventListener("collide", () => {
-            dyn.landed = true;
+            dyn.collided = true;
           });
           thrownDynamites.add(dyn);
         }
@@ -1171,28 +1171,44 @@ function updateDynamiteCounter() {
               dyn.body.quaternion.z,
               dyn.body.quaternion.w,
             );
-            if (dyn.body.position.y <= 0.3) {
-              dyn.landed = true;
-            } else {
-              // Check in-flight direct collision / proximity with Megaliths
+
+            // Megalith collision is checked EVERY frame regardless of altitude, so
+            // a fast, flat-thrown stick can't tunnel straight through a megalith
+            // after merely grazing the ground. Uses horizontal distance so a low
+            // stick still clips the megalith's measured footprint.
+            let hitMegalith = false;
+            if (!dyn.exploded) {
               for (const sSeg of track.segments) {
                 if (sSeg.obstacles) {
                   for (const obs of sSeg.obstacles) {
                     if (!obs.hit && obs.mesh.parent && obs.type === "giant-boulder") {
                       const obsWorldPos = new THREE.Vector3();
                       obs.mesh.getWorldPosition(obsWorldPos);
-                      // Explode on contact with the megalith's surface rather than
-                      // a loose proximity bubble, using its measured footprint.
                       const contactRadius = obs.contactRadius ?? 3.6;
-                      if (dyn.mesh.position.distanceTo(obsWorldPos) < contactRadius) {
-                        dyn.landed = true;
+                      const dx = dyn.body.position.x - obsWorldPos.x;
+                      const dz = dyn.body.position.z - obsWorldPos.z;
+                      if (dx * dx + dz * dz < contactRadius * contactRadius) {
+                        dyn.exploded = true;
+                        spawnExplosion(dyn.body.position);
+                        simulation.removeEntity(dyn.ent);
+                        thrownDynamites.delete(dyn);
+                        hitMegalith = true;
                         break;
                       }
                     }
                   }
                 }
-                if (dyn.landed) break;
+                if (hitMegalith) break;
               }
+            }
+            if (hitMegalith) continue;
+
+            // Land on the ground: explode shortly after contact
+            if (dyn.body.position.y <= 0.3) {
+              dyn.landed = true;
+            }
+            if (dyn.collided) {
+              dyn.landed = true;
             }
             if (dyn.landed) {
               spawnExplosion(dyn.body.position);
