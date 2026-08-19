@@ -58,6 +58,7 @@
         createRailSegment,
         createDynamite,
         createCowcatcher,
+        createBunny,
         InfiniteTrack,
         TrackFollower,
         getLocalSpinePose,
@@ -115,6 +116,10 @@
       // Active flying obstacles launched by collisions
       const activeFlyers = new Set();
 
+      // Bunnies that have hopped off the rails; driven analytically (no physics)
+      // through a fixed number of level hops before despawning.
+      const hoppingBunnies = new Set();
+
       // Dynamite sticks thrown by the player (spawned in-cab, flown in an arc)
       const thrownDynamites = new Set();
 
@@ -125,8 +130,9 @@
       // they track with the train as track segments recycle. Items with a physics
       // `body` have their quaternion and velocity rebased too; items with only a
       // `mesh` (explosions) get just their position rebased.
-      function rebaseItems(items, origin, heading) {
-        const ca = Math.cos(heading);
+      // Index of the track segment the player spawns into; cleared of obstacles.
+      let noObstacleSegmentIndex = -1;
+      function rebaseItems(items, origin, heading) {        const ca = Math.cos(heading);
         const sa = Math.sin(heading);
         const qRebase = new CANNON.Quaternion();
         qRebase.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), -heading);
@@ -217,6 +223,10 @@
         const seg = createRailSegment(simulation, opts);
         const group = seg.mesh;
         const { length = 40, radius = 0 } = opts;
+
+        // Never place any obstacles (including bunnies) on the spawn segment so
+        // the player always gets a clear runway where they first appear.
+        const isSpawnSegment = opts.index === noObstacleSegmentIndex;
 
         // Contact radius for the megalith, measured from the group origin. The
         // dynamite approaches at low height, so we use the horizontal footprint
@@ -344,9 +354,12 @@
         // Occasional on-track obstacles (fallen trees & track boulders)
         seg.obstacles = seg.obstacles || [];
 
-        // Tiny rocks: low mass, littered right on the rails
-        const tinyCount = 1 + Math.floor(Math.random() * 3);
-        for (let i = 0; i < tinyCount; i++) {
+        // Skip every on-track obstacle and bunny on the player's spawn segment so
+        // they always get a clean, safe start.
+        if (!isSpawnSegment) {
+          // Tiny rocks: low mass, littered right on the rails
+          const tinyCount = 1 + Math.floor(Math.random() * 3);
+          for (let i = 0; i < tinyCount; i++) {
           const tS = length * (0.05 + Math.random() * 0.9);
           const tPose = getLocalSpinePose(radius, length, tS);
           const edge = (Math.random() < 0.5 ? 1 : -1) * Math.random() * 0.7;
@@ -481,6 +494,29 @@
           }
         }
 
+        // Bunnies spawn on the track at the same rate as megaliths (8%). A bunny
+        // with the train creeping below 10 mph hops off into the forest; any bunny
+        // actually struck means you did not slow down in time.
+        if (Math.random() < 0.08) {
+          const bunnyS = length * (0.3 + Math.random() * 0.4);
+          const bPose = getLocalSpinePose(radius, length, bunnyS);
+          const bunny = createBunny(simulation, {
+            position: [bPose.position.x, 0, bPose.position.z],
+            rotation: [0, -bPose.heading, 0],
+            mass: 0,
+          });
+          group.add(bunny.mesh);
+          seg.obstacles.push({
+            mesh: bunny.mesh,
+            type: "bunny",
+            s: bunnyS,
+            hit: false,
+            hopped: false,
+          });
+        }
+
+        } // end if (!isSpawnSegment)
+
         return seg;
       }
 
@@ -594,6 +630,9 @@
         // Infinite Track with straight & curved sections + roadside scenery
         const segmentLen = 40;
         const rearSegments = 3; // Keep 3 segments of track/scenery active behind the train
+        // The train starts on this segment — keep it obstacle-free (set before
+        // the track spawns its initial segments).
+        noObstacleSegmentIndex = rearSegments;
         const track = new InfiniteTrack(sim, {
           segmentLength: segmentLen,
           windowCount: 11,
@@ -1108,6 +1147,126 @@
           });
         }
 
+        // Scripted hop for a bunny that leaves the rails: it makes 5 controlled
+        // hops in the direction it faces (forward) with a small lateral drift to
+        // clear into the forest. Always stays level (bottom down) and never
+        // somersaults or hops backward. Despawns after the last hop lands.
+        function hopBunnyAside(mesh, worldPos, worldQuat, fwdDir) {
+          sim.scene.add(mesh);
+          mesh.position.copy(worldPos);
+          mesh.quaternion.copy(worldQuat);
+
+          const yaw = new THREE.Euler().setFromQuaternion(worldQuat, "YXZ").y;
+          // The bunny faces its local +Z; rotate that by its yaw to get the true
+          // world direction it's looking, and hop along that.
+          const dir = new THREE.Vector3(
+            Math.sin(yaw),
+            0,
+            Math.cos(yaw),
+          ).normalize();
+
+          hoppingBunnies.add({
+            mesh,
+            yaw,
+            dir,
+            start: worldPos.clone(),
+            t: 0,
+            hopNum: 0,
+            hops: 5,
+            duration: 0.45,
+            hopDist: 2.4,
+            hopHeight: 1.4,
+          });
+        }
+
+        // Launches a struck bunny into the air with the train's momentum so its
+        // collision bounce is visible before the screen cuts to black. Lives long
+        // enough (well past the fade) to avoid popping out mid-sequence.
+        function launchStruckBunny(mesh, worldPos, worldQuat, fwdDir, speed) {
+          sim.scene.add(mesh);
+          mesh.position.copy(worldPos);
+          mesh.quaternion.copy(worldQuat);
+
+          const body = new CANNON.Body({
+            mass: 8,
+            shape: new CANNON.Box(new CANNON.Vec3(0.45, 0.95, 0.6)),
+            linearDamping: 0.15,
+            angularDamping: 0.35,
+          });
+          body.position.set(worldPos.x, worldPos.y + 0.95, worldPos.z);
+
+          // Whipped forward and up by the impact.
+          body.velocity.set(
+            fwdDir.x * (speed * 1.4 + 6),
+            6 + speed * 0.4,
+            fwdDir.z * (speed * 1.4 + 6),
+          );
+          body.angularVelocity.set(
+            (Math.random() - 0.5) * 12,
+            (Math.random() - 0.5) * 12,
+            (Math.random() - 0.5) * 12,
+          );
+
+          sim.world.addBody(body);
+          activeFlyers.add({
+            mesh,
+            body,
+            lifetime: 8.0,
+          });
+        }
+
+        // "You monster." — if you fail to slow down and run a bunny over, the
+        // screen fades to black, the verdict fades in, then the game resets.
+        let gameOver = false;
+        function triggerYouMonster() {
+          if (gameOver) return;
+          gameOver = true;
+          currentSpeed = 0;
+          follower.speed = 0;
+
+          const overlay = document.createElement("div");
+          Object.assign(overlay.style, {
+            position: "fixed",
+            inset: "0",
+            background: "#000",
+            opacity: "0",
+            pointerEvents: "none",
+            zIndex: "200",
+            transition: "opacity 1.2s ease",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          });
+          const txt = document.createElement("div");
+          txt.textContent = "You monster! There's only one rule:";
+          Object.assign(txt.style, {
+            color: "#fff",
+            fontFamily: "serif",
+            fontSize: "3rem",
+            fontWeight: "700",
+            letterSpacing: "0.05em",
+            textAlign: "center",
+            opacity: "0",
+            transition: "opacity 1.2s ease",
+            userSelect: "none",
+          });
+          overlay.appendChild(txt);
+          document.body.appendChild(overlay);
+
+          // Fade the black in half a second after the strike, so the impact lands
+          // first before the screen cuts to the verdict.
+          setTimeout(() => (overlay.style.opacity = "1"), 500);
+          // Line 1 fades in on the black, then fades out...
+          setTimeout(() => (txt.style.opacity = "1"), 1750);
+          setTimeout(() => (txt.style.opacity = "0"), 3800);
+          // ...and the second line takes its place before the reset.
+          setTimeout(() => {
+            txt.textContent = "Always stop for bunnies.";
+            txt.style.opacity = "1";
+          }, 4600);
+          setTimeout(() => location.reload(), 6800);
+        }
+
         function shatterMegalith(obsWorldPos, baseFwdDir, baseSpeed = 15) {
           const shardOffsets = [
             [-1.2, 1.0, 0.4],
@@ -1414,6 +1573,7 @@
         const _cowcatcherWorldPos = new THREE.Vector3();
         const _rollQuat = new THREE.Quaternion();
         const _fwdDir = new THREE.Vector3();
+        const _levelAxis = new THREE.Vector3(0, 1, 0);
         const _frontLocal = new THREE.Vector3(4.0, 0.85, 0);
 
         train.updateFn = (dt, entity, simulation) => {
@@ -1581,12 +1741,20 @@
               flyer.body.position.y,
               flyer.body.position.z,
             );
-            flyer.mesh.quaternion.set(
-              flyer.body.quaternion.x,
-              flyer.body.quaternion.y,
-              flyer.body.quaternion.z,
-              flyer.body.quaternion.w,
-            );
+            if (flyer.level) {
+              // Keep the bunny's feet planted toward the ground; only yaw spins.
+              flyer.mesh.quaternion.setFromAxisAngle(
+                _levelAxis,
+                flyer.yaw,
+              );
+            } else {
+              flyer.mesh.quaternion.set(
+                flyer.body.quaternion.x,
+                flyer.body.quaternion.y,
+                flyer.body.quaternion.z,
+                flyer.body.quaternion.w,
+              );
+            }
             flyer.lifetime -= dt;
             if (flyer.lifetime <= 0) {
               simulation.scene.remove(flyer.mesh);
@@ -1600,6 +1768,35 @@
                 }
               });
               activeFlyers.delete(flyer);
+            }
+          }
+
+          // Drive the hopped bunnies: each is a parabolic arc in its facing
+          // direction. On landing it hops again until it has made 5 hops, then
+          // it despawns.
+          for (const bunny of hoppingBunnies) {
+            bunny.t += dt;
+            const p = Math.min(1, bunny.t / bunny.duration);
+            const end = bunny.start.clone().addScaledVector(bunny.dir, bunny.hopDist);
+            bunny.mesh.position.set(
+              bunny.start.x + (end.x - bunny.start.x) * p,
+              4 * bunny.hopHeight * p * (1 - p),
+              bunny.start.z + (end.z - bunny.start.z) * p,
+            );
+            bunny.mesh.quaternion.setFromAxisAngle(_levelAxis, bunny.yaw);
+
+            if (bunny.t >= bunny.duration) {
+              bunny.hopNum++;
+              if (bunny.hopNum >= bunny.hops) {
+                sim.scene.remove(bunny.mesh);
+                hoppingBunnies.delete(bunny);
+              } else {
+                // Next hop: tighter and a touch lower.
+                bunny.start.copy(end);
+                bunny.t = 0;
+                bunny.hopHeight *= 0.82;
+                bunny.duration = Math.max(0.3, bunny.duration * 0.85);
+              }
             }
           }
 
@@ -1700,8 +1897,45 @@
                     obs.mesh.getWorldPosition(_obsWorldPos);
                     const dist = _cowcatcherWorldPos.distanceTo(_obsWorldPos);
 
+                    // Bunnies that are not slowing-down-able hop off into the
+                    // forest while the train is still half a segment away and
+                    // below 10 mph, then despawn 5s later.
+                    if (obs.type === "bunny" && !obs.hopped && dist < 20) {
+                      const mph = currentSpeed * 2.237;
+                      if (mph < 10) {
+                        obs.hopped = true;
+                        obs.hit = true;
+                        obs.mesh.getWorldQuaternion(_obsWorldQuat);
+                        obs.mesh.parent.remove(obs.mesh);
+                        hopBunnyAside(
+                          obs.mesh,
+                          _obsWorldPos,
+                          _obsWorldQuat,
+                          _fwdDir,
+                        );
+                        continue;
+                      }
+                    }
+
                     if (dist < 3.0) {
                       obs.hit = true;
+
+                      // Striking a bunny that didn't hop is unforgivable: launch
+                      // it with physics so the bounce is visible, then half a
+                      // second later cut to the verdict.
+                      if (obs.type === "bunny") {
+                        obs.mesh.getWorldQuaternion(_obsWorldQuat);
+                        obs.mesh.parent.remove(obs.mesh);
+                        launchStruckBunny(
+                          obs.mesh,
+                          _obsWorldPos,
+                          _obsWorldQuat,
+                          _fwdDir,
+                          follower.speed,
+                        );
+                        setTimeout(triggerYouMonster, 500);
+                        continue;
+                      }
 
                       obs.mesh.getWorldQuaternion(_obsWorldQuat);
 

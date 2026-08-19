@@ -233,6 +233,7 @@ export class InfiniteTrack {
     let seg;
     if (this.segmentFactory) {
       seg = this.segmentFactory(this.sim, {
+        index,
         length: this.segmentLength,
         radius,
         position,

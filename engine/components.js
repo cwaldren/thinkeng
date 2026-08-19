@@ -4,7 +4,7 @@
 
 import * as THREE from "three";
 import * as CANNON from "cannon-es";
-import { createCylinder, createSphere } from "./primitives.js";
+import { createCylinder, createSphere, createBox } from "./primitives.js";
 import {
   TrackSegment,
   Track,
@@ -583,6 +583,68 @@ export function createBunny(sim, opts = {}) {
     });
     body.position.set(position[0], position[1], position[2]);
     body.quaternion.setFromEuler(rotation[0], rotation[1], rotation[2]);
+    body.updateMassProperties();
+    sim.world.addBody(body);
+    entity.body = body;
+  }
+
+  return entity;
+}
+
+// A 3D heart: two spheres form the rounded top lobes, and a box rotated 45°
+// about Z forms the bottom point. Decorative by default (mass = 0), or a simple
+// physics body if mass > 0.
+export function createHeart(sim, opts = {}) {
+  const {
+    color = 0xff3344,
+    scale = 1,
+    position = [0, 0, 0],
+    rotation = [0, 0, 0],
+    mass = 0,
+  } = opts;
+
+  const group = new THREE.Group();
+  group.position.set(position[0], position[1], position[2]);
+  group.rotation.set(rotation[0], rotation[1], rotation[2]);
+  group.scale.setScalar(scale);
+  const children = [];
+
+  // Left and right top lobes (spheres overlap at the center notch).
+  const lobeR = 0.5;
+  for (const side of [-1, 1]) {
+    const lobe = createSphere(sim, {
+      radius: lobeR,
+      color,
+      mass: 0,
+      position: [side * 0.5, 0.2, 0],
+    });
+    group.add(lobe.mesh);
+    children.push(lobe);
+  }
+
+  // Bottom point: a diamond made from a box rotated 45° about Z, tucked up into
+  // the lobes so its tip forms the heart's point.
+  const point = createBox(sim, {
+    size: [1.0, 1.0, 0.95],
+    color,
+    mass: 0,
+    position: [0, -0.45, 0],
+    rotation: [0, 0, Math.PI / 4],
+  });
+  group.add(point.mesh);
+  children.push(point);
+
+  const entity = sim.addEntity(group, null, null);
+  entity.children = children;
+
+  if (mass > 0) {
+    const body = new CANNON.Body({
+      mass,
+      shape: new CANNON.Box(new CANNON.Vec3(0.75, 0.85, 0.48)),
+      linearDamping: 0.1,
+      angularDamping: 0.2,
+    });
+    body.position.set(position[0], position[1], position[2]);
     body.updateMassProperties();
     sim.world.addBody(body);
     entity.body = body;
