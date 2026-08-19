@@ -595,7 +595,7 @@ import {
 
         // Money display below the top-left controls UI
         const moneyCounter = createMoneyCounter({
-          left: "calc(50% + 130px)",
+          left: "calc(50% + 90px)",
           bottom: "96px",
         });
         let money = 0;
@@ -663,6 +663,11 @@ import {
             requires: "governor-2",
             onBuy: () => setGovernorCap(150),
           },
+{
+            id: "big-bangs", label: "Big Bangs", icon: "💥", cost: 200,
+            grantWhen: () => money >= 200,
+            onBuy: () => { bigBangs = true; },
+          },
         ];
 
         const powerups = createPowerups();
@@ -692,6 +697,10 @@ import {
         const DYNAMITE_COST = 50;
         let dynamiteCount = 0;
         let dynamiteUnlocked = false;
+
+        // Big Bangs powerup: triples the explosion (3 spheres) and enlarges its
+        // blast radius so Megaliths are easier to hit even on near misses.
+        let bigBangs = false;
 
         // Renders the Buy Dynamite pill via the powerups framework so it shares
         // the uniform width, theme, and bank-driven availability. Re-added after
@@ -881,9 +890,11 @@ function updateDynamiteCounter() {
           }
         }
 
-        // Spawns an expanding orange explosion sphere for 200ms and shatters nearby Megaliths
+        // Spawns expanding orange explosion sphere(s) for 200ms and shatters nearby Megaliths.
+        // With Big Bangs, renders 3 spheres and a larger blast radius.
         function spawnExplosion(pos) {
-          const maxRadius = 9.0;
+          const count = bigBangs ? 3 : 1;
+          const maxRadius = bigBangs ? 14.0 : 9.0;
           const duration = 0.2; // 200ms
           const geo = new THREE.SphereGeometry(1, 24, 18);
           const mat = new THREE.MeshStandardMaterial({
@@ -894,18 +905,36 @@ function updateDynamiteCounter() {
             transparent: true,
             opacity: 0.9,
           });
-          const mesh = new THREE.Mesh(geo, mat);
-          mesh.position.set(pos.x, Math.max(pos.y, 0.5), pos.z);
-          mesh.scale.setScalar(0.1);
-          sim.scene.add(mesh);
+          const baseY = Math.max(pos.y, 0.5);
 
-          const expl = {
-            mesh,
-            age: 0,
-            duration,
-            maxRadius,
-          };
-          activeExplosions.add(expl);
+          for (let i = 0; i < count; i++) {
+            const mesh = new THREE.Mesh(geo, mat);
+            let px = pos.x, py = baseY, pz = pos.z;
+            // Sphere size and start delay: with Big Bangs, vary each sphere's
+            // radius and stagger them 100ms apart for a more interesting blast.
+            const radius = bigBangs
+              ? maxRadius * [1.0, 0.7, 0.85][i]
+              : maxRadius;
+            const delay = bigBangs ? i * 0.1 : 0;
+            if (bigBangs) {
+              // Spread the three spheres outward along the forward axis and up.
+              const off = i - 1; // -1, 0, 1
+              px = pos.x + off * 3.0;
+              py = baseY + Math.abs(off) * 1.4;
+            }
+            mesh.position.set(px, py, pz);
+            mesh.scale.setScalar(0.1);
+            sim.scene.add(mesh);
+
+            const expl = {
+              mesh,
+              age: 0,
+              delay,
+              duration,
+              maxRadius: radius,
+            };
+            activeExplosions.add(expl);
+          }
 
           // Check for Megaliths in blast radius
           const fwdDir = follower.forwardAxis.clone().applyQuaternion(train.mesh.quaternion);
@@ -915,7 +944,7 @@ function updateDynamiteCounter() {
                 if (!obs.hit && obs.mesh.parent && obs.type === "giant-boulder") {
                   const obsWorldPos = new THREE.Vector3();
                   obs.mesh.getWorldPosition(obsWorldPos);
-                  if (mesh.position.distanceTo(obsWorldPos) <= maxRadius + 3.0) {
+                  if (pos.distanceTo(obsWorldPos) <= maxRadius + 3.0) {
                     obs.hit = true;
                     obs.mesh.parent.remove(obs.mesh);
                     shatterMegalith(obsWorldPos, fwdDir, Math.max(16, follower.speed * 0.5));
@@ -1175,13 +1204,13 @@ function updateDynamiteCounter() {
           // Animate & despawn explosion spheres (expand to large radius in 200ms)
           for (const expl of activeExplosions) {
             expl.age += dt;
-            const progress = expl.age / expl.duration;
-            if (progress >= 1) {
+            const progress = (expl.age - (expl.delay ?? 0)) / expl.duration;
+            if (expl.age >= (expl.delay ?? 0) + expl.duration) {
               simulation.scene.remove(expl.mesh);
               expl.mesh.geometry?.dispose();
               expl.mesh.material?.dispose();
               activeExplosions.delete(expl);
-            } else {
+            } else if (progress > 0) {
               const currentScale = 0.1 + (expl.maxRadius - 0.1) * Math.sin((progress * Math.PI) / 2);
               expl.mesh.scale.setScalar(currentScale);
               expl.mesh.material.opacity = 0.9 * (1 - progress * 0.7);
