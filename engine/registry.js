@@ -26,6 +26,7 @@ import {
   createDynamite,
   createCowcatcher,
   createBunny,
+  createSign,
 } from "./components.js";
 
 import { createPowerupsPreview } from "./powerups.js";
@@ -695,6 +696,72 @@ export const ENTRIES = [
     fn: createBunny,
     opts: [
       { key: "color", label: "Color", type: "color", default: "0xffffff" },
+      {
+        key: "position",
+        label: "Position [x,y,z]",
+        type: "vector",
+        default: [0, 0, 0],
+      },
+      {
+        key: "rotation",
+        label: "Rotation [x,y,z]",
+        type: "vector",
+        default: [0, 0, 0],
+      },
+    ],
+  },
+  {
+    category: "component",
+    key: "sign",
+    label: "Sign",
+    desc: "A cylindrical post with a rectangular signboard (component)",
+    fn: createSign,
+    opts: [
+      {
+        key: "postHeight",
+        label: "Post Height",
+        type: "number",
+        default: 2.2,
+        min: 0.5,
+        max: 6,
+        step: 0.1,
+      },
+      {
+        key: "postRadius",
+        label: "Post Radius",
+        type: "number",
+        default: 0.12,
+        min: 0.05,
+        max: 0.5,
+        step: 0.01,
+      },
+      { key: "postColor", label: "Post Color", type: "color", default: "0x8a6d4b" },
+      {
+        key: "boardWidth",
+        label: "Board Width",
+        type: "number",
+        default: 1.6,
+        min: 0.2,
+        max: 5,
+        step: 0.1,
+      },
+      {
+        key: "boardHeight",
+        label: "Board Height",
+        type: "number",
+        default: 0.7,
+        min: 0.2,
+        max: 3,
+        step: 0.1,
+      },
+      { key: "boardColor", label: "Board Color", type: "color", default: "0xffffff" },
+      {
+        key: "text",
+        label: "Board Text",
+        type: "text",
+        default: "",
+      },
+      { key: "textColor", label: "Text Color", type: "color", default: "0x222222" },
       {
         key: "position",
         label: "Position [x,y,z]",

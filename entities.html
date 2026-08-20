@@ -175,6 +175,34 @@
         background: #12121a;
         padding: 0;
       }
+
+      #copy-config {
+        display: block;
+        width: 100%;
+        box-sizing: border-box;
+        margin-bottom: 12px;
+        padding: 7px 10px;
+        background: #4caf50;
+        border: none;
+        border-radius: 6px;
+        color: #111;
+        font-size: 0.82rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.15s ease;
+      }
+
+      #copy-config:hover {
+        background: #5cbf60;
+      }
+
+      #copy-config:active {
+        background: #3d9a40;
+      }
+
+      #copy-config.confirmed {
+        background: #33aaff;
+      }
     </style>
 
     <script type="importmap">
@@ -202,6 +230,7 @@
 
     <aside id="controls">
       <h2>Options</h2>
+      <button id="copy-config" type="button">Copy config</button>
       <div id="controls-form"></div>
     </aside>
 
@@ -331,7 +360,7 @@
           case "number":
             return Number(raw);
           case "color":
-            return parseInt(raw.slice(1), 16); // "#rrggbb" -> 0xrrggbb
+            return parseInt(String(raw).replace(/^#/, ""), 16); // #rrggbb or 0xrrggbb -> number
           case "vector":
             return String(raw)
               .split(",")
@@ -373,6 +402,10 @@
             input = document.createElement("input");
             input.type = "text";
             input.value = scaled;
+          } else if (spec.type === "text") {
+            input = document.createElement("input");
+            input.type = "text";
+            input.value = scaled;
           } else {
             input = document.createElement("input");
             input.type = "number";
@@ -400,7 +433,7 @@
         if (active && active.entry.key === entry.key) return;
         active = {
           entry,
-          values: Object.fromEntries(entry.opts.map((s) => [s.key, s.default])),
+          values: Object.fromEntries(entry.opts.map((s) => [s.key, parseValue(s, s.default)])),
         };
 
         for (const card of listEl.querySelectorAll(".card")) {
@@ -419,6 +452,39 @@
         if (!active) return;
         liveEntity = active.entry.fn(sim, { ...active.values });
       }
+
+      // Serialize the active entity's current control values into a concise,
+      // LLM-friendly format: one key=value per line, starting with the entity.
+      function serializeConfig() {
+        if (!active) return "";
+        const lines = [`entity=${active.entry.key}`];
+        if (active.entry.opts) {
+          for (const spec of active.entry.opts) {
+            let out = serializeValue(spec, active.values[spec.key]);
+            if (spec.type === "vector") out = "[" + out + "]";
+            lines.push(`${spec.key}=${out}`);
+          }
+        }
+        return lines.join("\n");
+      }
+
+      const copyBtn = document.getElementById("copy-config");
+      let copyTimer = null;
+      copyBtn.addEventListener("click", () => {
+        const text = serializeConfig();
+        navigator.clipboard
+          .writeText(text)
+          .then(() => {
+            copyBtn.textContent = "Copied!";
+            copyBtn.classList.add("confirmed");
+            clearTimeout(copyTimer);
+            copyTimer = setTimeout(() => {
+              copyBtn.textContent = "Copy config";
+              copyBtn.classList.remove("confirmed");
+            }, 1500);
+          })
+          .catch(() => {});
+      });
 
       // Populate the side list (tagged by category in the All view)
       for (const entry of entries) {

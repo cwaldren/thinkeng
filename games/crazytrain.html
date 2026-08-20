@@ -59,6 +59,7 @@
         createDynamite,
         createCowcatcher,
         createBunny,
+        createSign,
         InfiniteTrack,
         TrackFollower,
         getLocalSpinePose,
@@ -137,7 +138,11 @@
       // `mesh` (explosions) get just their position rebased.
       // Index of the track segment the player spawns into; cleared of obstacles.
       let noObstacleSegmentIndex = -1;
-      function rebaseItems(items, origin, heading) {        const ca = Math.cos(heading);
+
+      // BunnyXing powerup: marks each bunny spawn with a roadside sign.
+      let bunnyXing = false;
+      function rebaseItems(items, origin, heading) {
+        const ca = Math.cos(heading);
         const sa = Math.sin(heading);
         const qRebase = new CANNON.Quaternion();
         qRebase.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), -heading);
@@ -365,164 +370,199 @@
           // Tiny rocks: low mass, littered right on the rails
           const tinyCount = 1 + Math.floor(Math.random() * 3);
           for (let i = 0; i < tinyCount; i++) {
-          const tS = length * (0.05 + Math.random() * 0.9);
-          const tPose = getLocalSpinePose(radius, length, tS);
-          const edge = (Math.random() < 0.5 ? 1 : -1) * Math.random() * 0.7;
-          const tiny = new THREE.Mesh(sharedTinyRockGeo, sharedTinyMat);
-          tiny.scale.set(
-            0.6 + Math.random() * 0.9,
-            0.55 + Math.random() * 0.7,
-            0.6 + Math.random() * 0.9,
-          );
-          tiny.position.set(tPose.position.x, 0.28, tPose.position.z + edge);
-          tiny.rotation.set(
-            Math.random() * Math.PI,
-            Math.random() * Math.PI,
-            Math.random() * Math.PI,
-          );
-          group.add(tiny);
-          seg.obstacles.push({
-            mesh: tiny,
-            type: "tiny-rock",
-            s: tS,
-            hit: false,
-          });
-        }
-
-        if (Math.random() < 0.65) {
-          const obsS = length * (0.3 + Math.random() * 0.4);
-          const localPose = getLocalSpinePose(radius, length, obsS);
-          const randObs = Math.random();
-
-          if (randObs < 0.33) {
-            // Fallen Tree across the rails
-            const logLen = 3.8 + Math.random() * 1.6;
-            const logMesh = new THREE.Mesh(
-              new THREE.CylinderGeometry(0.35, 0.42, logLen, 6),
-              sharedLogMat,
+            const tS = length * (0.05 + Math.random() * 0.9);
+            const tPose = getLocalSpinePose(radius, length, tS);
+            const edge = (Math.random() < 0.5 ? 1 : -1) * Math.random() * 0.7;
+            const tiny = new THREE.Mesh(sharedTinyRockGeo, sharedTinyMat);
+            tiny.scale.set(
+              0.6 + Math.random() * 0.9,
+              0.55 + Math.random() * 0.7,
+              0.6 + Math.random() * 0.9,
             );
-            logMesh.rotation.z = Math.PI / 2;
-
-            const logGroup = new THREE.Group();
-            logGroup.position.set(
-              localPose.position.x,
-              0.55,
-              localPose.position.z,
-            );
-            logGroup.rotation.y =
-              -localPose.heading + Math.PI / 2 + (Math.random() - 0.5) * 0.4;
-            logGroup.add(logMesh);
-
-            const branch = new THREE.Mesh(sharedBranchGeo, sharedBranchMat);
-            branch.position.set(logLen / 2 - 0.2, 0.35, 0);
-            branch.rotation.z = -Math.PI / 3;
-            logGroup.add(branch);
-
-            group.add(logGroup);
-            seg.obstacles.push({
-              mesh: logGroup,
-              type: "log",
-              logLen,
-              s: obsS,
-              hit: false,
-            });
-          } else if (randObs < 0.55) {
-            // Regular Track Boulder
-            const boulder = new THREE.Mesh(sharedBoulderGeo, sharedBoulderMat);
-            boulder.scale.set(
-              1.1 + Math.random() * 0.3,
-              0.75 + Math.random() * 0.25,
-              1.1 + Math.random() * 0.3,
-            );
-            boulder.position.set(
-              localPose.position.x,
-              0.85,
-              localPose.position.z,
-            );
-            boulder.rotation.set(
+            tiny.position.set(tPose.position.x, 0.28, tPose.position.z + edge);
+            tiny.rotation.set(
               Math.random() * Math.PI,
               Math.random() * Math.PI,
-              0,
-            );
-
-            group.add(boulder);
-            seg.obstacles.push({
-              mesh: boulder,
-              type: "boulder",
-              s: obsS,
-              hit: false,
-            });
-          } else if (randObs < 0.63) {
-            // Massive Giant Megalith Boulder (towering monolithic mountain rock)
-            const giantGroup = new THREE.Group();
-            giantGroup.position.set(
-              localPose.position.x,
-              0,
-              localPose.position.z,
-            );
-            giantGroup.rotation.y =
-              -localPose.heading + (Math.random() - 0.5) * 0.5;
-
-            const mainRock = new THREE.Mesh(sharedGiantMainGeo, sharedGiantMat);
-            mainRock.scale.set(1.4, 1.6, 1.3);
-            mainRock.position.set(0, 2.6, 0);
-            mainRock.rotation.set(
-              Math.random() * 0.5,
               Math.random() * Math.PI,
-              0,
             );
-            giantGroup.add(mainRock);
-
-            // Per-megalith material clone so its color can signal danger vs. safe.
-            const giantMat = sharedGiantMat.clone();
-
-            // Side support boulders forming a massive barrier
-            const subRock1 = new THREE.Mesh(sharedGiantSub1Geo, giantMat);
-            subRock1.position.set(-1.4, 1.3, 0.4);
-            giantGroup.add(subRock1);
-
-            const subRock2 = new THREE.Mesh(sharedGiantSub2Geo, giantMat);
-            subRock2.position.set(1.4, 1.2, -0.3);
-            giantGroup.add(subRock2);
-
-            mainRock.material = giantMat;
-
-            group.add(giantGroup);
+            group.add(tiny);
             seg.obstacles.push({
-              mesh: giantGroup,
-              type: "giant-boulder",
-              s: obsS,
+              mesh: tiny,
+              type: "tiny-rock",
+              s: tS,
               hit: false,
-              mat: giantMat,
-              contactRadius: megalithContactRadius(giantGroup),
             });
           }
-        }
 
-        // Bunnies spawn on the track at the same rate as megaliths (8%). A bunny
-        // with the train creeping below 10 mph hops off into the forest; any bunny
-        // actually struck means you did not slow down in time.
-        if (Math.random() < 0.08) {
-          const bunnyS = length * (0.3 + Math.random() * 0.4);
-          const bPose = getLocalSpinePose(radius, length, bunnyS);
-          // 50% of bunnies face the other way (away from the oncoming train).
-          const faceOtherWay = Math.random() < 0.5;
-          const bunny = createBunny(simulation, {
-            position: [bPose.position.x, 0, bPose.position.z],
-            rotation: [0, -bPose.heading + (faceOtherWay ? Math.PI : 0), 0],
-            mass: 0,
-          });
-          group.add(bunny.mesh);
-          seg.obstacles.push({
-            mesh: bunny.mesh,
-            type: "bunny",
-            s: bunnyS,
-            hit: false,
-            hopped: false,
-            faceOtherWay,
-          });
-        }
+          if (Math.random() < 0.65) {
+            const obsS = length * (0.3 + Math.random() * 0.4);
+            const localPose = getLocalSpinePose(radius, length, obsS);
+            const randObs = Math.random();
 
+            if (randObs < 0.33) {
+              // Fallen Tree across the rails
+              const logLen = 3.8 + Math.random() * 1.6;
+              const logMesh = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.35, 0.42, logLen, 6),
+                sharedLogMat,
+              );
+              logMesh.rotation.z = Math.PI / 2;
+
+              const logGroup = new THREE.Group();
+              logGroup.position.set(
+                localPose.position.x,
+                0.55,
+                localPose.position.z,
+              );
+              logGroup.rotation.y =
+                -localPose.heading + Math.PI / 2 + (Math.random() - 0.5) * 0.4;
+              logGroup.add(logMesh);
+
+              const branch = new THREE.Mesh(sharedBranchGeo, sharedBranchMat);
+              branch.position.set(logLen / 2 - 0.2, 0.35, 0);
+              branch.rotation.z = -Math.PI / 3;
+              logGroup.add(branch);
+
+              group.add(logGroup);
+              seg.obstacles.push({
+                mesh: logGroup,
+                type: "log",
+                logLen,
+                s: obsS,
+                hit: false,
+              });
+            } else if (randObs < 0.55) {
+              // Regular Track Boulder
+              const boulder = new THREE.Mesh(
+                sharedBoulderGeo,
+                sharedBoulderMat,
+              );
+              boulder.scale.set(
+                1.1 + Math.random() * 0.3,
+                0.75 + Math.random() * 0.25,
+                1.1 + Math.random() * 0.3,
+              );
+              boulder.position.set(
+                localPose.position.x,
+                0.85,
+                localPose.position.z,
+              );
+              boulder.rotation.set(
+                Math.random() * Math.PI,
+                Math.random() * Math.PI,
+                0,
+              );
+
+              group.add(boulder);
+              seg.obstacles.push({
+                mesh: boulder,
+                type: "boulder",
+                s: obsS,
+                hit: false,
+              });
+            } else if (randObs < 0.63) {
+              // Massive Giant Megalith Boulder (towering monolithic mountain rock)
+              const giantGroup = new THREE.Group();
+              giantGroup.position.set(
+                localPose.position.x,
+                0,
+                localPose.position.z,
+              );
+              giantGroup.rotation.y =
+                -localPose.heading + (Math.random() - 0.5) * 0.5;
+
+              const mainRock = new THREE.Mesh(
+                sharedGiantMainGeo,
+                sharedGiantMat,
+              );
+              mainRock.scale.set(1.4, 1.6, 1.3);
+              mainRock.position.set(0, 2.6, 0);
+              mainRock.rotation.set(
+                Math.random() * 0.5,
+                Math.random() * Math.PI,
+                0,
+              );
+              giantGroup.add(mainRock);
+
+              // Per-megalith material clone so its color can signal danger vs. safe.
+              const giantMat = sharedGiantMat.clone();
+
+              // Side support boulders forming a massive barrier
+              const subRock1 = new THREE.Mesh(sharedGiantSub1Geo, giantMat);
+              subRock1.position.set(-1.4, 1.3, 0.4);
+              giantGroup.add(subRock1);
+
+              const subRock2 = new THREE.Mesh(sharedGiantSub2Geo, giantMat);
+              subRock2.position.set(1.4, 1.2, -0.3);
+              giantGroup.add(subRock2);
+
+              mainRock.material = giantMat;
+
+              group.add(giantGroup);
+              seg.obstacles.push({
+                mesh: giantGroup,
+                type: "giant-boulder",
+                s: obsS,
+                hit: false,
+                mat: giantMat,
+                contactRadius: megalithContactRadius(giantGroup),
+              });
+            }
+          }
+
+          // Bunnies spawn on the track at the same rate as megaliths (8%). A bunny
+          // with the train creeping below 10 mph hops off into the forest; any bunny
+          // actually struck means you did not slow down in time.
+          if (Math.random() < 0.08) {
+            const bunnyS = length * (0.3 + Math.random() * 0.4);
+            const bPose = getLocalSpinePose(radius, length, bunnyS);
+            // 50% of bunnies face the other way (away from the oncoming train).
+            const faceOtherWay = Math.random() < 0.5;
+            const bunny = createBunny(simulation, {
+              position: [bPose.position.x, 0, bPose.position.z],
+              rotation: [0, -bPose.heading + (faceOtherWay ? Math.PI : 0), 0],
+              mass: 0,
+            });
+            group.add(bunny.mesh);
+            seg.obstacles.push({
+              mesh: bunny.mesh,
+              type: "bunny",
+              s: bunnyS,
+              hit: false,
+              hopped: false,
+              faceOtherWay,
+            });
+
+            // BunnyXing powerup: post a "bunny!" sign ahead of the bunny so the
+            // player sees the sign first. Place it one segment before the bunny's
+            // spawn (at the previous segment's area, off to the left of the track).
+            if (bunnyXing) {
+              const entryPose = getLocalSpinePose(radius, length, 0);
+              const perp = {
+                x: -Math.sin(entryPose.heading),
+                z: Math.cos(entryPose.heading),
+              };
+              const side = 1;
+              const off = 2.0;
+              const sign = createSign(sim, {
+                postHeight: 3,
+                postRadius: 0.12,
+                postColor: 0x591b18,
+                boardWidth: 1.6,
+                boardHeight: 0.7,
+                boardColor: 0xe00011,
+                text: "bunny!",
+                textColor: 0xfffdf1,
+                position: [
+                  entryPose.position.x - length + perp.x * off * side,
+                  0,
+                  entryPose.position.z + perp.z * off * side,
+                ],
+                rotation: [0, -entryPose.heading + Math.PI * 1.5, 0],
+              });
+              group.add(sign.mesh);
+            }
+          }
         } // end if (!isSpawnSegment)
 
         return seg;
@@ -789,7 +829,7 @@
           },
           {
             id: "sandbox-1",
-            label: "Better Accel I",
+            label: "Accel I",
             icon: "▲",
             cost: 20,
             grantWhen: () => money >= 20,
@@ -799,7 +839,7 @@
           },
           {
             id: "sandbox-2",
-            label: "Better Accel II",
+            label: "Accel II",
             icon: "▲",
             cost: 80,
             grantWhen: () => money >= 80,
@@ -810,7 +850,7 @@
           },
           {
             id: "sandbox-3",
-            label: "Better Accel III",
+            label: "Accel III",
             icon: "▲",
             cost: 250,
             grantWhen: () => money >= 250,
@@ -821,7 +861,7 @@
           },
           {
             id: "governor-1",
-            label: "Governor I",
+            label: "Speed I",
             icon: "◆",
             cost: 100,
             grantWhen: () => money >= 100,
@@ -829,7 +869,7 @@
           },
           {
             id: "governor-2",
-            label: "Governor II",
+            label: "Speed II",
             icon: "◆",
             cost: 200,
             grantWhen: () => money >= 200,
@@ -838,7 +878,7 @@
           },
           {
             id: "governor-3",
-            label: "Governor III",
+            label: "Speed III",
             icon: "◆",
             cost: 300,
             grantWhen: () => money >= 300,
@@ -873,6 +913,16 @@
             grantWhen: () => money >= 200,
             onBuy: () => {
               goldenBoulders = true;
+            },
+          },
+          {
+            id: "bunny-xing",
+            label: "BunnyXing",
+            icon: "🐰",
+            cost: 50,
+            grantWhen: () => money >= 50,
+            onBuy: () => {
+              bunnyXing = true;
             },
           },
         ];
@@ -1201,7 +1251,12 @@
         // Adds the bunny to the world and begins its scripted hop. Hops in the
         // direction it faces so it clears into the forest rather than back toward
         // the train. `moneyAsFirstHeart` replaces the first heart with the "$" sign.
-        function beginBunnyHop(mesh, worldPos, worldQuat, moneyAsFirstHeart = false) {
+        function beginBunnyHop(
+          mesh,
+          worldPos,
+          worldQuat,
+          moneyAsFirstHeart = false,
+        ) {
           sim.scene.add(mesh);
           mesh.position.copy(worldPos);
           mesh.quaternion.copy(worldQuat);
@@ -1770,7 +1825,9 @@
 
                 // Rotate the trajectory and facing yaw to match the new segment
                 bunny.yaw -= nextHeading;
-                bunny.dir.set(Math.sin(bunny.yaw), 0, Math.cos(bunny.yaw)).normalize();
+                bunny.dir
+                  .set(Math.sin(bunny.yaw), 0, Math.cos(bunny.yaw))
+                  .normalize();
               }
             }
           }
@@ -1865,10 +1922,7 @@
             );
             if (flyer.level) {
               // Keep the bunny's feet planted toward the ground; only yaw spins.
-              flyer.mesh.quaternion.setFromAxisAngle(
-                _levelAxis,
-                flyer.yaw,
-              );
+              flyer.mesh.quaternion.setFromAxisAngle(_levelAxis, flyer.yaw);
             } else {
               flyer.mesh.quaternion.set(
                 flyer.body.quaternion.x,
@@ -1899,7 +1953,9 @@
           for (const bunny of hoppingBunnies) {
             bunny.t += dt;
             const p = Math.min(1, bunny.t / bunny.duration);
-            const end = bunny.start.clone().addScaledVector(bunny.dir, bunny.hopDist);
+            const end = bunny.start
+              .clone()
+              .addScaledVector(bunny.dir, bunny.hopDist);
             bunny.mesh.position.set(
               bunny.start.x + (end.x - bunny.start.x) * p,
               4 * bunny.hopHeight * p * (1 - p),

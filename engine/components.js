@@ -344,6 +344,86 @@ export function createDynamite(sim, opts = {}) {
   return entity;
 }
 
+// A simple sign: a cylindrical post with a rectangular signboard on top.
+// Decorative (no physics). Composes createCylinder + createBox primitives.
+// The board's front face (local +Z) can render text from a canvas texture.
+export function createSign(sim, opts = {}) {
+  const {
+    postHeight = 2.2,
+    postRadius = 0.12,
+    postColor = 0x8a6d4b,
+    boardWidth = 1.6,
+    boardHeight = 0.7,
+    boardThickness = 0.1,
+    boardColor = 0xffffff,
+    text = "",
+    textColor = 0x222222,
+    position = [0, 0, 0],
+    rotation = [0, 0, 0],
+  } = opts;
+
+  const group = new THREE.Group();
+  group.position.set(position[0], position[1], position[2]);
+  group.rotation.set(rotation[0], rotation[1], rotation[2]);
+  const children = [];
+
+  const post = createCylinder(sim, {
+    radiusTop: postRadius,
+    radiusBottom: postRadius,
+    height: postHeight,
+    color: postColor,
+    mass: 0,
+    position: [0, postHeight / 2, 0],
+    radialSegments: 12,
+  });
+  group.add(post.mesh);
+  children.push(post);
+
+  const board = createBox(sim, {
+    size: [boardWidth, boardHeight, boardThickness],
+    color: boardColor,
+    mass: 0,
+    position: [0, postHeight + boardHeight / 2, 0],
+  });
+  group.add(board.mesh);
+  children.push(board);
+
+  if (text) {
+    const canvas = document.createElement("canvas");
+    const px = 64;
+    canvas.width = Math.round(boardWidth * px);
+    canvas.height = Math.round(boardHeight * px);
+    const ctx = canvas.getContext("2d");
+    const boardHex = Number(boardColor).toString(16).padStart(6, "0");
+    const textHex = Number(textColor).toString(16).padStart(6, "0");
+    ctx.fillStyle = `#${boardHex}`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = `#${textHex}`;
+    ctx.font = `bold ${Math.round(canvas.height * 0.6)}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+
+    const textMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(boardWidth, boardHeight),
+      new THREE.MeshBasicMaterial({ map: texture }),
+    );
+    textMesh.position.set(
+      0,
+      postHeight + boardHeight / 2,
+      boardThickness / 2 + 0.001,
+    );
+    group.add(textMesh);
+  }
+
+  const entity = sim.addEntity(group, null, null);
+  entity.children = children;
+  return entity;
+}
+
 // A simple steam locomotive composite. Travels along its local +X axis (matching
 // the spine direction used by createRailSegment, so local +X is "forward").
 // Built from plain Three meshes with no physics body — it is driven analytically
