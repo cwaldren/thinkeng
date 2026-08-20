@@ -855,6 +855,26 @@
               bigBangs = true;
             },
           },
+          {
+            id: "golden-rocks",
+            label: "Golden Rocks",
+            icon: "🪨",
+            cost: 50,
+            grantWhen: () => money >= 50,
+            onBuy: () => {
+              goldenRocks = true;
+            },
+          },
+          {
+            id: "golden-boulders",
+            label: "Golden Boulders",
+            icon: "🪨",
+            cost: 200,
+            grantWhen: () => money >= 200,
+            onBuy: () => {
+              goldenBoulders = true;
+            },
+          },
         ];
 
         const powerups = createPowerups();
@@ -888,6 +908,11 @@
         // Big Bangs powerup: triples the explosion (3 spheres) and enlarges its
         // blast radius so Megaliths are easier to hit even on near misses.
         let bigBangs = false;
+
+        // Golden Rocks powerup: hitting a tiny rock awards $1 each.
+        let goldenRocks = false;
+        // Golden Boulders powerup: hitting a (non-megalith) boulder awards $5.
+        let goldenBoulders = false;
 
         // Renders the Buy Dynamite pill via the powerups framework so it shares
         // the uniform width, theme, and bank-driven availability. Re-added after
@@ -1159,14 +1184,29 @@
         // hops in the direction it faces (forward) with a small lateral drift to
         // clear into the forest. Always stays level (bottom down) and never
         // somersaults or hops backward. Despawns after the last hop lands.
-        function hopBunnyAside(mesh, worldPos, worldQuat, fwdDir) {
+        // Reward the player for stopping: grant $20 and show a "$" shooting up
+        // from the bunny's head (in place of the first heart) as the bunny
+        // immediately hops away streaming hearts. The bunny enters the hopping
+        // set at once so it stays correctly rebased with the world.
+        function rewardAndHopBunny(mesh, worldPos, worldQuat) {
+          money += 20;
+          moneyCounter.setValue(money);
+          powerups.refresh();
+
+          // The "$" takes the place of the first heart, so skip that first one.
+          spawnBunnyMoneySign(worldPos);
+          beginBunnyHop(mesh, worldPos, worldQuat, true);
+        }
+
+        // Adds the bunny to the world and begins its scripted hop. Hops in the
+        // direction it faces so it clears into the forest rather than back toward
+        // the train. `moneyAsFirstHeart` replaces the first heart with the "$" sign.
+        function beginBunnyHop(mesh, worldPos, worldQuat, moneyAsFirstHeart = false) {
           sim.scene.add(mesh);
           mesh.position.copy(worldPos);
           mesh.quaternion.copy(worldQuat);
 
           const yaw = new THREE.Euler().setFromQuaternion(worldQuat, "YXZ").y;
-          // Hop along the bunny's actual facing (already flipped at spawn), so it
-          // clears into the forest rather than hopping back toward the train.
           const hopYaw = yaw;
           // The bunny faces its local +Z; rotate that by its yaw to get the true
           // world direction it's looking, and hop along that.
@@ -1188,6 +1228,7 @@
             hopDist: 2.4,
             hopHeight: 1.4,
             heartAccum: 0,
+            suppressFirstHeart: moneyAsFirstHeart,
           });
         }
 
@@ -1244,7 +1285,7 @@
             opacity: "0",
             pointerEvents: "none",
             zIndex: "200",
-            transition: "opacity 1.2s ease",
+            transition: "opacity 0.6s ease",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -1259,24 +1300,24 @@
             letterSpacing: "0.05em",
             textAlign: "center",
             opacity: "0",
-            transition: "opacity 1.2s ease",
+            transition: "opacity 0.6s ease",
             userSelect: "none",
           });
           overlay.appendChild(txt);
           document.body.appendChild(overlay);
 
-          // Fade the black in half a second after the strike, so the impact lands
+          // Fade the black in a quarter second after the strike, so the impact lands
           // first before the screen cuts to the verdict.
-          setTimeout(() => (overlay.style.opacity = "1"), 500);
+          setTimeout(() => (overlay.style.opacity = "1"), 250);
           // Line 1 fades in on the black, then fades out...
-          setTimeout(() => (txt.style.opacity = "1"), 1750);
-          setTimeout(() => (txt.style.opacity = "0"), 3800);
+          setTimeout(() => (txt.style.opacity = "1"), 875);
+          setTimeout(() => (txt.style.opacity = "0"), 1900);
           // ...and the second line takes its place before the reset.
           setTimeout(() => {
             txt.textContent = "Always stop for bunnies.";
             txt.style.opacity = "1";
-          }, 4600);
-          setTimeout(() => location.reload(), 6800);
+          }, 2300);
+          setTimeout(() => location.reload(), 3400);
         }
 
         function shatterMegalith(obsWorldPos, baseFwdDir, baseSpeed = 15) {
@@ -1547,6 +1588,28 @@
           heart.rotation.y = yaw + Math.PI;
           sim.scene.add(heart);
           bunnyHearts.push(heart);
+        }
+
+        // A "$" sprite that shoots straight up from the bunny's head in world
+        // space (not attached to the train), then fades. Used to flash the $20
+        // reward for stopping before the bunny hops away.
+        const bunnyMoneySigns = [];
+        const BUNNY_MONEY_LIFETIME = 1.0;
+
+        function spawnBunnyMoneySign(position) {
+          const sprite = new THREE.Sprite(
+            new THREE.SpriteMaterial({
+              map: moneyTexture,
+              transparent: true,
+              depthTest: false,
+              opacity: 1,
+            }),
+          );
+          sprite.position.set(position.x, position.y + 1.6, position.z);
+          sprite.scale.set(2.8, 2.8, 2.8);
+          sprite.userData.age = 0;
+          sim.scene.add(sprite);
+          bunnyMoneySigns.push(sprite);
         }
 
         // Red "-$X" that flashes at dead-center screen and flies up like the
@@ -1849,6 +1912,11 @@
             bunny.heartAccum += dt;
             while (bunny.heartAccum >= 0.22) {
               bunny.heartAccum -= 0.22;
+              // The reward "$" replaces the first heart, so skip it.
+              if (bunny.suppressFirstHeart) {
+                bunny.suppressFirstHeart = false;
+                continue;
+              }
               spawnBunnyHeart(bunny.mesh.position, bunny.yaw);
             }
 
@@ -1882,6 +1950,20 @@
               sim.scene.remove(heart);
               heart.material.dispose();
               bunnyHearts.splice(i, 1);
+            }
+          }
+
+          // Animate the bunny's reward "$" signs: shoot straight up and fade.
+          for (let i = bunnyMoneySigns.length - 1; i >= 0; i--) {
+            const sign = bunnyMoneySigns[i];
+            sign.userData.age += dt;
+            const t = sign.userData.age / BUNNY_MONEY_LIFETIME;
+            sign.position.y += 3.0 * dt;
+            sign.material.opacity = 1 - t;
+            if (t >= 1) {
+              sim.scene.remove(sign);
+              sign.material.dispose();
+              bunnyMoneySigns.splice(i, 1);
             }
           }
 
@@ -1992,11 +2074,10 @@
                         obs.hit = true;
                         obs.mesh.getWorldQuaternion(_obsWorldQuat);
                         obs.mesh.parent.remove(obs.mesh);
-                        hopBunnyAside(
+                        rewardAndHopBunny(
                           obs.mesh,
                           _obsWorldPos,
                           _obsWorldQuat,
-                          _fwdDir,
                         );
                         continue;
                       }
@@ -2072,6 +2153,16 @@
                       obs.mesh.position.copy(_obsWorldPos);
                       obs.mesh.quaternion.copy(_obsWorldQuat);
 
+                      // Knock a tiny rock aside with Golden Rocks active: turn it
+                      // golden (clone so other rocks stay gray).
+                      if (obs.type === "tiny-rock" && goldenRocks) {
+                        obs.mesh.material = sharedTinyMat.clone();
+                        obs.mesh.material.color.set(0xffc940);
+                      } else if (obs.type === "boulder" && goldenBoulders) {
+                        obs.mesh.material = sharedBoulderMat.clone();
+                        obs.mesh.material.color.set(0xffc940);
+                      }
+
                       let body;
                       if (obs.type === "log") {
                         body = new CANNON.Body({
@@ -2141,12 +2232,26 @@
                           0.08,
                           0.15,
                         );
-                      } else {
+                        // Golden Rocks: each tiny rock knocked aside is worth $1
+                        if (goldenRocks) {
+                          money += 1;
+                          moneyCounter.setValue(money);
+                          powerups.refresh();
+                          spawnMoneySign();
+                        }
+                      } else if (obs.type === "boulder") {
                         applyImpact(
                           Math.max(14.0, currentSpeed * 0.45),
                           0.55,
                           0.75,
                         );
+                        // Golden Boulders: each (non-megalith) boulder is worth $5
+                        if (goldenBoulders) {
+                          money += 5;
+                          moneyCounter.setValue(money);
+                          powerups.refresh();
+                          spawnMoneySign();
+                        }
                       }
                       follower.speed = currentSpeed;
 
