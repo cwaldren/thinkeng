@@ -63,6 +63,7 @@ export function createPowerups(options = {}) {
     left = "16px",
     textColor = "#000",
     costColor = textColor,
+    borderColor = "#000",
     background = "none", // "none" (transparent) or a CSS color string
     showIcon = true,
     unavailableColor = "#8a8a8a",
@@ -136,7 +137,7 @@ export function createPowerups(options = {}) {
         gap: "10px",
         padding: "12px 20px",
         background: item.bg,
-        border: "1px solid rgba(255, 255, 255, 0.4)",
+        border: `1px solid ${borderColor}`,
         borderRadius: "0",
         cursor: "pointer",
         transition: "background 0.15s, transform 0.05s",
