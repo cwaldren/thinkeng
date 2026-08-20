@@ -162,7 +162,7 @@ export function createGauge(options = {}) {
         fill: "rgba(255,255,255,0.9)",
         "font-size": "7.5",
         "font-weight": "900",
-        "font-family": 'monospace, -apple-system, sans-serif',
+        "font-family": '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
       },
       body,
     );
@@ -276,7 +276,7 @@ export function createMoneyCounter(options = {}) {
     border,
     color: options.color ?? "#e7d984",
     fontFamily:
-      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace, sans-serif',
+      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     fontSize: size,
     fontWeight: "900",
     lineHeight: "1",

@@ -9,7 +9,7 @@
         margin: 0;
         overflow: hidden;
         background: #111116;
-        font-family: sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       }
       #ui {
         position: absolute;
@@ -31,7 +31,7 @@
         border: none;
         border-radius: 8px;
         cursor: pointer;
-        font-family: monospace, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         font-size: 1.3rem;
         font-weight: 900;
         line-height: 1.15;
@@ -1612,7 +1612,7 @@
         moneyCanvas.width = moneyCanvas.height = 64;
         const moneyCtx = moneyCanvas.getContext("2d");
         moneyCtx.fillStyle = "#e7d984";
-        moneyCtx.font = "bold 46px sans-serif";
+        moneyCtx.font = 'bold 46px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
         moneyCtx.textAlign = "center";
         moneyCtx.textBaseline = "middle";
         moneyCtx.fillText("$", 32, 32);
@@ -1704,7 +1704,8 @@
             top: "50%",
             transform: "translate(-50%, -50%)",
             color: "#ff4444",
-            fontFamily: "monospace, sans-serif",
+            fontFamily:
+              '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
             fontSize: "2.4rem",
             fontWeight: "900",
             textShadow: "0 0 12px rgba(255,0,0,0.7)",

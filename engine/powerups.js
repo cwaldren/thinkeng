@@ -100,7 +100,7 @@ export function createPowerups(options = {}) {
     gap: "6px",
     color: textColor,
     fontFamily:
-      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace, sans-serif',
+      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     fontSize: "0.85rem",
     fontWeight: "700",
     pointerEvents: "auto",
