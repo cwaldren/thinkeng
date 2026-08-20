@@ -17,6 +17,7 @@
         left: 16px;
         color: #fff;
         pointer-events: none;
+        transition: opacity 1s ease;
       }
       #dynamite-btn {
         position: fixed;
@@ -749,6 +750,22 @@
         const input = new Input();
         input.mapTouchToKey("KeyW");
         const keys = input.keys;
+
+        // Hide title & control hints and slide powerups to top after 10s of play time
+        let playStarted = false;
+        function onFirstInteraction() {
+          if (playStarted) return;
+          playStarted = true;
+          window.removeEventListener("keydown", onFirstInteraction);
+          window.removeEventListener("pointerdown", onFirstInteraction);
+          setTimeout(() => {
+            const uiEl = document.getElementById("ui");
+            if (uiEl) uiEl.style.opacity = "0";
+            if (powerups?.panel) powerups.panel.style.top = "16px";
+          }, 10000);
+        }
+        window.addEventListener("keydown", onFirstInteraction);
+        window.addEventListener("pointerdown", onFirstInteraction);
 
         let accelRate = 5; // m/s^2 baseline acceleration (no max cap)
         const decelRate = accelRate * 2; // deceleration is twice acceleration (60 m/s^2)

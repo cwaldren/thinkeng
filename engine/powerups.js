@@ -90,6 +90,7 @@ export function createPowerups(options = {}) {
   }
 
   const panel = document.createElement("div");
+  panel.className = "powerups-panel";
   Object.assign(panel.style, {
     position: "fixed",
     top,
@@ -105,6 +106,7 @@ export function createPowerups(options = {}) {
     pointerEvents: "auto",
     userSelect: "none",
     zIndex: "100",
+    transition: "top 1s ease",
   });
   container.appendChild(panel);
 
