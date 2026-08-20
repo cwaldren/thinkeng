@@ -51,14 +51,16 @@ export function createGauge(options = {}) {
     userSelect: "none",
     filter: "drop-shadow(0 -4px 16px rgba(0, 0, 0, 0.6))",
     zIndex: "90",
+    maxWidth: "100vw",
   });
 
   const svg = el("svg", {
     viewBox: "0 0 200 100",
   });
   svg.style.display = "block";
-  svg.style.width = `${size}px`;
-  svg.style.height = `${size / 2}px`;
+  svg.style.width = typeof size === "number" ? `min(${size}px, 100vw)` : size;
+  svg.style.height = typeof size === "number" ? `min(${size / 2}px, 50vw)` : "auto";
+  svg.style.maxWidth = "100vw";
   wrapper.appendChild(svg);
 
   // Clip to the top half so only the upper semicircle shows.

@@ -18,6 +18,39 @@
         color: #fff;
         pointer-events: none;
       }
+      #dynamite-btn {
+        position: fixed;
+        bottom: 24px;
+        left: calc(50% - 415px);
+        width: 122px;
+        height: 122px;
+        padding: 0;
+        background: #c62828;
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-family: monospace, sans-serif;
+        font-size: 1.3rem;
+        font-weight: 900;
+        line-height: 1.15;
+        user-select: none;
+        z-index: 100;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+        transition: background 0.15s, transform 0.05s;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+      }
+      @media (max-width: 800px), (pointer: coarse) {
+        #dynamite-btn {
+          bottom: clamp(48px, 13vw, 75px);
+          left: calc(50% - min(165px, 42vw));
+          width: clamp(84px, 24vw, 108px);
+          height: clamp(84px, 24vw, 108px);
+          font-size: clamp(0.95rem, 2.8vw, 1.15rem);
+          border-radius: 10px;
+        }
+      }
     </style>
 
     <!-- 1. Import Map (Constant Across All Games) -->
@@ -775,7 +808,8 @@
         // Money display centered inside the speed gauge above the hub
         const moneyCounter = createMoneyCounter({
           left: "50%",
-          bottom: "52px",
+          bottom: "clamp(32px, 8vw, 52px)",
+          size: "clamp(1.5rem, 5.5vw, 2.2rem)",
         });
         let money = 0;
 
@@ -978,31 +1012,10 @@
           }
         }
 
-        // Throw button pinned to the left of the speed gauge, shows inventory.
+        // Throw button pinned to the left of the speed gauge (floats on mid-left of gauge on mobile)
         const dynamiteBtn = document.createElement("button");
-        Object.assign(dynamiteBtn.style, {
-          display: "none",
-          position: "fixed",
-          bottom: "24px",
-          left: "calc(50% - 375px)",
-          width: "81px",
-          height: "81px",
-          padding: "0",
-          background: "#c62828",
-          color: "#fff",
-          border: "none",
-          borderRadius: "6px",
-          cursor: "pointer",
-          fontFamily: "monospace, sans-serif",
-          fontSize: "0.9rem",
-          fontWeight: "900",
-          lineHeight: "1.1",
-          userSelect: "none",
-          zIndex: "100",
-          touchAction: "manipulation",
-          webkitTapHighlightColor: "transparent",
-          transition: "background 0.15s, transform 0.05s",
-        });
+        dynamiteBtn.id = "dynamite-btn";
+        dynamiteBtn.style.display = "block";
         dynamiteBtn.addEventListener(
           "mousedown",
           () => (dynamiteBtn.style.transform = "scale(0.96)"),
@@ -1039,11 +1052,7 @@
           dynamiteBtn.textContent = `THROW\nDYNAMITE\n(x${dynamiteCount})`;
           dynamiteBtn.style.opacity = dynamiteCount > 0 ? "1" : "0.4";
           dynamiteBtn.style.cursor = dynamiteCount > 0 ? "pointer" : "default";
-          if (dynamiteUnlocked || dynamiteCount > 0) {
-            dynamiteBtn.style.display = "block";
-          } else {
-            dynamiteBtn.style.display = "none";
-          }
+          dynamiteBtn.style.display = "block";
         }
         updateDynamiteCounter();
 
