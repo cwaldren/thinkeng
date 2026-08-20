@@ -26,43 +26,39 @@ function el(name, attrs = {}, parent) {
   if (parent) parent.appendChild(node);
   return node;
 }
-let gaugeStylesInjected = false;
 
 export function createGauge(options = {}) {
   const {
     min = 0,
     max = 70,
-    unit = "",
     container = document.body,
-    size = 180,
-    label = "MAX",
-    showLabel = true,
+    size = 540,
   } = options;
 
   // SVG coordinate space (center + radius define the circle geometry).
   const cx = 100;
   const cy = 100;
-  const r = 88;
-  const topPad = 14;
+  const r = 86;
 
   const wrapper = document.createElement("div");
   Object.assign(wrapper.style, {
     position: "fixed",
-    bottom: "24px",
-    left: "50%",
+    bottom: options.bottom ?? "0px",
+    left: options.left ?? "50%",
     transform: "translateX(-50%)",
     color: "#fff",
     pointerEvents: "none",
     userSelect: "none",
-    filter: "drop-shadow(0 2px 10px rgba(0, 0, 0, 0.5))",
+    filter: "drop-shadow(0 -4px 16px rgba(0, 0, 0, 0.6))",
+    zIndex: "90",
   });
 
   const svg = el("svg", {
-    viewBox: `0 ${-topPad} 200 ${200 + topPad * 2}`,
+    viewBox: "0 0 200 100",
   });
   svg.style.display = "block";
   svg.style.width = `${size}px`;
-  svg.style.height = `${size}px`;
+  svg.style.height = `${size / 2}px`;
   wrapper.appendChild(svg);
 
   // Clip to the top half so only the upper semicircle shows.
@@ -72,56 +68,115 @@ export function createGauge(options = {}) {
 
   const body = el("g", { "clip-path": "url(#gauge-semi)" }, svg);
 
-  // Left half (grey) / right half (black) wedges joined at the vertical diameter.
+  // Semicircular background dial
   el(
     "path",
     {
       d: `M ${cx},${cy} L ${cx - r},${cy} A ${r},${r} 0 0 1 ${cx + r},${cy} L ${cx},${cy} Z`,
-      fill: "rgba(0,0,0,0.55)",
+      fill: "rgba(0,0,0,0.65)",
     },
     body,
   );
+
+  // Outer border arc
   const arc = el(
     "path",
     {
       d: `M ${cx - r},${cy} A ${r},${r} 0 0 1 ${cx + r},${cy}`,
       fill: "none",
-      stroke: "rgba(255,255,255,0.25)",
-      "stroke-width": "2",
+      stroke: "rgba(255,255,255,0.3)",
+      "stroke-width": "2.5",
     },
     body,
   );
-  arc.style.transition = "stroke 0.2s";
+  arc.style.transition = "stroke 0.2s, stroke-width 0.2s";
 
-  // Needle: points left at min, rotates clockwise to straight up at max.
-  const needle = el("g", { id: "gauge-needle" }, body);
-  needle.style.transformOrigin = `${cx}px ${cy}px`;
+  // Inner track arc
   el(
-    "line",
+    "path",
     {
-      x1: cx,
-      y1: cy,
-      x2: cx - r + 12,
-      y2: cy,
-      stroke: "#ffd24a",
-      "stroke-width": "5",
-      "stroke-linecap": "round",
+      d: `M ${cx - r + 14},${cy} A ${r - 14},${r - 14} 0 0 1 ${cx + r - 14},${cy}`,
+      fill: "none",
+      stroke: "rgba(255,255,255,0.1)",
+      "stroke-width": "1",
     },
-    needle,
+    body,
   );
 
-  el("circle", { cx, cy, r: 7, fill: "#fff" }, body);
+  // Speed labels & tick marks along the arc
+  const step = 20;
+  const startVal = 10;
+  const majorTickVals = new Set();
+  for (let v = startVal; v <= max; v += step) {
+    majorTickVals.add(v);
+  }
+  const lastMajor = Math.max(...majorTickVals, min);
+  if (max - lastMajor >= 10) {
+    majorTickVals.add(max);
+  }
+
+  // Minor ticks every 10
+  for (let v = min; v <= max; v += 10) {
+    const frac = (v - min) / (max - min);
+    const theta = Math.PI - frac * Math.PI;
+    const cosT = Math.cos(theta);
+    const sinT = Math.sin(theta);
+    const isMajor = majorTickVals.has(v);
+
+    const rOuter = r - 1;
+    const rInner = isMajor ? r - 8 : r - 4.5;
+    el(
+      "line",
+      {
+        x1: cx + rOuter * cosT,
+        y1: cy - rOuter * sinT,
+        x2: cx + rInner * cosT,
+        y2: cy - rInner * sinT,
+        stroke: isMajor ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.3)",
+        "stroke-width": isMajor ? "1.8" : "1",
+        "stroke-linecap": "round",
+      },
+      body,
+    );
+  }
+
+  // Speed text labels (10, 30, 50, 70, ...)
+  for (const v of majorTickVals) {
+    const frac = (v - min) / (max - min);
+    const theta = Math.PI - frac * Math.PI;
+    const cosT = Math.cos(theta);
+    const sinT = Math.sin(theta);
+    const rLabel = r - 16;
+    const lx = cx + rLabel * cosT;
+    const ly = cy - rLabel * sinT;
+
+    const txt = el(
+      "text",
+      {
+        x: lx,
+        y: ly,
+        "text-anchor": "middle",
+        "dominant-baseline": "central",
+        fill: "rgba(255,255,255,0.9)",
+        "font-size": "7.5",
+        "font-weight": "900",
+        "font-family": 'monospace, -apple-system, sans-serif',
+      },
+      body,
+    );
+    txt.textContent = `${v}`;
+  }
 
   // Red notch marking a danger/threshold value on the gauge arc (hidden by default).
   const threshold = el(
     "line",
     {
-      x1: cx - r - 5,
+      x1: cx - r - 2,
       y1: cy,
-      x2: cx - r + 5,
+      x2: cx - r + 9,
       y2: cy,
       stroke: "#e23b3b",
-      "stroke-width": "4",
+      "stroke-width": "3",
       "stroke-linecap": "round",
       visibility: "hidden",
     },
@@ -130,94 +185,39 @@ export function createGauge(options = {}) {
   threshold.style.transformOrigin = `${cx}px ${cy}px`;
   threshold.style.transition = "transform 0.15s";
 
-  // Readout text below the gauge.
-  const valueText = el(
-    "text",
+  // Needle: points left at min, rotates clockwise to straight right at max.
+  const needle = el("g", { id: "gauge-needle" }, body);
+  needle.style.transformOrigin = `${cx}px ${cy}px`;
+  el(
+    "line",
     {
-      id: "gauge-value",
-      x: cx,
-      y: cy + 30,
-      "text-anchor": "middle",
-      fill: "#fff",
-      "font-size": "34",
-      "font-weight": "900",
-      "font-family": "monospace",
+      x1: cx,
+      y1: cy,
+      x2: cx - r + 10,
+      y2: cy,
+      stroke: "#ffd24a",
+      "stroke-width": "3.5",
+      "stroke-linecap": "round",
     },
-    svg,
+    needle,
   );
-  valueText.textContent = "0";
 
-  if (unit) {
-    const unitText = el(
-      "text",
-      {
-        x: cx,
-        y: cy + 50,
-        "text-anchor": "middle",
-        fill: "#fff",
-        opacity: "0.8",
-        "font-size": "12",
-        "font-weight": "700",
-        "font-family": "monospace",
-      },
-      svg,
-    );
-    unitText.textContent = unit;
-  }
-
-  // "2x" earnings badge, always shown in the blank area of the semicircle to the
-  // right of the full-throttle line. Turns gold and sways when at top speed.
-  const rate2x = el(
-    "text",
-    {
-      x: cx,
-      y: cy + 72,
-      "text-anchor": "middle",
-      fill: "#777",
-      opacity: "1",
-      "font-size": "17",
-      "font-weight": "900",
-      "font-family": "monospace",
-      class: "gauge-2x",
-    },
-    svg,
-  );
-  rate2x.textContent = "2x";
-
-  // Inject the sway keyframes/style once for the 2x badge.
-  if (!gaugeStylesInjected) {
-    gaugeStylesInjected = true;
-    const style = document.createElement("style");
-    style.textContent = `
-      .gauge-2x {
-        transform-origin: ${cx}px ${cy + 72}px;
-      }
-      .gauge-2x.swaying {
-        animation: gauge-2x-sway 0.6s ease-in-out infinite;
-      }
-      @keyframes gauge-2x-sway {
-        0%, 100% { transform: rotate(-30deg); }
-        50% { transform: rotate(30deg); }
-      }
-    `;
-    document.head.appendChild(style);
-  }
+  // Center pivot hub
+  el("circle", { cx, cy, r: 8, fill: "#ffffff" }, body);
+  el("circle", { cx, cy, r: 4.5, fill: "#222222" }, body);
 
   container.appendChild(wrapper);
 
   // --- API ---------------------------------------------------------------
   function setValue(v) {
     const clamped = Math.max(min, Math.min(max, v));
-    valueText.textContent = clamped.toFixed(0);
     const rotation = ((clamped - min) / (max - min)) * 180;
     needle.style.transform = `rotate(${rotation}deg)`;
   }
 
   function setMax(on) {
-    arc.setAttribute("stroke", on ? "#ffd24a" : "rgba(255,255,255,0.25)");
-    arc.setAttribute("stroke-width", on ? "5" : "2");
-    rate2x.setAttribute("fill", on ? "#ffd24a" : "#777");
-    rate2x.classList.toggle("swaying", !!on);
+    arc.setAttribute("stroke", on ? "#ffd24a" : "rgba(255,255,255,0.3)");
+    arc.setAttribute("stroke-width", on ? "4" : "2.5");
   }
 
   // Place the red threshold line at `v` on the gauge scale. Pass `null` to hide.
@@ -254,6 +254,10 @@ export function createMoneyCounter(options = {}) {
     size = "2.2rem",
     anchor = null, // optional HTMLElement to place directly beneath
     marginTop = 0,
+    background = "radial-gradient(ellipse at center, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.75) 50%, rgba(0, 0, 0, 0) 100%)",
+    padding = "12px 32px",
+    borderRadius = "12px",
+    border = "none",
   } = options;
 
   const wrapper = document.createElement("div");
@@ -263,7 +267,12 @@ export function createMoneyCounter(options = {}) {
     top: anchor ? null : hasBottom ? null : (options.top ?? "64px"),
     left: anchor ? null : (options.left ?? "16px"),
     bottom: anchor ? null : (options.bottom ?? null),
-    color: "#e7d984",
+    transform: options.transform ?? (options.left === "50%" ? "translateX(-50%)" : null),
+    background,
+    padding,
+    borderRadius,
+    border,
+    color: options.color ?? "#e7d984",
     fontFamily:
       '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace, sans-serif',
     fontSize: size,
@@ -272,7 +281,10 @@ export function createMoneyCounter(options = {}) {
     letterSpacing: "-0.02em",
     pointerEvents: "none",
     userSelect: "none",
-    textShadow: "0 2px 10px rgba(0, 0, 0, 0.5)",
+    textShadow: "0 2px 10px rgba(0, 0, 0, 0.7)",
+    zIndex: "95",
+    textAlign: "center",
+    whiteSpace: "nowrap",
   });
 
   if (anchor) {

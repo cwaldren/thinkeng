@@ -763,20 +763,19 @@
         let gauge = createGauge({
           min: 0,
           max: governor.getCap(),
-          unit: "MPH",
         });
         // Red line marks the boulder-damage threshold; hide until a cowcatcher exists.
         gauge.setThreshold(null);
         // Rebuild the gauge so its full scale tracks a raised governor cap.
         function rebuildGauge() {
           gauge.dispose();
-          gauge = createGauge({ min: 0, max: governor.getCap(), unit: "MPH" });
+          gauge = createGauge({ min: 0, max: governor.getCap() });
         }
 
-        // Money display below the top-left controls UI
+        // Money display centered inside the speed gauge above the hub
         const moneyCounter = createMoneyCounter({
-          left: "calc(50% + 90px)",
-          bottom: "96px",
+          left: "50%",
+          bottom: "52px",
         });
         let money = 0;
 
@@ -979,13 +978,13 @@
           }
         }
 
-        // Throw button pinned to the left of the throttle gauge, shows inventory.
+        // Throw button pinned to the left of the speed gauge, shows inventory.
         const dynamiteBtn = document.createElement("button");
         Object.assign(dynamiteBtn.style, {
           display: "none",
           position: "fixed",
-          bottom: "96px",
-          left: "calc(50% - 190px)",
+          bottom: "24px",
+          left: "calc(50% - 375px)",
           width: "81px",
           height: "81px",
           padding: "0",
