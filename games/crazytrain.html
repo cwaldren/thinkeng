@@ -32,7 +32,7 @@
         border-radius: 8px;
         cursor: pointer;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        font-size: 1.3rem;
+        font-size: 1.15rem;
         font-weight: 900;
         line-height: 1.15;
         user-select: none;
@@ -48,7 +48,7 @@
           left: calc(50% - min(165px, 42vw));
           width: clamp(84px, 24vw, 108px);
           height: clamp(84px, 24vw, 108px);
-          font-size: clamp(0.95rem, 2.8vw, 1.15rem);
+          font-size: clamp(0.75rem, 2.3vw, 0.95rem);
           border-radius: 10px;
         }
       }
@@ -1032,7 +1032,7 @@
         // Throw button pinned to the left of the speed gauge (floats on mid-left of gauge on mobile)
         const dynamiteBtn = document.createElement("button");
         dynamiteBtn.id = "dynamite-btn";
-        dynamiteBtn.style.display = "block";
+        dynamiteBtn.style.display = "none";
         dynamiteBtn.addEventListener(
           "mousedown",
           () => (dynamiteBtn.style.transform = "scale(0.96)"),
@@ -1069,7 +1069,11 @@
           dynamiteBtn.textContent = `THROW\nDYNAMITE\n(x${dynamiteCount})`;
           dynamiteBtn.style.opacity = dynamiteCount > 0 ? "1" : "0.4";
           dynamiteBtn.style.cursor = dynamiteCount > 0 ? "pointer" : "default";
-          dynamiteBtn.style.display = "block";
+          if (dynamiteUnlocked || dynamiteCount > 0) {
+            dynamiteBtn.style.display = "block";
+          } else {
+            dynamiteBtn.style.display = "none";
+          }
         }
         updateDynamiteCounter();
 
