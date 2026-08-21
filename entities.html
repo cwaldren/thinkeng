@@ -119,6 +119,14 @@
         color: #33aaff;
       }
 
+      .badge.ux {
+        color: #ffaa33;
+      }
+
+      .badge.effect {
+        color: #ff55aa;
+      }
+
       /* Right panel: live controls for the active entity */
       #controls {
         position: fixed;
@@ -224,7 +232,8 @@
         <a href="?" data-type="">All</a
         ><a href="?type=primitive" data-type="primitive">Primitives</a
         ><a href="?type=component" data-type="component">Components</a
-        ><a href="?type=ux" data-type="ux">UX</a>
+        ><a href="?type=ux" data-type="ux">UX</a
+        ><a href="?type=effect" data-type="effect">Effects</a>
       </div>
     </aside>
 
@@ -252,6 +261,7 @@
         primitive: "Primitives",
         component: "Components",
         ux: "UX",
+        effect: "Effects",
       };
 
       // Read ?type= from the URL; empty/unknown => combined All view.

@@ -30,6 +30,7 @@ import {
 } from "./components.js";
 
 import { createPowerupsPreview } from "./powerups.js";
+import { createSandBlast } from "./effects.js";
 
 export const ENTRIES = [
   {
@@ -833,5 +834,90 @@ export const ENTRIES = [
       );
       iconField.appendChild(iconBox);
     },
+  },
+  {
+    category: "effect",
+    key: "sandblast",
+    label: "Sandblast",
+    desc: "Directional sand jet particle emitter",
+    fn: createSandBlast,
+    opts: [
+      {
+        key: "particleCount",
+        label: "Particle Count",
+        type: "number",
+        default: 500,
+        min: 10,
+        max: 2000,
+        step: 10,
+      },
+      {
+        key: "particleSize",
+        label: "Particle Size",
+        type: "number",
+        default: 0.16,
+        min: 0.01,
+        max: 1.5,
+        step: 0.01,
+      },
+      { key: "color", label: "Color", type: "color", default: "0xffd97d" },
+      {
+        key: "speed",
+        label: "Speed",
+        type: "number",
+        default: 34,
+        min: 1,
+        max: 60,
+        step: 0.5,
+      },
+      {
+        key: "spread",
+        label: "Spread",
+        type: "number",
+        default: 0.25,
+        min: 0.05,
+        max: 1.5,
+        step: 0.05,
+      },
+      {
+        key: "gravity",
+        label: "Gravity",
+        type: "number",
+        default: 8,
+        min: 0,
+        max: 40,
+        step: 1,
+      },
+      {
+        key: "lifetime",
+        label: "Lifetime",
+        type: "number",
+        default: 0.75,
+        min: 0.1,
+        max: 2.0,
+        step: 0.05,
+      },
+      {
+        key: "rate",
+        label: "Spawn Rate",
+        type: "number",
+        default: 350,
+        min: 10,
+        max: 2000,
+        step: 10,
+      },
+      {
+        key: "position",
+        label: "Position [x,y,z]",
+        type: "vector",
+        default: [0, 1.5, 0],
+      },
+      {
+        key: "direction",
+        label: "Direction [x,y,z]",
+        type: "vector",
+        default: [1, -0.15, 0],
+      },
+    ],
   },
 ];

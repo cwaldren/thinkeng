@@ -103,6 +103,7 @@
       import { createCameraControls } from "engine/cameraControls.js";
       import { createGauge, createMoneyCounter } from "engine/ui.js";
       import { createPowerups } from "engine/powerups.js";
+      import { createSandBlast } from "engine/effects.js";
       import {
         heartGeometry,
         createHeartMaterial,
@@ -730,6 +731,44 @@
           speed: 0,
         });
 
+        // Sand blast particle system mounted on the front of the train
+        let sandBlastEnabled = false;
+        let isAccelerating = false;
+        const sandBlast = createSandBlast(sim, {
+          parent: train.mesh,
+          particleCount: 500,
+          particleSize: 0.16,
+          color: 0xffd97d,
+          speed: 34,
+          spread: 0.25,
+          gravity: 8,
+          lifetime: 0.75,
+          rate: 350,
+          position: [3.8, 0.85, 0],
+          direction: [1, -0.15, 0],
+          enabled: () => sandBlastEnabled && isAccelerating,
+        });
+
+        function addSanderNozzles() {
+          const nozzleMat = new THREE.MeshStandardMaterial({
+            color: 0x334455,
+            metalness: 0.6,
+            roughness: 0.3,
+          });
+          const nozzleGeo = new THREE.CylinderGeometry(0.06, 0.08, 0.4, 8);
+          for (const side of [1, -1]) {
+            const nozzle = new THREE.Mesh(nozzleGeo, nozzleMat);
+            nozzle.position.set(3.8, 0.85, side * 0.72);
+            nozzle.rotation.z = -Math.PI / 6;
+            train.mesh.add(nozzle);
+          }
+        }
+
+        function enableSandBlast() {
+          sandBlastEnabled = true;
+          addSanderNozzles();
+        }
+
         // Cowcatcher kinematic physics collider mounted on front of train
         const cowcatcherBody = new CANNON.Body({
           mass: 0,
@@ -883,8 +922,10 @@
             icon: "▲",
             cost: 20,
             grantWhen: () => money >= 20,
+            debug: true,
             onBuy: () => {
               accelRate += 5;
+              enableSandBlast();
             },
           },
           {
@@ -911,29 +952,38 @@
           },
           {
             id: "governor-1",
-            label: "Speed I",
-            icon: "◆",
+            label: "Steam Sippers",
+            icon: "🔥",
             cost: 100,
             grantWhen: () => money >= 100,
-            onBuy: () => setGovernorCap(85),
+            onBuy: () => {
+              setGovernorCap(85);
+              addSteamSippers();
+            },
           },
           {
             id: "governor-2",
-            label: "Speed II",
-            icon: "◆",
+            label: "Steam Burner",
+            icon: "🔥",
             cost: 200,
             grantWhen: () => money >= 200,
             requires: "governor-1",
-            onBuy: () => setGovernorCap(100),
+            onBuy: () => {
+              setGovernorCap(100);
+              addPipeCap();
+            },
           },
           {
             id: "governor-3",
-            label: "Speed III",
-            icon: "◆",
+            label: "Steam Injectors",
+            icon: "🔥",
             cost: 300,
             grantWhen: () => money >= 300,
             requires: "governor-2",
-            onBuy: () => setGovernorCap(150),
+            onBuy: () => {
+              setGovernorCap(150);
+              addSteamInjectors();
+            },
           },
           {
             id: "big-bangs",
@@ -993,7 +1043,8 @@
           }
           const def = POWERUPS.find((d) => d.id === item.id);
           if (!def) return;
-          money -= item.cost;
+          const cost = def.debug ? 0 : item.cost;
+          money -= cost;
           moneyCounter.setValue(money);
           powerups.refresh();
           purchasedPowerups.add(def.id);
@@ -1552,6 +1603,69 @@
           governor.setCap(Math.max(governor.getCap(), newCapMph));
           rebuildGauge();
         }
+
+        // Attach auxiliary steam sipper cylinders to the left and right sides of the boiler
+        function addSteamSippers() {
+          const sipperMat = new THREE.MeshStandardMaterial({
+            color: 0xc23b2e,
+            roughness: 0.5,
+            metalness: 0.1,
+          });
+          const sipperGeo = new THREE.CylinderGeometry(0.26, 0.26, 2.5, 16);
+
+          const leftSipper = new THREE.Mesh(sipperGeo, sipperMat);
+          leftSipper.rotation.z = Math.PI / 2;
+          leftSipper.position.set(1.8, 1.65, 0.72);
+          leftSipper.castShadow = true;
+          leftSipper.receiveShadow = true;
+          train.mesh.add(leftSipper);
+
+          const rightSipper = new THREE.Mesh(sipperGeo, sipperMat);
+          rightSipper.rotation.z = Math.PI / 2;
+          rightSipper.position.set(1.8, 1.65, -0.72);
+          rightSipper.castShadow = true;
+          rightSipper.receiveShadow = true;
+          train.mesh.add(rightSipper);
+        }
+
+        // Attach a black cap cylinder to the top of the smokestack (front pipe)
+        function addPipeCap() {
+          const capMat = new THREE.MeshStandardMaterial({
+            color: 0x181818,
+            roughness: 0.4,
+            metalness: 0.2,
+          });
+          const capGeo = new THREE.CylinderGeometry(0.4, 0.36, 0.24, 16);
+          const pipeCap = new THREE.Mesh(capGeo, capMat);
+          pipeCap.position.set(3.55, 3.34, 0);
+          pipeCap.castShadow = true;
+          pipeCap.receiveShadow = true;
+          train.mesh.add(pipeCap);
+        }
+
+        // Attach two long thin black injector pipes above the steam sippers
+        function addSteamInjectors() {
+          const injectorMat = new THREE.MeshStandardMaterial({
+            color: 0x181818,
+            roughness: 0.35,
+            metalness: 0.4,
+          });
+          const injectorGeo = new THREE.CylinderGeometry(0.08, 0.08, 2.5, 12);
+
+          const leftInjector = new THREE.Mesh(injectorGeo, injectorMat);
+          leftInjector.rotation.z = Math.PI / 2;
+          leftInjector.position.set(1.8, 1.95, 0.68);
+          leftInjector.castShadow = true;
+          leftInjector.receiveShadow = true;
+          train.mesh.add(leftInjector);
+
+          const rightInjector = new THREE.Mesh(injectorGeo, injectorMat);
+          rightInjector.rotation.z = Math.PI / 2;
+          rightInjector.position.set(1.8, 1.95, -0.68);
+          rightInjector.castShadow = true;
+          rightInjector.receiveShadow = true;
+          train.mesh.add(rightInjector);
+        }
         // Award any powerup whose grant condition is now met (each only once).
         function grantPowerups() {
           if (
@@ -1564,14 +1678,16 @@
           }
           for (const def of POWERUPS) {
             if (grantedPowerups.has(def.id)) continue;
-            if (def.requires && !purchasedPowerups.has(def.requires)) continue;
-            if (!def.grantWhen()) continue;
+            if (!def.debug) {
+              if (def.requires && !purchasedPowerups.has(def.requires)) continue;
+              if (!def.grantWhen()) continue;
+            }
             grantedPowerups.add(def.id);
             powerups.add({
               id: def.id,
               label: def.label,
               icon: def.icon,
-              cost: def.cost,
+              cost: def.debug ? 0 : def.cost,
             });
           }
         }
@@ -1771,6 +1887,7 @@
 
           // Master controller lever: W (or tap) accelerates, no W decelerates.
           const throttling = keys.has("KeyW") || keys.has("ArrowUp");
+          isAccelerating = throttling && currentSpeed < governor.getCapMps() - 1e-4;
           if (throttling) {
             const next = currentSpeed + accelRate * dt;
             currentSpeed = governor.limit(next);

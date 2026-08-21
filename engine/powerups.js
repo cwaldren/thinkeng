@@ -298,7 +298,7 @@ export function createPowerupsPreview(sim, values = {}) {
       unit: "$",
     },
     { id: "cowcatcher", label: "Cowcatcher", icon: "▴", cost: 50, unit: "$" },
-    { id: "governor", label: "Governor", icon: "◆", cost: 1000, unit: "$" },
+    { id: "governor", label: "Governor", icon: "🔥", cost: 1000, unit: "$" },
   ];
   for (const item of canned) powerups.add(item);
   return {
