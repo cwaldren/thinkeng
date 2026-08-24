@@ -103,23 +103,29 @@
       import { createCameraControls } from "engine/cameraControls.js";
       import { createGauge, createMoneyCounter } from "engine/ui.js";
       import { createPowerups } from "engine/powerups.js";
-      import { createSandBlast } from "engine/effects.js";
+      import { createSandBlast, createFloatingEffects } from "engine/effects.js";
       import {
         heartGeometry,
         createHeartMaterial,
         createHeartMesh,
       } from "engine/primitives.js";
+      import {
+        syncMeshFromBody,
+        setBodyPose,
+      } from "engine/core.js";
+
+      const MPS_TO_MPH = 2.237;
 
       // Speed governor: caps max speed. governor.setCap(90), getCap(), etc.
       class Governor {
         constructor(capMph = 70) {
           this.enabled = true;
           this._capMph = capMph;
-          this._capMps = capMph / 2.237;
+          this._capMps = capMph / MPS_TO_MPH;
         }
         setCap(mph) {
           this._capMph = mph;
-          this._capMps = mph / 2.237;
+          this._capMps = mph / MPS_TO_MPH;
           return this;
         }
         getCap() {
@@ -154,18 +160,14 @@
         enableShadows: false,
       });
 
-      // Active flying obstacles launched by collisions
-      const activeFlyers = new Set();
-
-      // Bunnies that have hopped off the rails; driven analytically (no physics)
-      // through a fixed number of level hops before despawning.
-      const hoppingBunnies = new Set();
-
-      // Dynamite sticks thrown by the player (spawned in-cab, flown in an arc)
-      const thrownDynamites = new Set();
-
-      // Active explosion spheres that rapidly expand and despawn
-      const activeExplosions = new Set();
+      // Uniform random tumble vector, e.g. randomSpin(14) for debris spin.
+      function randomSpin(scale) {
+        return new CANNON.Vec3(
+          (Math.random() - 0.5) * scale,
+          (Math.random() - 0.5) * scale,
+          (Math.random() - 0.5) * scale,
+        );
+      }
 
       // Rebase world-space objects (flying obstacles, dynamite, explosions) so
       // they track with the train as track segments recycle. Items with a physics
@@ -200,13 +202,7 @@
             b.velocity.x = vx * ca + vz * sa;
             b.velocity.z = -vx * sa + vz * ca;
 
-            item.mesh.position.set(b.position.x, b.position.y, b.position.z);
-            item.mesh.quaternion.set(
-              b.quaternion.x,
-              b.quaternion.y,
-              b.quaternion.z,
-              b.quaternion.w,
-            );
+            syncMeshFromBody(item.mesh, b);
           } else {
             item.mesh.position.x = nx;
             item.mesh.position.z = nz;
@@ -264,6 +260,296 @@
         },
       ];
 
+      // Contact radius for a megalith, measured from the group origin. The
+      // dynamite approaches at low height, so we use the horizontal footprint
+      // (max |x|/|z| of the bounding box) rather than the farthest-corner
+      // distance, which would be inflated by the boulder's upward offset.
+      function megalithContactRadius(giantGroup) {
+        giantGroup.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(giantGroup);
+        const worldPos = new THREE.Vector3();
+        giantGroup.getWorldPosition(worldPos);
+        const min = box.min.clone().sub(worldPos);
+        const max = box.max.clone().sub(worldPos);
+        return Math.max(
+          Math.abs(min.x),
+          Math.abs(max.x),
+          Math.abs(min.z),
+          Math.abs(max.z),
+        );
+      }
+
+      // Pine tree with varied natural foliage hues
+      function addPineTree(group, x, z) {
+        const treeGroup = new THREE.Group();
+        treeGroup.position.set(x, 0, z);
+        const scale = 0.8 + Math.random() * 0.7;
+        treeGroup.scale.set(scale, scale, scale);
+
+        const pal =
+          sharedTreePalettes[
+            Math.floor(Math.random() * sharedTreePalettes.length)
+          ];
+
+        const trunk = new THREE.Mesh(sharedTrunkGeo, sharedTrunkMat);
+        trunk.position.y = 1.5;
+        treeGroup.add(trunk);
+
+        const foliage1 = new THREE.Mesh(sharedFoliage1Geo, pal.foliage1);
+        foliage1.position.y = 4.0;
+        treeGroup.add(foliage1);
+
+        const foliage2 = new THREE.Mesh(sharedFoliage2Geo, pal.foliage2);
+        foliage2.position.y = 5.6;
+        treeGroup.add(foliage2);
+
+        group.add(treeGroup);
+      }
+
+      // Scattered roadside rock
+      function addSceneryRock(group, x, z) {
+        const rock = new THREE.Mesh(sharedRockGeo, sharedRockMat);
+        const sX = 0.8 + Math.random() * 1.4;
+        const sY = 0.6 + Math.random() * 0.9;
+        const sZ = 0.8 + Math.random() * 1.4;
+        rock.scale.set(sX, sY, sZ);
+        rock.position.set(x, sY * 0.6, z);
+        rock.rotation.set(
+          Math.random() * Math.PI,
+          Math.random() * Math.PI,
+          0,
+        );
+        group.add(rock);
+      }
+
+      // Lush grass patch - collect blade transforms for InstancedMesh
+      function collectGrassBlades(blades, x, z) {
+        const patchRadius = 2.0 + Math.random() * 2.0;
+        const bladeCount = 20 + Math.floor(Math.random() * 12);
+
+        for (let b = 0; b < bladeCount; b++) {
+          const ang = Math.random() * Math.PI * 2;
+          const dist = Math.sqrt(Math.random()) * patchRadius;
+          const bx = x + Math.cos(ang) * dist;
+          const bz = z + Math.sin(ang) * dist;
+          const bHeight = 0.7 + Math.random() * 0.5;
+
+          blades.push({
+            x: bx,
+            y: bHeight / 2,
+            z: bz,
+            rx: (Math.random() - 0.5) * 0.35,
+            ry: Math.random() * Math.PI,
+            rz: (Math.random() - 0.5) * 0.35,
+            scale: bHeight,
+          });
+        }
+      }
+
+      // Create single instanced mesh for all grass in this segment (1 draw call)
+      function buildInstancedGrass(group, blades) {
+        if (blades.length === 0) return;
+
+        const instancedGrass = new THREE.InstancedMesh(
+          sharedGrassGeo,
+          sharedGrassMat,
+          blades.length,
+        );
+        const dummy = new THREE.Object3D();
+
+        for (let i = 0; i < blades.length; i++) {
+          const t = blades[i];
+          dummy.position.set(t.x, t.y, t.z);
+          dummy.rotation.set(t.rx, t.ry, t.rz);
+          dummy.scale.set(1, t.scale, 1);
+          dummy.updateMatrix();
+          instancedGrass.setMatrixAt(i, dummy.matrix);
+        }
+        instancedGrass.instanceMatrix.needsUpdate = true;
+        group.add(instancedGrass);
+      }
+
+      // Tiny rocks: low mass, littered right on the rails
+      function addTinyRocks(seg, group, radius, length) {
+        const count = 1 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < count; i++) {
+          const s = length * (0.05 + Math.random() * 0.9);
+          const pose = getLocalSpinePose(radius, length, s);
+          const edge = (Math.random() < 0.5 ? 1 : -1) * Math.random() * 0.7;
+          const tiny = new THREE.Mesh(sharedTinyRockGeo, sharedTinyMat);
+          tiny.scale.set(
+            0.6 + Math.random() * 0.9,
+            0.55 + Math.random() * 0.7,
+            0.6 + Math.random() * 0.9,
+          );
+          tiny.position.set(pose.position.x, 0.28, pose.position.z + edge);
+          tiny.rotation.set(
+            Math.random() * Math.PI,
+            Math.random() * Math.PI,
+            Math.random() * Math.PI,
+          );
+          group.add(tiny);
+          seg.obstacles.push({
+            mesh: tiny,
+            type: "tiny-rock",
+            s,
+            hit: false,
+          });
+        }
+      }
+
+      // Fallen Tree across the rails
+      function addFallenLog(seg, group, radius, length, s) {
+        const pose = getLocalSpinePose(radius, length, s);
+        const logLen = 3.8 + Math.random() * 1.6;
+        const logMesh = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.35, 0.42, logLen, 6),
+          sharedLogMat,
+        );
+        logMesh.rotation.z = Math.PI / 2;
+
+        const logGroup = new THREE.Group();
+        logGroup.position.set(pose.position.x, 0.55, pose.position.z);
+        logGroup.rotation.y =
+          -pose.heading + Math.PI / 2 + (Math.random() - 0.5) * 0.4;
+        logGroup.add(logMesh);
+
+        const branch = new THREE.Mesh(sharedBranchGeo, sharedBranchMat);
+        branch.position.set(logLen / 2 - 0.2, 0.35, 0);
+        branch.rotation.z = -Math.PI / 3;
+        logGroup.add(branch);
+
+        group.add(logGroup);
+        seg.obstacles.push({
+          mesh: logGroup,
+          type: "log",
+          logLen,
+          s,
+          hit: false,
+        });
+      }
+
+      // Regular Track Boulder
+      function addTrackBoulder(seg, group, radius, length, s) {
+        const pose = getLocalSpinePose(radius, length, s);
+        const boulder = new THREE.Mesh(sharedBoulderGeo, sharedBoulderMat);
+        boulder.scale.set(
+          1.1 + Math.random() * 0.3,
+          0.75 + Math.random() * 0.25,
+          1.1 + Math.random() * 0.3,
+        );
+        boulder.position.set(pose.position.x, 0.85, pose.position.z);
+        boulder.rotation.set(
+          Math.random() * Math.PI,
+          Math.random() * Math.PI,
+          0,
+        );
+
+        group.add(boulder);
+        seg.obstacles.push({
+          mesh: boulder,
+          type: "boulder",
+          s,
+          hit: false,
+        });
+      }
+
+      // Massive Giant Megalith Boulder (towering monolithic mountain rock)
+      function addMegalith(seg, group, radius, length, s) {
+        const pose = getLocalSpinePose(radius, length, s);
+        const giantGroup = new THREE.Group();
+        giantGroup.position.set(pose.position.x, 0, pose.position.z);
+        giantGroup.rotation.y =
+          -pose.heading + (Math.random() - 0.5) * 0.5;
+
+        const mainRock = new THREE.Mesh(sharedGiantMainGeo, sharedGiantMat);
+        mainRock.scale.set(1.4, 1.6, 1.3);
+        mainRock.position.set(0, 2.6, 0);
+        mainRock.rotation.set(
+          Math.random() * 0.5,
+          Math.random() * Math.PI,
+          0,
+        );
+        giantGroup.add(mainRock);
+
+        // Per-megalith material clone so its color can signal danger vs. safe.
+        const giantMat = sharedGiantMat.clone();
+
+        // Side support boulders forming a massive barrier
+        const subRock1 = new THREE.Mesh(sharedGiantSub1Geo, giantMat);
+        subRock1.position.set(-1.4, 1.3, 0.4);
+        giantGroup.add(subRock1);
+
+        const subRock2 = new THREE.Mesh(sharedGiantSub2Geo, giantMat);
+        subRock2.position.set(1.4, 1.2, -0.3);
+        giantGroup.add(subRock2);
+
+        mainRock.material = giantMat;
+
+        group.add(giantGroup);
+        seg.obstacles.push({
+          mesh: giantGroup,
+          type: "giant-boulder",
+          s,
+          hit: false,
+          mat: giantMat,
+          contactRadius: megalithContactRadius(giantGroup),
+        });
+      }
+
+      // Bunnies spawn on the track at the same rate as megaliths (8%). A bunny
+      // with the train creeping below 10 mph hops off into the forest; any bunny
+      // actually struck means you did not slow down in time.
+      function addTrackBunny(seg, simulation, group, radius, length, s) {
+        const pose = getLocalSpinePose(radius, length, s);
+        // 50% of bunnies face the other way (away from the oncoming train).
+        const faceOtherWay = Math.random() < 0.5;
+        const bunny = createBunny(simulation, {
+          position: [pose.position.x, 0, pose.position.z],
+          rotation: [0, -pose.heading + (faceOtherWay ? Math.PI : 0), 0],
+          mass: 0,
+        });
+        group.add(bunny.mesh);
+        seg.obstacles.push({
+          mesh: bunny.mesh,
+          type: "bunny",
+          s,
+          hit: false,
+          hopped: false,
+          faceOtherWay,
+        });
+
+        // BunnyXing powerup: post a "bunny!" sign ahead of the bunny so the
+        // player sees the sign first. Place it one segment before the bunny's
+        // spawn (at the previous segment's area, off to the left of the track).
+        if (!bunnyXing) return;
+
+        const entryPose = getLocalSpinePose(radius, length, 0);
+        const perp = {
+          x: -Math.sin(entryPose.heading),
+          z: Math.cos(entryPose.heading),
+        };
+        const side = 1;
+        const off = 2.0;
+        const sign = createSign(simulation, {
+          postHeight: 3,
+          postRadius: 0.12,
+          postColor: 0x591b18,
+          boardWidth: 1.6,
+          boardHeight: 0.7,
+          boardColor: 0xe00011,
+          text: "bunny!",
+          textColor: 0xfffdf1,
+          position: [
+            entryPose.position.x - length + perp.x * off * side,
+            0,
+            entryPose.position.z + perp.z * off * side,
+          ],
+          rotation: [0, -entryPose.heading + Math.PI * 1.5, 0],
+        });
+        group.add(sign.mesh);
+      }
+
       function createSceneryRailSegment(simulation, opts = {}) {
         const seg = createRailSegment(simulation, opts);
         const group = seg.mesh;
@@ -273,30 +559,11 @@
         // the player always gets a clear runway where they first appear.
         const isSpawnSegment = opts.index === noObstacleSegmentIndex;
 
-        // Contact radius for the megalith, measured from the group origin. The
-        // dynamite approaches at low height, so we use the horizontal footprint
-        // (max |x|/|z| of the bounding box) rather than the farthest-corner
-        // distance, which would be inflated by the boulder's upward offset.
-        function megalithContactRadius(giantGroup) {
-          giantGroup.updateMatrixWorld(true);
-          const box = new THREE.Box3().setFromObject(giantGroup);
-          const worldPos = new THREE.Vector3();
-          giantGroup.getWorldPosition(worldPos);
-          const min = box.min.clone().sub(worldPos);
-          const max = box.max.clone().sub(worldPos);
-          return Math.max(
-            Math.abs(min.x),
-            Math.abs(max.x),
-            Math.abs(min.z),
-            Math.abs(max.z),
-          );
-        }
-
         // Place random trees, rocks, and grass along the sides of the track
-        const count = 16 + Math.floor(Math.random() * 8);
-        const grassTransforms = [];
+        const grassBlades = [];
+        const sceneryCount = 16 + Math.floor(Math.random() * 8);
 
-        for (let i = 0; i < count; i++) {
+        for (let i = 0; i < sceneryCount; i++) {
           const s = Math.random() * length;
           const local = getLocalSpinePose(radius, length, s);
           const perp = {
@@ -312,89 +579,15 @@
 
           const rand = Math.random();
           if (rand < 0.28) {
-            // Pine tree with varied natural foliage hues
-            const treeGroup = new THREE.Group();
-            treeGroup.position.set(x, 0, z);
-            const scale = 0.8 + Math.random() * 0.7;
-            treeGroup.scale.set(scale, scale, scale);
-
-            const pal =
-              sharedTreePalettes[
-                Math.floor(Math.random() * sharedTreePalettes.length)
-              ];
-
-            const trunk = new THREE.Mesh(sharedTrunkGeo, sharedTrunkMat);
-            trunk.position.y = 1.5;
-            treeGroup.add(trunk);
-
-            const foliage1 = new THREE.Mesh(sharedFoliage1Geo, pal.foliage1);
-            foliage1.position.y = 4.0;
-            treeGroup.add(foliage1);
-
-            const foliage2 = new THREE.Mesh(sharedFoliage2Geo, pal.foliage2);
-            foliage2.position.y = 5.6;
-            treeGroup.add(foliage2);
-
-            group.add(treeGroup);
+            addPineTree(group, x, z);
           } else if (rand < 0.48) {
-            // Rock
-            const rock = new THREE.Mesh(sharedRockGeo, sharedRockMat);
-            const sX = 0.8 + Math.random() * 1.4;
-            const sY = 0.6 + Math.random() * 0.9;
-            const sZ = 0.8 + Math.random() * 1.4;
-            rock.scale.set(sX, sY, sZ);
-            rock.position.set(x, sY * 0.6, z);
-            rock.rotation.set(
-              Math.random() * Math.PI,
-              Math.random() * Math.PI,
-              0,
-            );
-            group.add(rock);
+            addSceneryRock(group, x, z);
           } else {
-            // Lush grass patch - collect blade transforms for InstancedMesh
-            const patchRadius = 2.0 + Math.random() * 2.0;
-            const bladeCount = 20 + Math.floor(Math.random() * 12);
-
-            for (let b = 0; b < bladeCount; b++) {
-              const ang = Math.random() * Math.PI * 2;
-              const dist = Math.sqrt(Math.random()) * patchRadius;
-              const bx = x + Math.cos(ang) * dist;
-              const bz = z + Math.sin(ang) * dist;
-              const bHeight = 0.7 + Math.random() * 0.5;
-
-              grassTransforms.push({
-                x: bx,
-                y: bHeight / 2,
-                z: bz,
-                rx: (Math.random() - 0.5) * 0.35,
-                ry: Math.random() * Math.PI,
-                rz: (Math.random() - 0.5) * 0.35,
-                scale: bHeight,
-              });
-            }
+            collectGrassBlades(grassBlades, x, z);
           }
         }
 
-        // Create single instanced mesh for all grass in this segment (1 draw call)
-        if (grassTransforms.length > 0) {
-          const instancedGrass = new THREE.InstancedMesh(
-            sharedGrassGeo,
-            sharedGrassMat,
-            grassTransforms.length,
-          );
-          const dummy = new THREE.Object3D();
-
-          for (let i = 0; i < grassTransforms.length; i++) {
-            const t = grassTransforms[i];
-            dummy.position.set(t.x, t.y, t.z);
-            dummy.rotation.set(t.rx, t.ry, t.rz);
-            dummy.scale.set(1, t.scale, 1);
-            dummy.updateMatrix();
-            instancedGrass.setMatrixAt(i, dummy.matrix);
-          }
-          instancedGrass.instanceMatrix.needsUpdate = true;
-          group.add(instancedGrass);
-        }
+        buildInstancedGrass(group, grassBlades);
 
         // Occasional on-track obstacles (fallen trees & track boulders)
         seg.obstacles = seg.obstacles || [];
@@ -402,205 +595,1402 @@
         // Skip every on-track obstacle and bunny on the player's spawn segment so
         // they always get a clean, safe start.
         if (!isSpawnSegment) {
-          // Tiny rocks: low mass, littered right on the rails
-          const tinyCount = 1 + Math.floor(Math.random() * 3);
-          for (let i = 0; i < tinyCount; i++) {
-            const tS = length * (0.05 + Math.random() * 0.9);
-            const tPose = getLocalSpinePose(radius, length, tS);
-            const edge = (Math.random() < 0.5 ? 1 : -1) * Math.random() * 0.7;
-            const tiny = new THREE.Mesh(sharedTinyRockGeo, sharedTinyMat);
-            tiny.scale.set(
-              0.6 + Math.random() * 0.9,
-              0.55 + Math.random() * 0.7,
-              0.6 + Math.random() * 0.9,
-            );
-            tiny.position.set(tPose.position.x, 0.28, tPose.position.z + edge);
-            tiny.rotation.set(
-              Math.random() * Math.PI,
-              Math.random() * Math.PI,
-              Math.random() * Math.PI,
-            );
-            group.add(tiny);
-            seg.obstacles.push({
-              mesh: tiny,
-              type: "tiny-rock",
-              s: tS,
-              hit: false,
-            });
-          }
+          addTinyRocks(seg, group, radius, length);
 
           if (Math.random() < 0.65) {
             const obsS = length * (0.3 + Math.random() * 0.4);
-            const localPose = getLocalSpinePose(radius, length, obsS);
             const randObs = Math.random();
 
             if (randObs < 0.33) {
-              // Fallen Tree across the rails
-              const logLen = 3.8 + Math.random() * 1.6;
-              const logMesh = new THREE.Mesh(
-                new THREE.CylinderGeometry(0.35, 0.42, logLen, 6),
-                sharedLogMat,
-              );
-              logMesh.rotation.z = Math.PI / 2;
-
-              const logGroup = new THREE.Group();
-              logGroup.position.set(
-                localPose.position.x,
-                0.55,
-                localPose.position.z,
-              );
-              logGroup.rotation.y =
-                -localPose.heading + Math.PI / 2 + (Math.random() - 0.5) * 0.4;
-              logGroup.add(logMesh);
-
-              const branch = new THREE.Mesh(sharedBranchGeo, sharedBranchMat);
-              branch.position.set(logLen / 2 - 0.2, 0.35, 0);
-              branch.rotation.z = -Math.PI / 3;
-              logGroup.add(branch);
-
-              group.add(logGroup);
-              seg.obstacles.push({
-                mesh: logGroup,
-                type: "log",
-                logLen,
-                s: obsS,
-                hit: false,
-              });
+              addFallenLog(seg, group, radius, length, obsS);
             } else if (randObs < 0.55) {
-              // Regular Track Boulder
-              const boulder = new THREE.Mesh(
-                sharedBoulderGeo,
-                sharedBoulderMat,
-              );
-              boulder.scale.set(
-                1.1 + Math.random() * 0.3,
-                0.75 + Math.random() * 0.25,
-                1.1 + Math.random() * 0.3,
-              );
-              boulder.position.set(
-                localPose.position.x,
-                0.85,
-                localPose.position.z,
-              );
-              boulder.rotation.set(
-                Math.random() * Math.PI,
-                Math.random() * Math.PI,
-                0,
-              );
-
-              group.add(boulder);
-              seg.obstacles.push({
-                mesh: boulder,
-                type: "boulder",
-                s: obsS,
-                hit: false,
-              });
+              addTrackBoulder(seg, group, radius, length, obsS);
             } else if (randObs < 0.63) {
-              // Massive Giant Megalith Boulder (towering monolithic mountain rock)
-              const giantGroup = new THREE.Group();
-              giantGroup.position.set(
-                localPose.position.x,
-                0,
-                localPose.position.z,
-              );
-              giantGroup.rotation.y =
-                -localPose.heading + (Math.random() - 0.5) * 0.5;
-
-              const mainRock = new THREE.Mesh(
-                sharedGiantMainGeo,
-                sharedGiantMat,
-              );
-              mainRock.scale.set(1.4, 1.6, 1.3);
-              mainRock.position.set(0, 2.6, 0);
-              mainRock.rotation.set(
-                Math.random() * 0.5,
-                Math.random() * Math.PI,
-                0,
-              );
-              giantGroup.add(mainRock);
-
-              // Per-megalith material clone so its color can signal danger vs. safe.
-              const giantMat = sharedGiantMat.clone();
-
-              // Side support boulders forming a massive barrier
-              const subRock1 = new THREE.Mesh(sharedGiantSub1Geo, giantMat);
-              subRock1.position.set(-1.4, 1.3, 0.4);
-              giantGroup.add(subRock1);
-
-              const subRock2 = new THREE.Mesh(sharedGiantSub2Geo, giantMat);
-              subRock2.position.set(1.4, 1.2, -0.3);
-              giantGroup.add(subRock2);
-
-              mainRock.material = giantMat;
-
-              group.add(giantGroup);
-              seg.obstacles.push({
-                mesh: giantGroup,
-                type: "giant-boulder",
-                s: obsS,
-                hit: false,
-                mat: giantMat,
-                contactRadius: megalithContactRadius(giantGroup),
-              });
+              addMegalith(seg, group, radius, length, obsS);
             }
           }
 
-          // Bunnies spawn on the track at the same rate as megaliths (8%). A bunny
-          // with the train creeping below 10 mph hops off into the forest; any bunny
-          // actually struck means you did not slow down in time.
           if (Math.random() < 0.08) {
             const bunnyS = length * (0.3 + Math.random() * 0.4);
-            const bPose = getLocalSpinePose(radius, length, bunnyS);
-            // 50% of bunnies face the other way (away from the oncoming train).
-            const faceOtherWay = Math.random() < 0.5;
-            const bunny = createBunny(simulation, {
-              position: [bPose.position.x, 0, bPose.position.z],
-              rotation: [0, -bPose.heading + (faceOtherWay ? Math.PI : 0), 0],
-              mass: 0,
-            });
-            group.add(bunny.mesh);
-            seg.obstacles.push({
-              mesh: bunny.mesh,
-              type: "bunny",
-              s: bunnyS,
-              hit: false,
-              hopped: false,
-              faceOtherWay,
-            });
-
-            // BunnyXing powerup: post a "bunny!" sign ahead of the bunny so the
-            // player sees the sign first. Place it one segment before the bunny's
-            // spawn (at the previous segment's area, off to the left of the track).
-            if (bunnyXing) {
-              const entryPose = getLocalSpinePose(radius, length, 0);
-              const perp = {
-                x: -Math.sin(entryPose.heading),
-                z: Math.cos(entryPose.heading),
-              };
-              const side = 1;
-              const off = 2.0;
-              const sign = createSign(sim, {
-                postHeight: 3,
-                postRadius: 0.12,
-                postColor: 0x591b18,
-                boardWidth: 1.6,
-                boardHeight: 0.7,
-                boardColor: 0xe00011,
-                text: "bunny!",
-                textColor: 0xfffdf1,
-                position: [
-                  entryPose.position.x - length + perp.x * off * side,
-                  0,
-                  entryPose.position.z + perp.z * off * side,
-                ],
-                rotation: [0, -entryPose.heading + Math.PI * 1.5, 0],
-              });
-              group.add(sign.mesh);
-            }
+            addTrackBunny(seg, simulation, group, radius, length, bunnyS);
           }
         } // end if (!isSpawnSegment)
 
         return seg;
+      }
+
+      // ------------------------------------------------------------------
+      // Game systems. Each factory returns a controller exposing update(dt)
+      // plus the API/collections the shop wiring and other systems need.
+      // train.updateFn invokes them in a fixed order every frame (see setup).
+      // Shared mutable scalars live in one `state` object; everything else is
+      // private to its system.
+      // ------------------------------------------------------------------
+
+      // Throttle & sander: W/ArrowUp (or touch) accelerates toward the
+      // governor cap; releasing decelerates. Publishes state.speedMps and
+      // mirrors it onto follower.speed. Owns the sand-blast emitter.
+      function createThrottle({ keys, governor, state, sim, train, follower }) {
+        const decelRate = state.accelRate * 2;
+        let sandBlastEnabled = false;
+        let isAccelerating = false;
+
+        const sandBlast = createSandBlast(sim, {
+          parent: train.mesh,
+          particleCount: 500,
+          particleSize: 0.16,
+          color: 0xffd97d,
+          speed: 34,
+          spread: 0.25,
+          gravity: 8,
+          lifetime: 0.75,
+          rate: 350,
+          position: [3.8, 0.85, 0],
+          direction: [1, -0.15, 0],
+          enabled: () => sandBlastEnabled && isAccelerating,
+        });
+
+        function addSanderNozzles() {
+          const nozzleMat = new THREE.MeshStandardMaterial({
+            color: 0x334455,
+            metalness: 0.6,
+            roughness: 0.3,
+          });
+          const nozzleGeo = new THREE.CylinderGeometry(0.06, 0.08, 0.4, 8);
+          for (const side of [1, -1]) {
+            const nozzle = new THREE.Mesh(nozzleGeo, nozzleMat);
+            nozzle.position.set(3.8, 0.85, side * 0.72);
+            nozzle.rotation.z = -Math.PI / 6;
+            train.mesh.add(nozzle);
+          }
+        }
+
+        return {
+          enableSandBlast() {
+            sandBlastEnabled = true;
+            addSanderNozzles();
+          },
+          update(dt) {
+            const throttling = keys.has("KeyW") || keys.has("ArrowUp");
+            isAccelerating =
+              throttling && state.speedMps < governor.getCapMps() - 1e-4;
+            if (throttling) {
+              state.speedMps = governor.limit(
+                state.speedMps + state.accelRate * dt,
+              );
+            } else {
+              state.speedMps = Math.max(0, state.speedMps - decelRate * dt);
+            }
+            follower.speed = state.speedMps;
+          },
+        };
+      }
+
+      // Money accrual, gauge readout, smokestack "$" emission and shop grants.
+      function createEconomy({
+        state,
+        gauge,
+        governor,
+        moneyCounter,
+        powerups,
+        grantPowerups,
+        getRollThreshold,
+        spawnMoneySign,
+      }) {
+        let moneySpawnAccum = 0;
+        return {
+          update(dt) {
+            const speedMph = state.speedMps * MPS_TO_MPH;
+            gauge.setValue(speedMph);
+
+            // Red threshold mark follows the current boulder-damage threshold.
+            gauge.setThreshold(getRollThreshold());
+
+            // Money is earned flat at 1/s below top speed, and scales with
+            // speed once at top speed. The smokestack emits one "$" per dollar
+            // earned. When stopped, no money is earned (and no smoke signs).
+            const atMaxSpeed = state.speedMps >= governor.getCapMps() - 1e-6;
+            gauge.setMax(atMaxSpeed);
+            const moving = state.speedMps > 0.22; // ~0.5 mph
+            const moneyRate = !moving ? 0 : atMaxSpeed ? speedMph * 0.14 : 1.0;
+            state.money += dt * moneyRate;
+            moneyCounter.setValue(state.money);
+            powerups.refresh();
+
+            moneySpawnAccum += dt * moneyRate;
+            while (moneySpawnAccum >= 1) {
+              moneySpawnAccum -= 1;
+              spawnMoneySign();
+            }
+
+            // Grant any powerup whose condition is now met
+            grantPowerups();
+          },
+        };
+      }
+
+      // Advances distance along the track, recycles segments behind the train
+      // and rebases every world-space collection so it tracks with the rails.
+      function createTrackRunner({
+        track,
+        follower,
+        segmentLen,
+        rearSegments,
+        flyers,
+        explosions,
+        dynamites,
+        hoppers,
+      }) {
+        return {
+          update(dt) {
+            follower.s += follower.speed * dt;
+
+            const advanceThreshold = (rearSegments + 1) * segmentLen;
+            while (follower.s >= advanceThreshold) {
+              follower.s -= segmentLen;
+              const nextOrigin = track.segments[1]?.entryPose.position.clone();
+              const nextHeading = track.segments[1]?.entryPose.heading || 0;
+
+              track.advance();
+
+              if (!nextOrigin) continue;
+
+              rebaseItems(flyers, nextOrigin, nextHeading);
+              rebaseItems(dynamites, nextOrigin, nextHeading);
+              rebaseItems(explosions, nextOrigin, nextHeading);
+
+              // Rebase hopping bunnies analytically
+              const ca = Math.cos(nextHeading);
+              const sa = Math.sin(nextHeading);
+              for (const bunny of hoppers) {
+                const dx = bunny.start.x - nextOrigin.x;
+                const dz = bunny.start.z - nextOrigin.z;
+
+                // Shift the analytical start position backward
+                bunny.start.x = dx * ca + dz * sa;
+                bunny.start.z = -dx * sa + dz * ca;
+
+                // Rotate the trajectory and facing yaw to match the new segment
+                bunny.yaw -= nextHeading;
+                bunny.dir
+                  .set(Math.sin(bunny.yaw), 0, Math.cos(bunny.yaw))
+                  .normalize();
+              }
+            }
+          },
+        };
+      }
+
+      // Visual effects: floating decorations ($ signs, hearts), physics-driven
+      // debris flyers, explosion spheres, and the megalith shatter/roll outcomes.
+      function createEffectsSystem({ sim, train, follower, track, state }) {
+        const floatFx = createFloatingEffects();
+        const flyers = new Set();
+        const explosions = new Set();
+
+        // "$" sprite texture shared by the smokestack and reward signs
+        const moneyCanvas = document.createElement("canvas");
+        moneyCanvas.width = moneyCanvas.height = 64;
+        const moneyCtx = moneyCanvas.getContext("2d");
+        moneyCtx.fillStyle = "#e7d984";
+        moneyCtx.font =
+          'bold 46px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        moneyCtx.textAlign = "center";
+        moneyCtx.textBaseline = "middle";
+        moneyCtx.fillText("$", 32, 32);
+        const moneyTexture = new THREE.CanvasTexture(moneyCanvas);
+        moneyTexture.needsUpdate = true;
+
+        function makeMoneySprite(scale) {
+          const sprite = new THREE.Sprite(
+            new THREE.SpriteMaterial({
+              map: moneyTexture,
+              transparent: true,
+              depthTest: false,
+              opacity: 1,
+            }),
+          );
+          sprite.scale.set(scale, scale, scale);
+          return sprite;
+        }
+
+        // Flying "$" sign emitted from the smokestack; child of the train so
+        // it travels with it, drifting up and sideways as it fades.
+        function spawnMoneySign() {
+          const sprite = makeMoneySprite(0.5);
+          // Spawn just below the smokestack top
+          sprite.position.set(
+            3.55,
+            2.9 + Math.random() * 0.3,
+            (Math.random() - 0.5) * 0.2,
+          );
+          train.mesh.add(sprite);
+          floatFx.add(sprite, {
+            rise: 2.5,
+            drift: new THREE.Vector3(0.6, 0, 0),
+          });
+        }
+
+        // World-space "$" that shoots straight up from a position, then fades.
+        function spawnRewardSign(position) {
+          const sprite = makeMoneySprite(2.8);
+          sprite.position.set(position.x, position.y + 1.6, position.z);
+          sim.scene.add(sprite);
+          floatFx.add(sprite, { rise: 3.0 });
+        }
+
+        // Registers a mesh+body pair as a transient physics-driven flyer that
+        // despawns (and disposes) after `lifetime` seconds.
+        function spawnFlyer(mesh, body, lifetime) {
+          sim.scene.add(mesh);
+          sim.world.addBody(body);
+          flyers.add({ mesh, body, lifetime });
+        }
+
+        // Shatters a Giant Megalith Boulder into smaller rock fragments.
+        // Monetary damage dealt by destroying a megalith scales with the
+        // cowcatcher tier currently installed (a better plow reduces the cost).
+        function shatterMegalith(obsWorldPos, baseFwdDir, baseSpeed = 15) {
+          const shardOffsets = [
+            [-1.2, 1.0, 0.4],
+            [1.2, 1.0, -0.4],
+            [-0.4, 0.6, 1.2],
+            [0.4, 0.6, -1.2],
+          ];
+
+          for (const offset of shardOffsets) {
+            const rockMesh = new THREE.Mesh(sharedShardGeo, sharedGiantMat);
+            rockMesh.scale.set(
+              0.9 + Math.random() * 0.4,
+              0.8 + Math.random() * 0.3,
+              0.9 + Math.random() * 0.4,
+            );
+            rockMesh.position.set(
+              obsWorldPos.x + offset[0],
+              obsWorldPos.y + offset[1],
+              obsWorldPos.z + offset[2],
+            );
+            rockMesh.rotation.set(
+              Math.random() * Math.PI,
+              Math.random() * Math.PI,
+              Math.random() * Math.PI,
+            );
+
+            const rockBody = new CANNON.Body({
+              mass: 600,
+              shape: new CANNON.Sphere(0.8),
+              linearDamping: 0.3,
+              angularDamping: 0.4,
+            });
+            setBodyPose(rockBody, rockMesh.position);
+
+            // Fan the shards outward and upward from the impact point
+            const shardDir = new CANNON.Vec3(
+              baseFwdDir.x + offset[0] * 0.4,
+              2.0 + Math.random() * 2.5,
+              baseFwdDir.z + offset[2] * 0.4,
+            );
+            shardDir.normalize();
+            rockBody.velocity.set(
+              shardDir.x * baseSpeed +
+                baseFwdDir.z * (Math.random() - 0.5) * 10,
+              follower.speed * 0.3 + 1.5 + Math.random() * 2,
+              shardDir.z * baseSpeed -
+                baseFwdDir.x * (Math.random() - 0.5) * 10,
+            );
+            rockBody.angularVelocity.copy(randomSpin(14));
+
+            spawnFlyer(rockMesh, rockBody, 2.8);
+          }
+        }
+
+        // Promotes the megalith group to a physics body and knocks it sideways
+        // with spin so it rolls off onto the shoulder (used for the low-speed
+        // "roll out of the way" outcome). No money is charged.
+        function rollMegalithAside(mesh, worldPos, worldQuat, fwdDir, speed) {
+          mesh.position.copy(worldPos);
+          mesh.quaternion.copy(worldQuat);
+
+          const body = new CANNON.Body({
+            mass: 40000,
+            shape: new CANNON.Sphere(2.6),
+            linearDamping: 0.7,
+            angularDamping: 0.45,
+          });
+          setBodyPose(body, worldPos, worldQuat);
+
+          // Perpendicular (lateral) direction to the forward axis, in XZ plane.
+          const lateralSide = Math.random() < 0.5 ? 1 : -1;
+          const latX = -fwdDir.z * lateralSide;
+          const latZ = fwdDir.x * lateralSide;
+          const lateralSpeed = speed * 0.6 + 6 + Math.random() * 4;
+          const fwdSpeed = speed * 0.2;
+
+          // Pin to the ground: no vertical launch. The megalith slides/rolls
+          // horizontally along the ground instead of bouncing into the air.
+          const vx = fwdDir.x * fwdSpeed + latX * lateralSpeed;
+          const vz = fwdDir.z * fwdSpeed + latZ * lateralSpeed;
+
+          body.velocity.set(vx, 0, vz);
+
+          // Give it a true rolling spin about the horizontal axis perpendicular
+          // to its direction of travel (omega = v / radius), so it rolls like a
+          // huge boulder rather than tumbling wildly.
+          const speedMag = Math.abs(vx) + Math.abs(vz);
+          const rollMag = speedMag > 0.01 ? speedMag / 2.6 : 0;
+          body.angularVelocity.set(
+            (speedMag > 0.01 ? -vz / speedMag : 0) * rollMag,
+            0,
+            (speedMag > 0.01 ? vx / speedMag : 0) * rollMag,
+          );
+
+          spawnFlyer(mesh, body, 3.2);
+        }
+
+        // Spawns expanding orange explosion sphere(s) for 200ms and shatters
+        // nearby Megaliths. With Big Bangs, renders 3 spheres and larger radius.
+        function spawnExplosion(pos) {
+          const count = state.bigBangs ? 3 : 1;
+          const maxRadius = state.bigBangs ? 14.0 : 9.0;
+          const duration = 0.2; // 200ms
+          const geo = new THREE.SphereGeometry(1, 24, 18);
+          const mat = new THREE.MeshStandardMaterial({
+            color: 0xff6600,
+            emissive: 0xff4400,
+            emissiveIntensity: 0.9,
+            roughness: 0.4,
+            transparent: true,
+            opacity: 0.9,
+          });
+          const baseY = Math.max(pos.y, 0.5);
+
+          for (let i = 0; i < count; i++) {
+            const mesh = new THREE.Mesh(geo, mat);
+            let px = pos.x,
+              py = baseY,
+              pz = pos.z;
+            // Sphere size and start delay: with Big Bangs, vary each sphere's
+            // radius and stagger them 100ms apart for a more interesting blast.
+            const radius = state.bigBangs
+              ? maxRadius * [1.0, 0.7, 0.85][i]
+              : maxRadius;
+            const delay = state.bigBangs ? i * 0.1 : 0;
+            if (state.bigBangs) {
+              // Spread the three spheres outward along the forward axis and up.
+              const off = i - 1; // -1, 0, 1
+              px = pos.x + off * 3.0;
+              py = baseY + Math.abs(off) * 1.4;
+            }
+            mesh.position.set(px, py, pz);
+            mesh.scale.setScalar(0.1);
+            sim.scene.add(mesh);
+
+            explosions.add({
+              mesh,
+              age: 0,
+              delay,
+              duration,
+              maxRadius: radius,
+            });
+          }
+
+          // Check for Megaliths and boulders in blast radius
+          const fwdDir = follower.forwardAxis
+            .clone()
+            .applyQuaternion(train.mesh.quaternion);
+          for (const sSeg of track.segments) {
+            if (sSeg.obstacles) {
+              for (const obs of sSeg.obstacles) {
+                if (
+                  !obs.hit &&
+                  obs.mesh.parent &&
+                  (obs.type === "giant-boulder" || obs.type === "boulder")
+                ) {
+                  const obsWorldPos = new THREE.Vector3();
+                  obs.mesh.getWorldPosition(obsWorldPos);
+                  if (pos.distanceTo(obsWorldPos) <= maxRadius + 3.0) {
+                    obs.hit = true;
+                    obs.mesh.parent.remove(obs.mesh);
+                    if (obs.type === "giant-boulder") {
+                      shatterMegalith(
+                        obsWorldPos,
+                        fwdDir,
+                        Math.max(16, follower.speed * 0.5),
+                      );
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        const _levelAxis = new THREE.Vector3(0, 1, 0);
+        return {
+          floatFx,
+          flyers,
+          explosions,
+          spawnFlyer,
+          spawnMoneySign,
+          spawnRewardSign,
+          spawnExplosion,
+          shatterMegalith,
+          rollMegalithAside,
+          update(dt) {
+            // Animate all floating decorations ($ sprites, hearts)
+            floatFx.update(dt);
+
+            // Animate & despawn explosion spheres (expand to full radius)
+            for (const expl of explosions) {
+              expl.age += dt;
+              const progress = (expl.age - (expl.delay ?? 0)) / expl.duration;
+              if (expl.age >= (expl.delay ?? 0) + expl.duration) {
+                sim.scene.remove(expl.mesh);
+                expl.mesh.geometry?.dispose();
+                expl.mesh.material?.dispose();
+                explosions.delete(expl);
+              } else if (progress > 0) {
+                const currentScale =
+                  0.1 +
+                  (expl.maxRadius - 0.1) * Math.sin((progress * Math.PI) / 2);
+                expl.mesh.scale.setScalar(currentScale);
+                expl.mesh.material.opacity = 0.9 * (1 - progress * 0.7);
+              }
+            }
+
+            // Update & sync active flying obstacles
+            for (const flyer of flyers) {
+              syncMeshFromBody(flyer.mesh, flyer.body);
+              if (flyer.level) {
+                // Keep the bunny's feet planted toward the ground; only yaw spins.
+                flyer.mesh.quaternion.setFromAxisAngle(_levelAxis, flyer.yaw);
+              }
+              flyer.lifetime -= dt;
+              if (flyer.lifetime <= 0) {
+                sim.scene.remove(flyer.mesh);
+                sim.world.removeBody(flyer.body);
+                flyer.mesh.traverse((child) => {
+                  if (child.isMesh) {
+                    child.geometry?.dispose();
+                    if (Array.isArray(child.material))
+                      child.material.forEach((m) => m.dispose());
+                    else child.material?.dispose();
+                  }
+                });
+                flyers.delete(flyer);
+              }
+            }
+          },
+        };
+      }
+
+      // Thrown dynamite: purchase button, in-cab spawn, arcing flight,
+      // megalith proximity detonation and ground-contact explosion.
+      function createDynamiteSystem({
+        sim,
+        simulation,
+        track,
+        follower,
+        train,
+        segmentLen,
+        state,
+        spawnExplosion,
+      }) {
+        const items = new Set();
+
+        // Throw button pinned to the left of the speed gauge
+        const btn = document.createElement("button");
+        btn.id = "dynamite-btn";
+        btn.style.display = "none";
+        btn.addEventListener(
+          "mousedown",
+          () => (btn.style.transform = "scale(0.96)"),
+        );
+        btn.addEventListener("mouseup", () => (btn.style.transform = "scale(1)"));
+        btn.addEventListener(
+          "touchstart",
+          (e) => {
+            btn.style.transform = "scale(0.96)";
+            throwDynamite();
+            if (e.cancelable) {
+              e.preventDefault();
+            }
+          },
+          { passive: false },
+        );
+        btn.addEventListener(
+          "touchend",
+          () => (btn.style.transform = "scale(1)"),
+          { passive: true },
+        );
+        btn.addEventListener(
+          "touchcancel",
+          () => (btn.style.transform = "scale(1)"),
+          { passive: true },
+        );
+        btn.addEventListener("click", () => throwDynamite());
+        document.body.appendChild(btn);
+
+        function refreshButton() {
+          btn.textContent = `THROW\nDYNAMITE\n(x${state.dynamiteCount})`;
+          btn.style.opacity = state.dynamiteCount > 0 ? "1" : "0.4";
+          btn.style.cursor = state.dynamiteCount > 0 ? "pointer" : "default";
+          const visible = state.dynamiteUnlocked || state.dynamiteCount > 0;
+          btn.style.display = visible ? "block" : "none";
+        }
+        refreshButton();
+
+        // Spawn a dynamite in the cab and launch it forward in an arc. It
+        // flies until it touches the ground, then explodes.
+        function throwDynamite() {
+          if (state.dynamiteCount <= 0) return;
+          state.dynamiteCount--;
+          refreshButton();
+
+          const ent = createDynamite(sim, {
+            length: 2.4,
+            position: [0, 0, 0],
+            mass: 2,
+          });
+          const mesh = ent.mesh;
+          const body = ent.body;
+
+          const spawn = new THREE.Vector3(-2.6, 4.0, 0).applyMatrix4(
+            train.mesh.matrixWorld,
+          );
+          mesh.position.copy(spawn);
+          body.position.copy(spawn);
+          body.quaternion.setFromEuler(
+            Math.random() * Math.PI,
+            Math.random() * Math.PI,
+            0,
+          );
+
+          const fwd = follower.forwardAxis
+            .clone()
+            .applyQuaternion(train.mesh.quaternion);
+
+          // Aim at the point on the track 2 segments ahead of the train
+          const targetPose = track.getPoseAt(follower.s + 2 * segmentLen);
+          const targetPos = targetPose
+            ? targetPose.position
+            : spawn.clone().addScaledVector(fwd, 2 * segmentLen);
+
+          const aimDir = new THREE.Vector3(
+            targetPos.x - spawn.x,
+            0,
+            targetPos.z - spawn.z,
+          );
+          if (aimDir.lengthSq() > 0.001) {
+            aimDir.normalize();
+          } else {
+            aimDir.copy(fwd);
+          }
+
+          // Launch with a low, fast trajectory toward the track target ahead
+          const launchSpeed = follower.speed + 35;
+          body.velocity.set(aimDir.x * launchSpeed, 5, aimDir.z * launchSpeed);
+          body.angularVelocity.copy(randomSpin(8));
+
+          const dyn = {
+            mesh,
+            body,
+            ent,
+            landed: false,
+            exploded: false,
+            collided: false,
+          };
+          body.addEventListener("collide", () => {
+            dyn.collided = true;
+          });
+          items.add(dyn);
+        }
+
+        return {
+          items,
+          buy() {
+            state.dynamiteCount++;
+            refreshButton();
+          },
+          unlock() {
+            state.dynamiteUnlocked = true;
+            refreshButton();
+          },
+          update(dt) {
+            // Sync & despawn thrown sticks (explode on ground contact)
+            for (const dyn of items) {
+              syncMeshFromBody(dyn.mesh, dyn.body);
+
+              // Megalith collision is checked EVERY frame regardless of
+              // altitude, so a fast, flat-thrown stick can't tunnel straight
+              // through a megalith after merely grazing the ground. Uses
+              // horizontal distance so a low stick still clips the footprint.
+              let hitMegalith = false;
+              if (!dyn.exploded) {
+                for (const sSeg of track.segments) {
+                  if (sSeg.obstacles) {
+                    for (const obs of sSeg.obstacles) {
+                      if (
+                        !obs.hit &&
+                        obs.mesh.parent &&
+                        (obs.type === "giant-boulder" || obs.type === "boulder")
+                      ) {
+                        const obsWorldPos = new THREE.Vector3();
+                        obs.mesh.getWorldPosition(obsWorldPos);
+                        const contactRadius = obs.contactRadius ?? 3.6;
+                        const dx = dyn.body.position.x - obsWorldPos.x;
+                        const dz = dyn.body.position.z - obsWorldPos.z;
+                        if (
+                          dx * dx + dz * dz <
+                          contactRadius * contactRadius
+                        ) {
+                          dyn.exploded = true;
+                          spawnExplosion(dyn.body.position);
+                          simulation.removeEntity(dyn.ent);
+                          items.delete(dyn);
+                          hitMegalith = true;
+                          break;
+                        }
+                      }
+                    }
+                  }
+                  if (hitMegalith) break;
+                }
+              }
+              if (hitMegalith) continue;
+
+              // Land on the ground: explode shortly after contact
+              if (dyn.body.position.y <= 0.3) {
+                dyn.landed = true;
+              }
+              if (dyn.collided) {
+                dyn.landed = true;
+              }
+              if (dyn.landed) {
+                spawnExplosion(dyn.body.position);
+                simulation.removeEntity(dyn.ent);
+                items.delete(dyn);
+              }
+            }
+          },
+        };
+      }
+
+      // Hopped-off bunnies: scripted parabolic hops away from the rails,
+      // streaming hearts, plus the struck-bunny physics launch and the $20
+      // stop-for-bunnies reward.
+      function createBunnySystem({ sim, effects, state, moneyCounter, powerups }) {
+        const hoppers = new Set();
+
+        // Red 3D hearts that emit from a hopping bunny's head and float
+        // upward, matching the smokestack "$" sign style.
+        function spawnBunnyHeart(position, yaw) {
+          const heartM = createHeartMaterial({
+            color: 0xff3344,
+            roughness: 0.3,
+            metalness: 0.1,
+          });
+          heartM.transparent = true;
+          heartM.opacity = 1;
+          const heart = createHeartMesh({
+            scale: [0.84, 0.84, 0.84],
+            material: heartM,
+          });
+          heart.position.copy(position);
+          heart.position.y += 1.5; // above the bunny's head
+          // The bunny hops away from the train, so face the heart's front (+Z)
+          // back toward the train (the opposite of the hop direction).
+          heart.rotation.y = yaw + Math.PI;
+          sim.scene.add(heart);
+          effects.floatFx.add(heart, {
+            rise: 2.2,
+            spin: 0.8,
+            endScale: 0.45,
+          });
+        }
+
+        // Adds the bunny to the world and begins its scripted hop. Hops in the
+        // direction it faces so it clears into the forest rather than back
+        // toward the train. `moneyAsFirstHeart` replaces the first heart with
+        // the "$" sign.
+        function beginBunnyHop(
+          mesh,
+          worldPos,
+          worldQuat,
+          moneyAsFirstHeart = false,
+        ) {
+          sim.scene.add(mesh);
+          mesh.position.copy(worldPos);
+          mesh.quaternion.copy(worldQuat);
+
+          const hopYaw = new THREE.Euler()
+            .setFromQuaternion(worldQuat, "YXZ").y;
+          // The bunny faces its local +Z; rotate that by its yaw to get the
+          // true world direction it's looking, and hop along that.
+          const dir = new THREE.Vector3(
+            Math.sin(hopYaw),
+            0,
+            Math.cos(hopYaw),
+          ).normalize();
+
+          hoppers.add({
+            mesh,
+            yaw: hopYaw,
+            dir,
+            start: worldPos.clone(),
+            t: 0,
+            hopNum: 0,
+            hops: 5,
+            duration: 0.45,
+            hopDist: 2.4,
+            hopHeight: 1.4,
+            heartAccum: 0,
+            suppressFirstHeart: moneyAsFirstHeart,
+          });
+        }
+
+        // Reward the player for stopping: grant $20 and show a "$" shooting up
+        // from the bunny's head (in place of the first heart) as the bunny
+        // immediately hops away streaming hearts.
+        function rewardAndHop(mesh, worldPos, worldQuat) {
+          state.money += 20;
+          moneyCounter.setValue(state.money);
+          powerups.refresh();
+
+          // The "$" takes the place of the first heart, so skip that first one.
+          effects.spawnRewardSign(worldPos);
+          beginBunnyHop(mesh, worldPos, worldQuat, true);
+        }
+
+        // Launches a struck bunny into the air with the train's momentum so
+        // its collision bounce is visible before the screen cuts to black.
+        // Lives long enough (well past the fade) to avoid popping out early.
+        function launchStruck(mesh, worldPos, worldQuat, fwdDir, speed) {
+          mesh.position.copy(worldPos);
+          mesh.quaternion.copy(worldQuat);
+
+          const body = new CANNON.Body({
+            mass: 8,
+            shape: new CANNON.Box(new CANNON.Vec3(0.45, 0.95, 0.6)),
+            linearDamping: 0.15,
+            angularDamping: 0.35,
+          });
+          setBodyPose(body, {
+            x: worldPos.x,
+            y: worldPos.y + 0.95,
+            z: worldPos.z,
+          });
+
+          // Whipped forward and up by the impact.
+          body.velocity.set(
+            fwdDir.x * (speed * 1.4 + 6),
+            6 + speed * 0.4,
+            fwdDir.z * (speed * 1.4 + 6),
+          );
+          body.angularVelocity.copy(randomSpin(12));
+
+          effects.spawnFlyer(mesh, body, 8.0);
+        }
+
+        return {
+          hoppers,
+          rewardAndHop,
+          launchStruck,
+          update(dt) {
+            // Drive the hopped bunnies: each is a parabolic arc in its facing
+            // direction. On landing it hops again until it has made 5 hops,
+            // then it despawns.
+            for (const bunny of hoppers) {
+              bunny.t += dt;
+              const p = Math.min(1, bunny.t / bunny.duration);
+              const end = bunny.start
+                .clone()
+                .addScaledVector(bunny.dir, bunny.hopDist);
+              bunny.mesh.position.set(
+                bunny.start.x + (end.x - bunny.start.x) * p,
+                4 * bunny.hopHeight * p * (1 - p),
+                bunny.start.z + (end.z - bunny.start.z) * p,
+              );
+
+              // Emit a red heart above the bunny's head as it hops away,
+              // roughly every hop-blink, floating up into the forest.
+              bunny.heartAccum += dt;
+              while (bunny.heartAccum >= 0.22) {
+                bunny.heartAccum -= 0.22;
+                // The reward "$" replaces the first heart, so skip it.
+                if (bunny.suppressFirstHeart) {
+                  bunny.suppressFirstHeart = false;
+                  continue;
+                }
+                spawnBunnyHeart(bunny.mesh.position, bunny.yaw);
+              }
+
+              if (bunny.t >= bunny.duration) {
+                bunny.hopNum++;
+                if (bunny.hopNum >= bunny.hops) {
+                  sim.scene.remove(bunny.mesh);
+                  hoppers.delete(bunny);
+                } else {
+                  // Next hop: tighter and a touch lower.
+                  bunny.start.copy(end);
+                  bunny.t = 0;
+                  bunny.hopHeight *= 0.82;
+                  bunny.duration = Math.max(0.3, bunny.duration * 0.85);
+                }
+              }
+            }
+          },
+        };
+      }
+
+      // Cowcatcher equipment, defenses, obstacle impact detection and all
+      // collision outcomes (roll aside / shatter / knock flying / bunny fates).
+      function createImpactSystem({
+        sim,
+        simulation,
+        entity,
+        follower,
+        track,
+        state,
+        effects,
+        bunnies,
+        moneyCounter,
+        powerups,
+      }) {
+        // Kinematic cowcatcher collider mounted on front of train
+        const cowcatcherBody = new CANNON.Body({
+          mass: 0,
+          type: CANNON.Body.KINEMATIC,
+          shape: new CANNON.Box(new CANNON.Vec3(1.4, 1.2, 1.2)),
+        });
+        sim.world.addBody(cowcatcherBody);
+
+        // Defenses: an object per equipped defense, each carrying a numeric
+        // `valueMph`. Total defense = sum across all equipped defenses and is
+        // used to offset any speed loss — impacts worth less than the total
+        // are absorbed entirely, larger ones reduced by it.
+        const defenses = [];
+        function addDefense(def) {
+          defenses.push(def);
+        }
+        function removeDefense(id) {
+          for (let i = 0; i < defenses.length; i++) {
+            if (defenses[i].id === id) {
+              defenses.splice(i, 1);
+              i--;
+            }
+          }
+        }
+        function totalDefenseMph() {
+          let total = 0;
+          for (const def of defenses) total += def.valueMph;
+          return total;
+        }
+
+        // Apply a speed loss (mps) offset by total defense. Fully absorbed
+        // impacts cause no speed loss and no screen shake.
+        function applyImpact(speedLossMps, shakeDelta, shakeCap) {
+          const effMph = Math.max(
+            0,
+            speedLossMps * MPS_TO_MPH - totalDefenseMph(),
+          );
+          if (effMph <= 0) return;
+          state.speedMps = Math.max(0, state.speedMps - effMph / MPS_TO_MPH);
+          state.screenShake = Math.min(shakeCap, state.screenShake + shakeDelta);
+        }
+
+        const COWCATCHER_DEFENSE_IDS = new Set();
+        const MEGALITH_DAMAGE = 100;
+
+        // Monetary damage dealt by destroying a megalith scales down with the
+        // installed cowcatcher tier.
+        function megalithDamage() {
+          if (COWCATCHER_DEFENSE_IDS.has("wedge-plow")) return 60;
+          if (COWCATCHER_DEFENSE_IDS.has("big-cowcatcher")) return 70;
+          if (COWCATCHER_DEFENSE_IDS.has("cowcatcher")) return 80;
+          return MEGALITH_DAMAGE;
+        }
+
+        // Speed (mph) below which a megalith rolls aside instead of exploding,
+        // based on the equipped cowcatcher tier. A better cowcatcher lets you
+        // roll megaliths out of the way at higher speeds.
+        function megalithRollThreshold() {
+          if (COWCATCHER_DEFENSE_IDS.has("wedge-plow")) return 90;
+          if (COWCATCHER_DEFENSE_IDS.has("big-cowcatcher")) return 70;
+          if (COWCATCHER_DEFENSE_IDS.has("cowcatcher")) return 50;
+          return 30;
+        }
+
+        // Renders the wedge cowcatcher at the front of the train and applies
+        // its defense. Upgrades replace the previous one with a larger one.
+        let cowcatcherEntity = null;
+        function setCowcatcherTier({ defenseId, valueMph, scale }) {
+          // Swap in the new defense, dropping any prior cowcatcher-class one.
+          for (const id of COWCATCHER_DEFENSE_IDS) removeDefense(id);
+          COWCATCHER_DEFENSE_IDS.clear();
+          addDefense({ id: defenseId, valueMph });
+          COWCATCHER_DEFENSE_IDS.add(defenseId);
+
+          // Replace the existing cowcatcher with a larger one.
+          if (cowcatcherEntity) {
+            entity.mesh.remove(cowcatcherEntity.mesh);
+            sim.removeEntity(cowcatcherEntity);
+            cowcatcherEntity = null;
+          }
+          const cowcatcher = createCowcatcher(sim, {
+            color: 0x222b33,
+            width: 0.32 * scale,
+            gap: 0.16 * scale,
+            depth: 1.2 * scale,
+            height: 0.75 * scale,
+            position: [4.1, 0.5, 0],
+            rotation: [0, -Math.PI / 2 - Math.PI, 0],
+          });
+          entity.mesh.add(cowcatcher.mesh);
+          cowcatcherEntity = cowcatcher;
+        }
+
+        // Megaliths show which outcome your current speed would trigger: black
+        // means it'll be nudged aside (no penalty), deep red means it'd explode
+        // and cost money. Colors blend smoothly, but only in a tight band
+        // around the threshold so the signal stays readable.
+        const SAFE_COLOR = new THREE.Color(0x161616);
+        const DANGER_COLOR = new THREE.Color(0x8b0000);
+        const COLOR_BAND = 3; // mph transition width around the threshold
+
+        function updateMegalithColors() {
+          const speedMph = state.speedMps * MPS_TO_MPH;
+          const threshold = megalithRollThreshold();
+          const t = Math.max(
+            0,
+            Math.min(
+              1,
+              (speedMph - (threshold - COLOR_BAND)) / (2 * COLOR_BAND),
+            ),
+          );
+          const target = SAFE_COLOR.clone().lerp(DANGER_COLOR, t);
+          for (const sSeg of track.segments) {
+            if (!sSeg.obstacles) continue;
+            for (const obs of sSeg.obstacles) {
+              if (
+                obs.type === "giant-boulder" &&
+                obs.mat &&
+                !obs.hit &&
+                obs.mesh.parent
+              ) {
+                obs.mat.color.copy(target);
+              }
+            }
+          }
+        }
+
+        // Red "-$X" that flashes at dead-center screen and flies up like the
+        // smokestack money, then fades. Used for monetary damage (megaliths).
+        function spawnDamageSign(amount = MEGALITH_DAMAGE) {
+          const el = document.createElement("div");
+          el.textContent = `-$${amount}`;
+          Object.assign(el.style, {
+            position: "fixed",
+            left: "50%",
+            top: "50%",
+            transform: "translate(-50%, -50%)",
+            color: "#ff4444",
+            fontFamily:
+              '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+            fontSize: "2.4rem",
+            fontWeight: "900",
+            textShadow: "0 0 12px rgba(255,0,0,0.7)",
+            pointerEvents: "none",
+            zIndex: "120",
+            userSelect: "none",
+            willChange: "transform, opacity",
+          });
+          document.body.appendChild(el);
+          el.animate(
+            [
+              { transform: "translate(-50%, -50%)", opacity: 1 },
+              { transform: "translate(-50%, -90%)", opacity: 0 },
+            ],
+            { duration: 1000, easing: "ease-out" },
+          ).onfinish = () => el.remove();
+        }
+
+        // "You monster." — if you fail to slow down and run a bunny over, the
+        // screen fades to black, the verdict fades in, then the game resets.
+        let gameOver = false;
+        function triggerYouMonster() {
+          if (gameOver) return;
+          gameOver = true;
+          state.speedMps = 0;
+          follower.speed = 0;
+
+          const overlay = document.createElement("div");
+          Object.assign(overlay.style, {
+            position: "fixed",
+            inset: "0",
+            background: "#000",
+            opacity: "0",
+            pointerEvents: "none",
+            zIndex: "200",
+            transition: "opacity 0.6s ease",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          });
+          const txt = document.createElement("div");
+          txt.textContent = "You monster! There's only one rule:";
+          Object.assign(txt.style, {
+            color: "#fff",
+            fontFamily: "serif",
+            fontSize: "3rem",
+            fontWeight: "700",
+            letterSpacing: "0.05em",
+            textAlign: "center",
+            opacity: "0",
+            transition: "opacity 0.6s ease",
+            userSelect: "none",
+          });
+          overlay.appendChild(txt);
+          document.body.appendChild(overlay);
+
+          // Fade the black in a quarter second after the strike, so the
+          // impact lands first before the screen cuts to the verdict.
+          setTimeout(() => (overlay.style.opacity = "1"), 250);
+          // Line 1 fades in on the black, then fades out...
+          setTimeout(() => (txt.style.opacity = "1"), 875);
+          setTimeout(() => (txt.style.opacity = "0"), 1900);
+          // ...and the second line takes its place before the reset.
+          setTimeout(() => {
+            txt.textContent = "Always stop for bunnies.";
+            txt.style.opacity = "1";
+          }, 2300);
+          setTimeout(() => location.reload(), 3400);
+        }
+
+        // Scratch objects reused every frame to avoid GC pauses
+        const _obsWorldPos = new THREE.Vector3();
+        const _obsWorldQuat = new THREE.Quaternion();
+        const _cowcatcherWorldPos = new THREE.Vector3();
+        const _fwdDir = new THREE.Vector3();
+        const _levelAxis = new THREE.Vector3(0, 1, 0);
+        const _frontLocal = new THREE.Vector3(4.0, 0.85, 0);
+
+        return {
+          setCowcatcherTier,
+          getRollThreshold: megalithRollThreshold,
+          update(dt) {
+            // Tint megaliths by whether the current speed would nudge or cost
+            updateMegalithColors();
+
+            // Forward axis of the locomotive in world space
+            _fwdDir
+              .copy(follower.forwardAxis)
+              .applyQuaternion(entity.mesh.quaternion);
+
+            // Sync kinematic cowcatcher collider to front of locomotive
+            _cowcatcherWorldPos
+              .copy(_frontLocal)
+              .applyMatrix4(entity.mesh.matrixWorld);
+            setBodyPose(cowcatcherBody, _cowcatcherWorldPos, entity.mesh.quaternion);
+
+            // Give kinematic collider forward/upward impulse velocity
+            const impulseSpeed = follower.speed * 1.6 + 10;
+            cowcatcherBody.velocity.set(
+              _fwdDir.x * impulseSpeed,
+              follower.speed * 0.35 + 5,
+              _fwdDir.z * impulseSpeed,
+            );
+
+            // Impact detection: when the cowcatcher reaches an obstacle,
+            // resolve the outcome for its type.
+            for (const sSeg of track.segments) {
+              if (sSeg.obstacles) {
+                for (const obs of sSeg.obstacles) {
+                  if (!obs.hit && obs.mesh.parent) {
+                    obs.mesh.getWorldPosition(_obsWorldPos);
+                    const dist = _cowcatcherWorldPos.distanceTo(_obsWorldPos);
+
+                    // Bunnies that are not slowing-down-able hop off into the
+                    // forest while the train is still half a segment away and
+                    // below 10 mph, then despawn 5s later.
+                    if (obs.type === "bunny" && !obs.hopped && dist < 20) {
+                      const mph = state.speedMps * MPS_TO_MPH;
+                      if (mph < 10) {
+                        obs.hopped = true;
+                        obs.hit = true;
+                        obs.mesh.getWorldQuaternion(_obsWorldQuat);
+                        obs.mesh.parent.remove(obs.mesh);
+                        bunnies.rewardAndHop(
+                          obs.mesh,
+                          _obsWorldPos,
+                          _obsWorldQuat,
+                        );
+                        continue;
+                      }
+                    }
+
+                    if (dist < 3.0) {
+                      obs.hit = true;
+
+                      // Striking a bunny that didn't hop is unforgivable:
+                      // launch it with physics so the bounce is visible, then
+                      // half a second later cut to the verdict.
+                      if (obs.type === "bunny") {
+                        obs.mesh.getWorldQuaternion(_obsWorldQuat);
+                        obs.mesh.parent.remove(obs.mesh);
+                        bunnies.launchStruck(
+                          obs.mesh,
+                          _obsWorldPos,
+                          _obsWorldQuat,
+                          _fwdDir,
+                          follower.speed,
+                        );
+                        setTimeout(triggerYouMonster, 500);
+                        continue;
+                      }
+
+                      obs.mesh.getWorldQuaternion(_obsWorldQuat);
+
+                      // Detach from segment and promote to world simulation
+                      obs.mesh.parent.remove(obs.mesh);
+
+                      // Giant Megalith Boulder outcomes depend on approach speed
+                      if (obs.type === "giant-boulder") {
+                        const impactMph = state.speedMps * MPS_TO_MPH;
+                        const rollThreshold = megalithRollThreshold();
+
+                        // Low-speed hit: roll the megalith off to the side (free
+                        // of money, but a heavy 90% speed bleed) instead of
+                        // exploding.
+                        if (impactMph <= rollThreshold) {
+                          effects.rollMegalithAside(
+                            obs.mesh,
+                            _obsWorldPos,
+                            _obsWorldQuat,
+                            _fwdDir,
+                            follower.speed,
+                          );
+                          state.speedMps = Math.max(0, state.speedMps * 0.1);
+                          state.screenShake = Math.min(
+                            1.4,
+                            state.screenShake + 0.5,
+                          );
+                          follower.speed = state.speedMps;
+                          continue;
+                        }
+
+                        // Cowcatcher impacts cost money (tiered discount),
+                        // shown as a red "-$X" at screen center. Dynamite
+                        // blows are free.
+                        const cost = megalithDamage();
+                        state.money -= cost;
+                        moneyCounter.setValue(state.money);
+                        spawnDamageSign(cost);
+
+                        effects.shatterMegalith(
+                          _obsWorldPos,
+                          _fwdDir,
+                          follower.speed * 0.5,
+                        );
+
+                        // Above the threshold the megalith explodes; only 50%
+                        // speed bleed.
+                        state.speedMps = Math.max(0, state.speedMps * 0.5);
+                        state.screenShake = Math.min(
+                          1.4,
+                          state.screenShake + 1.2,
+                        );
+                        follower.speed = state.speedMps;
+                        continue;
+                      }
+
+                      obs.mesh.position.copy(_obsWorldPos);
+                      obs.mesh.quaternion.copy(_obsWorldQuat);
+
+                      // Knock a tiny rock aside with Golden Rocks active: turn
+                      // it golden (clone so other rocks stay gray).
+                      if (obs.type === "tiny-rock" && state.goldenRocks) {
+                        obs.mesh.material = sharedTinyMat.clone();
+                        obs.mesh.material.color.set(0xffc940);
+                      } else if (obs.type === "boulder" && state.goldenBoulders) {
+                        obs.mesh.material = sharedBoulderMat.clone();
+                        obs.mesh.material.color.set(0xffc940);
+                      }
+
+                      let body;
+                      if (obs.type === "log") {
+                        body = new CANNON.Body({
+                          mass: 400,
+                          shape: new CANNON.Box(
+                            new CANNON.Vec3(obs.logLen / 2, 0.4, 0.4),
+                          ),
+                        });
+                      } else if (obs.type === "tiny-rock") {
+                        body = new CANNON.Body({
+                          mass: 30,
+                          shape: new CANNON.Sphere(0.3),
+                          linearDamping: 0.2,
+                          angularDamping: 0.3,
+                        });
+                      } else {
+                        body = new CANNON.Body({
+                          mass: 1200,
+                          shape: new CANNON.Sphere(0.95),
+                        });
+                      }
+                      setBodyPose(body, _obsWorldPos, _obsWorldQuat);
+
+                      // Impulse scaled to obstacle mass & inertia
+                      {
+                        const lateralSide =
+                          (Math.random() < 0.5 ? 1 : -1) *
+                          (follower.speed * 0.4 + Math.random() * 8);
+                        const hitSpeed = follower.speed * 0.9;
+                        body.velocity.set(
+                          _fwdDir.x * hitSpeed + _fwdDir.z * lateralSide,
+                          follower.speed * 0.3 + 2 + Math.random() * 3,
+                          _fwdDir.z * hitSpeed - _fwdDir.x * lateralSide,
+                        );
+                        body.angularVelocity.copy(randomSpin(15));
+                      }
+
+                      // Subtract velocity commensurate with obstacle mass &
+                      // apply impact feedback
+                      if (COWCATCHER_DEFENSE_IDS.has("wedge-plow")) {
+                        // Wedge plow: branch, boulder, and rock are knocked
+                        // aside with no speed bleed — just a light rattle.
+                        state.screenShake = Math.min(
+                          0.15,
+                          state.screenShake + 0.08,
+                        );
+                      } else if (obs.type === "log") {
+                        applyImpact(
+                          Math.max(5.0, state.speedMps * 0.22),
+                          0.22,
+                          0.35,
+                        );
+                      } else if (obs.type === "tiny-rock") {
+                        // Tiny rocks: negligible impact, just a small rattle
+                        applyImpact(
+                          Math.max(0.4, state.speedMps * 0.05),
+                          0.08,
+                          0.15,
+                        );
+                        // Golden Rocks: each tiny rock knocked aside is worth $1
+                        if (state.goldenRocks) {
+                          state.money += 1;
+                          moneyCounter.setValue(state.money);
+                          powerups.refresh();
+                          effects.spawnMoneySign();
+                        }
+                      } else if (obs.type === "boulder") {
+                        applyImpact(
+                          Math.max(14.0, state.speedMps * 0.45),
+                          0.55,
+                          0.75,
+                        );
+                        // Golden Boulders: each (non-megalith) boulder is $5
+                        if (state.goldenBoulders) {
+                          state.money += 5;
+                          moneyCounter.setValue(state.money);
+                          powerups.refresh();
+                          effects.spawnMoneySign();
+                        }
+                      }
+                      follower.speed = state.speedMps;
+
+                      effects.spawnFlyer(obs.mesh, body, 2.8);
+                    }
+                  }
+                }
+              }
+            }
+          },
+        };
+      }
+
+      // Syncs the train mesh to the rebased track pose, applies visual corner
+      // tilt and look-around-corner camera shaping, recenters the ground plane.
+      function createPoseSync({ track, follower, camCtrl, entity, ground, state, keys }) {
+        let tilt = 0;
+        let lookZ = 0;
+        let offsetZ = 0;
+        const _rollQuat = new THREE.Quaternion();
+
+        return {
+          update(dt) {
+            const isRearView = keys.has("Space");
+            const pose = follower.getPose();
+            if (!pose) return;
+
+            entity.mesh.position.copy(pose.position);
+            entity.mesh.quaternion.setFromUnitVectors(
+              follower.forwardAxis,
+              pose.forward,
+            );
+
+            // Track curvature ahead/behind for train visual tilt
+            const poseAhead = track.getPoseAt(follower.s + 1.6);
+            const poseBehind = track.getPoseAt(Math.max(0, follower.s - 1.6));
+            let dHeading = 0;
+            if (poseAhead && poseBehind) {
+              let dh = poseAhead.heading - poseBehind.heading;
+              dh = Math.atan2(Math.sin(dh), Math.cos(dh));
+              dHeading = dh / 3.2;
+            }
+
+            // Sample track curve ahead to look around upcoming bends without
+            // matrix lag
+            const aheadDist = 26;
+            const lookPoseAhead = track.getPoseAt(follower.s + aheadDist);
+            let curveLateralAhead = 0;
+            if (lookPoseAhead && !isRearView) {
+              const dx = lookPoseAhead.position.x - pose.position.x;
+              const dz = lookPoseAhead.position.z - pose.position.z;
+              // Local +Z lateral offset in train frame: cross(forward, up)
+              curveLateralAhead = -dx * pose.forward.z + dz * pose.forward.x;
+            }
+
+            // Dynamic camera look-ahead aiming and lateral lean to gently see
+            // around corners
+            const targetLookZ = Math.max(
+              -3.0,
+              Math.min(3.0, curveLateralAhead * 0.25),
+            );
+            const targetOffsetZ = -Math.max(
+              -1.0,
+              Math.min(1.0, curveLateralAhead * 0.08),
+            );
+            lookZ += (targetLookZ - lookZ) * Math.min(1, dt * 4.5);
+            offsetZ += (targetOffsetZ - offsetZ) * Math.min(1, dt * 4.5);
+
+            camCtrl.state.offset.z = offsetZ;
+            camCtrl.state.look.z = lookZ;
+
+            // Visual corner tilt on train: starts at 50 mph and grows sharply
+            // with speed, so the train leans harder into corners the faster
+            // it goes.
+            const speedMph = state.speedMps * MPS_TO_MPH;
+            let targetTilt = 0;
+            if (speedMph > 50) {
+              const excessSpeed = speedMph - 50;
+              targetTilt = -dHeading * (excessSpeed / 15.0);
+              targetTilt = Math.max(-0.9, Math.min(0.9, targetTilt));
+            }
+            tilt += (targetTilt - tilt) * Math.min(1, dt * 8);
+
+            // Apply corner tilt along train's forward axis
+            _rollQuat.setFromAxisAngle(follower.forwardAxis, tilt);
+            entity.mesh.quaternion.multiply(_rollQuat);
+            entity.mesh.updateMatrixWorld(true);
+
+            // Center ground beneath the train
+            if (ground?.mesh) {
+              ground.mesh.position.x = entity.mesh.position.x;
+              ground.mesh.position.z = entity.mesh.position.z;
+            }
+          },
+        };
       }
 
       // Train master-controller lever (3D overlay fixed to bottom-right of screen)
@@ -628,8 +2018,6 @@
           baseMat,
         );
         base.position.y = 0.175;
-        base.castShadow = true;
-        base.receiveShadow = true;
         group.add(base);
 
         // Rotating pivot at the top of the pedestal
@@ -642,7 +2030,6 @@
           armMat,
         );
         arm.position.y = 0.85;
-        arm.castShadow = true;
         pivot.add(arm);
 
         const grip = new THREE.Mesh(
@@ -650,12 +2037,104 @@
           gripMat,
         );
         grip.position.y = 1.7;
-        grip.castShadow = true;
         pivot.add(grip);
 
         group.add(pivot);
         group.userData.pivot = pivot;
         return group;
+      }
+
+      // Camera views (chase / rear / cab), speed-scaled FOV, dynamic fog,
+      // impact screen shake and the 3D lever overlay pinned to screen space.
+      function createCameraRig({ simulation, camCtrl, keys, entity, lever, state }) {
+        let leverAngle = 0;
+        const _rearCamPos = new THREE.Vector3();
+        const _rearCamLook = new THREE.Vector3();
+        const _cabCamPos = new THREE.Vector3();
+        const _cabCamLook = new THREE.Vector3();
+
+        return {
+          update(dt) {
+            // Space swaps to the reverse rig: a camera mounted in front of
+            // the train that looks back down its length to frame the whole
+            // train. Holding 'C' drops the camera inside the cab looking
+            // forward.
+            const isRearView = keys.has("Space");
+            const isCabView = keys.has("KeyC");
+            if (isCabView) {
+              _cabCamPos.set(1.4, 2.7, 0.4).applyMatrix4(entity.mesh.matrixWorld);
+              _cabCamLook.set(7.0, 2.1, 0).applyMatrix4(entity.mesh.matrixWorld);
+              simulation.camera.position.copy(_cabCamPos);
+              simulation.camera.lookAt(_cabCamLook);
+            } else if (isRearView) {
+              _rearCamPos.set(7.5, 4.8, 0).applyMatrix4(entity.mesh.matrixWorld);
+              _rearCamLook.set(1.6, 1.9, 0).applyMatrix4(entity.mesh.matrixWorld);
+              simulation.camera.position.copy(_rearCamPos);
+              simulation.camera.lookAt(_rearCamLook);
+            } else {
+              camCtrl.update({ mirror: false });
+            }
+
+            // FOV scales exponentially with speed: 60° at rest → 80° at 250 mph
+            const fovBase = camCtrl.state.fov;
+            const speedMph = state.speedMps * MPS_TO_MPH;
+            const speedRatio = Math.min(1, Math.max(0, speedMph / 250));
+            simulation.camera.fov = fovBase * Math.pow(80 / fovBase, speedRatio);
+            simulation.camera.updateProjectionMatrix();
+
+            // Dynamic fog adjustment: bring fog closer in rear view to hide
+            // limited rear draw distance
+            const targetFogNear = isRearView ? 15 : 50;
+            const targetFogFar = isRearView ? 95 : 220;
+            simulation.scene.fog.near +=
+              (targetFogNear - simulation.scene.fog.near) * Math.min(1, dt * 10);
+            simulation.scene.fog.far +=
+              (targetFogFar - simulation.scene.fog.far) * Math.min(1, dt * 10);
+
+            // Impact screen shake
+            if (state.screenShake > 0.001) {
+              simulation.camera.position.x +=
+                (Math.random() - 0.5) * state.screenShake;
+              simulation.camera.position.y +=
+                (Math.random() - 0.5) * state.screenShake;
+              state.screenShake *= Math.exp(-dt * 9.0);
+            }
+
+            // Master-controller lever: pinned to bottom-right of the screen
+            const camQuat = simulation.camera.quaternion;
+            const vRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camQuat);
+            const vUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camQuat);
+            const vFwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camQuat);
+
+            const leverDist = 7;
+            const halfH =
+              Math.tan((simulation.camera.fov * Math.PI) / 360) * leverDist;
+            const halfW = halfH * simulation.camera.aspect;
+            const nx = 0.73;
+            const ny = -0.6;
+
+            lever.position
+              .copy(simulation.camera.position)
+              .addScaledVector(vFwd, leverDist)
+              .addScaledVector(vRight, nx * halfW)
+              .addScaledVector(vUp, ny * halfH);
+            lever.scale.setScalar(1.1);
+            lever.lookAt(simulation.camera.position);
+            lever.updateMatrixWorld(true);
+
+            // Hide the accel lever in reverse and cab views
+            lever.visible = !isRearView && !isCabView;
+            if (lever.visible) {
+              // Tilt toward/away from the user based on throttle input.
+              let targetLever = 0;
+              if (keys.has("KeyW") || keys.has("ArrowUp"))
+                targetLever = -0.7; // into screen (away from user)
+              else targetLever = 0.7; // toward user (decelerating)
+              leverAngle += (targetLever - leverAngle) * Math.min(1, dt * 8);
+              lever.userData.pivot.rotation.x = leverAngle;
+            }
+          },
+        };
       }
 
       // 3. Game-Specific Setup (The LLM focus area)
@@ -731,51 +2210,18 @@
           speed: 0,
         });
 
-        // Sand blast particle system mounted on the front of the train
-        let sandBlastEnabled = false;
-        let isAccelerating = false;
-        const sandBlast = createSandBlast(sim, {
-          parent: train.mesh,
-          particleCount: 500,
-          particleSize: 0.16,
-          color: 0xffd97d,
-          speed: 34,
-          spread: 0.25,
-          gravity: 8,
-          lifetime: 0.75,
-          rate: 350,
-          position: [3.8, 0.85, 0],
-          direction: [1, -0.15, 0],
-          enabled: () => sandBlastEnabled && isAccelerating,
-        });
-
-        function addSanderNozzles() {
-          const nozzleMat = new THREE.MeshStandardMaterial({
-            color: 0x334455,
-            metalness: 0.6,
-            roughness: 0.3,
-          });
-          const nozzleGeo = new THREE.CylinderGeometry(0.06, 0.08, 0.4, 8);
-          for (const side of [1, -1]) {
-            const nozzle = new THREE.Mesh(nozzleGeo, nozzleMat);
-            nozzle.position.set(3.8, 0.85, side * 0.72);
-            nozzle.rotation.z = -Math.PI / 6;
-            train.mesh.add(nozzle);
-          }
-        }
-
-        function enableSandBlast() {
-          sandBlastEnabled = true;
-          addSanderNozzles();
-        }
-
-        // Cowcatcher kinematic physics collider mounted on front of train
-        const cowcatcherBody = new CANNON.Body({
-          mass: 0,
-          type: CANNON.Body.KINEMATIC,
-          shape: new CANNON.Box(new CANNON.Vec3(1.4, 1.2, 1.2)),
-        });
-        sim.world.addBody(cowcatcherBody);
+        // Shared mutable game state read/written across systems
+        const state = {
+          speedMps: 0,
+          accelRate: 5, // m/s^2 baseline acceleration
+          money: 0,
+          screenShake: 0,
+          bigBangs: false,
+          goldenRocks: false,
+          goldenBoulders: false,
+          dynamiteCount: 0,
+          dynamiteUnlocked: false,
+        };
 
         // Input: shared key state + tap-to-accelerate on mobile
         if (
@@ -789,6 +2235,131 @@
         const input = new Input();
         input.mapTouchToKey("KeyW");
         const keys = input.keys;
+
+        // Governor caps max speed (default 70 mph); raised via setGovernorCap()
+        const governor = new Governor(70);
+
+        // Speed gauge (circular semicircle, full scale = governor cap)
+        let gauge = createGauge({
+          min: 0,
+          max: governor.getCap(),
+        });
+        // Red line marks the boulder-damage threshold; hide until a cowcatcher exists.
+        gauge.setThreshold(null);
+        // Indirection so systems always reach the current gauge instance
+        // (rebuildGauge replaces it when the governor cap rises).
+        const gaugeApi = {
+          setValue: (v) => gauge.setValue(v),
+          setThreshold: (v) => gauge.setThreshold(v),
+          setMax: (v) => gauge.setMax(v),
+        };
+
+        // Money display centered inside the speed gauge above the hub
+        const moneyCounter = createMoneyCounter({
+          left: "50%",
+          bottom: "clamp(32px, 8vw, 52px)",
+          size: "clamp(1.5rem, 5.5vw, 2.2rem)",
+        });
+
+        const powerups = createPowerups();
+
+        // Camera rig with draggable FOV/offset sliders (bottom-right panel)
+        const camCtrl = createCameraControls(sim, {
+          mesh: train.mesh,
+          fov: 60,
+          offset: [-3.2, 5.4, 0],
+          look: [2.0, 3.2, 0],
+          visible: false,
+        });
+
+        // 3D master-controller lever (bottom-right screen overlay)
+        const lever = createLever();
+        sim.scene.add(lever);
+
+        // Systems, constructed in dependency order. train.updateFn invokes
+        // them every frame in play order:
+        //   throttle -> economy -> track runner -> dynamite -> effects ->
+        //   bunnies -> pose sync -> impacts -> camera rig
+        // Hard ordering constraints:
+        //   - runner rebases world-space sets before dyn/fx/bunnies read them
+        //   - poseSync refreshes entity.matrixWorld before impacts uses it
+        //   - impacts (which add screen shake) run before the rig places the
+        //     camera so shake offsets land on the fresh camera pose
+        const controls = createThrottle({
+          keys,
+          governor,
+          state,
+          sim,
+          train,
+          follower,
+        });
+        const fx = createEffectsSystem({ sim, train, follower, track, state });
+        const dyn = createDynamiteSystem({
+          sim,
+          simulation: sim,
+          track,
+          follower,
+          train,
+          segmentLen,
+          state,
+          spawnExplosion: fx.spawnExplosion,
+        });
+        const bunnySys = createBunnySystem({
+          sim,
+          effects: fx,
+          state,
+          moneyCounter,
+          powerups,
+        });
+        const impacts = createImpactSystem({
+          sim,
+          simulation: sim,
+          entity: train,
+          follower,
+          track,
+          state,
+          effects: fx,
+          bunnies: bunnySys,
+          moneyCounter,
+          powerups,
+        });
+        const econ = createEconomy({
+          state,
+          gauge: gaugeApi,
+          governor,
+          moneyCounter,
+          powerups,
+          grantPowerups: () => grantPowerups(),
+          getRollThreshold: impacts.getRollThreshold,
+          spawnMoneySign: fx.spawnMoneySign,
+        });
+        const runner = createTrackRunner({
+          track,
+          follower,
+          segmentLen,
+          rearSegments,
+          flyers: fx.flyers,
+          explosions: fx.explosions,
+          dynamites: dyn.items,
+          hoppers: bunnySys.hoppers,
+        });
+        const poseSync = createPoseSync({
+          track,
+          follower,
+          camCtrl,
+          entity: train,
+          ground,
+          state,
+          keys,
+        });
+        const rig = createCameraRig({
+          simulation: sim,
+          camCtrl,
+          keys,
+          entity: train,
+          lever,
+          state,
+        });
 
         // Hide title & control hints and slide powerups to top after 10s of play time
         let playStarted = false;
@@ -806,804 +2377,6 @@
         window.addEventListener("keydown", onFirstInteraction);
         window.addEventListener("pointerdown", onFirstInteraction);
 
-        let accelRate = 5; // m/s^2 baseline acceleration (no max cap)
-        const decelRate = accelRate * 2; // deceleration is twice acceleration (60 m/s^2)
-        let currentSpeed = 0;
-        let currentTilt = 0;
-        let currentCameraLookZ = 0;
-        let currentCameraOffsetZ = 0;
-        let screenShake = 0;
-        let leverAngle = 0;
-
-        // Defenses: an object per equipped defense, each carrying a numeric
-        // `valueMph`. Total defense = sum across all equipped defenses and is
-        // used to offset any speed loss — impacts worth less than the total are
-        // absorbed entirely, larger ones reduced by it.
-        const defenses = [];
-        function addDefense(def) {
-          defenses.push(def);
-        }
-        function removeDefense(id) {
-          for (let i = 0; i < defenses.length; i++) {
-            if (defenses[i].id === id) {
-              defenses.splice(i, 1);
-              i--;
-            }
-          }
-        }
-        function totalDefenseMph() {
-          let total = 0;
-          for (const def of defenses) total += def.valueMph;
-          return total;
-        }
-        // Apply a speed loss (mps) offset by total defense. Returns nothing; fully
-        // absorbed impacts cause no speed loss and no screen shake.
-        function applyImpact(speedLossMps, shakeDelta, shakeCap) {
-          const effMph = Math.max(0, speedLossMps * 2.237 - totalDefenseMph());
-          if (effMph <= 0) return;
-          currentSpeed = Math.max(0, currentSpeed - effMph / 2.237);
-          screenShake = Math.min(shakeCap, screenShake + shakeDelta);
-        }
-
-        // Governor caps max speed (default 70 mph); adjust with governor.setCap()
-        const governor = new Governor(70);
-
-        // Speed gauge (circular semicircle, full scale = governor cap)
-        let gauge = createGauge({
-          min: 0,
-          max: governor.getCap(),
-        });
-        // Red line marks the boulder-damage threshold; hide until a cowcatcher exists.
-        gauge.setThreshold(null);
-        // Rebuild the gauge so its full scale tracks a raised governor cap.
-        function rebuildGauge() {
-          gauge.dispose();
-          gauge = createGauge({ min: 0, max: governor.getCap() });
-        }
-
-        // Money display centered inside the speed gauge above the hub
-        const moneyCounter = createMoneyCounter({
-          left: "50%",
-          bottom: "clamp(32px, 8vw, 52px)",
-          size: "clamp(1.5rem, 5.5vw, 2.2rem)",
-        });
-        let money = 0;
-
-        // Powerups: each is granted when its `grantWhen` condition is met, then
-        // purchased by clicking its pill. `onBuy` applies the effect; the click is
-        // gated by cost so money can never go negative. A `requires` id gates a
-        // later tier behind the previous one — it isn't shown (or purchasable)
-        // until the prerequisite is purchased.
-        const POWERUPS = [
-          {
-            id: "cowcatcher",
-            label: "Cowcatcher",
-            icon: "▴",
-            cost: 50,
-            grantWhen: () => money >= 50,
-            onBuy: () =>
-              setCowcatcherTier({
-                defenseId: "cowcatcher",
-                valueMph: 1,
-                scale: 1,
-              }),
-          },
-          {
-            id: "big-cowcatcher",
-            label: "Big Cowcatcher",
-            icon: "▴",
-            cost: 150,
-            grantWhen: () => money >= 150,
-            requires: "cowcatcher",
-            onBuy: () =>
-              setCowcatcherTier({
-                defenseId: "big-cowcatcher",
-                valueMph: 3,
-                scale: 1.45,
-              }),
-          },
-          {
-            id: "wedge-plow",
-            label: "Wedge Plow",
-            icon: "▴",
-            cost: 400,
-            grantWhen: () => money >= 400,
-            requires: "big-cowcatcher",
-            onBuy: () =>
-              setCowcatcherTier({
-                defenseId: "wedge-plow",
-                valueMph: 6,
-                scale: 1.9,
-              }),
-          },
-          {
-            id: "sandbox-1",
-            label: "Accel I",
-            icon: "▲",
-            cost: 20,
-            grantWhen: () => money >= 20,
-            debug: true,
-            onBuy: () => {
-              accelRate += 5;
-              enableSandBlast();
-            },
-          },
-          {
-            id: "sandbox-2",
-            label: "Accel II",
-            icon: "▲",
-            cost: 80,
-            grantWhen: () => money >= 80,
-            requires: "sandbox-1",
-            onBuy: () => {
-              accelRate += 5;
-            },
-          },
-          {
-            id: "sandbox-3",
-            label: "Accel III",
-            icon: "▲",
-            cost: 250,
-            grantWhen: () => money >= 250,
-            requires: "sandbox-2",
-            onBuy: () => {
-              accelRate += 5;
-            },
-          },
-          {
-            id: "governor-1",
-            label: "Steam Sippers",
-            icon: "🔥",
-            cost: 100,
-            grantWhen: () => money >= 100,
-            onBuy: () => {
-              setGovernorCap(85);
-              addSteamSippers();
-            },
-          },
-          {
-            id: "governor-2",
-            label: "Steam Burner",
-            icon: "🔥",
-            cost: 200,
-            grantWhen: () => money >= 200,
-            requires: "governor-1",
-            onBuy: () => {
-              setGovernorCap(100);
-              addPipeCap();
-            },
-          },
-          {
-            id: "governor-3",
-            label: "Steam Injectors",
-            icon: "🔥",
-            cost: 300,
-            grantWhen: () => money >= 300,
-            requires: "governor-2",
-            onBuy: () => {
-              setGovernorCap(150);
-              addSteamInjectors();
-            },
-          },
-          {
-            id: "big-bangs",
-            label: "Big Bangs",
-            icon: "💥",
-            cost: 200,
-            grantWhen: () => money >= 200,
-            onBuy: () => {
-              bigBangs = true;
-            },
-          },
-          {
-            id: "golden-rocks",
-            label: "Golden Rocks",
-            icon: "🪨",
-            cost: 75,
-            grantWhen: () => money >= 75,
-            onBuy: () => {
-              goldenRocks = true;
-            },
-          },
-          {
-            id: "golden-boulders",
-            label: "Golden Boulders",
-            icon: "🪨",
-            cost: 200,
-            grantWhen: () => money >= 200,
-            onBuy: () => {
-              goldenBoulders = true;
-            },
-          },
-          {
-            id: "bunny-xing",
-            label: "BunnyXing",
-            icon: "🐰",
-            cost: 75,
-            grantWhen: () => money >= 75,
-            onBuy: () => {
-              bunnyXing = true;
-            },
-          },
-        ];
-
-        const powerups = createPowerups();
-        powerups.setBank(() => money);
-        const grantedPowerups = new Set();
-        const purchasedPowerups = new Set();
-        powerups.on((item) => {
-          if (item.id === "dynamite") {
-            money -= DYNAMITE_COST;
-            moneyCounter.setValue(money);
-            dynamiteCount++;
-            updateDynamiteCounter();
-            powerups.refresh();
-            ensureDynamite();
-            return;
-          }
-          const def = POWERUPS.find((d) => d.id === item.id);
-          if (!def) return;
-          const cost = def.debug ? 0 : item.cost;
-          money -= cost;
-          moneyCounter.setValue(money);
-          powerups.refresh();
-          purchasedPowerups.add(def.id);
-          if (def.onBuy) def.onBuy();
-        });
-
-        // Dynamite: a renewable consumable ($50 each, unlimited purchases).
-        const DYNAMITE_COST = 50;
-        let dynamiteCount = 0;
-        let dynamiteUnlocked = false;
-
-        // Big Bangs powerup: triples the explosion (3 spheres) and enlarges its
-        // blast radius so Megaliths are easier to hit even on near misses.
-        let bigBangs = false;
-
-        // Golden Rocks powerup: hitting a tiny rock awards $1 each.
-        let goldenRocks = false;
-        // Golden Boulders powerup: hitting a (non-megalith) boulder awards $5.
-        let goldenBoulders = false;
-
-        // Renders the Buy Dynamite pill via the powerups framework so it shares
-        // the uniform width, theme, and bank-driven availability. Re-added after
-        // each purchase to keep the renewable shop entry available.
-        function ensureDynamite() {
-          if (dynamiteUnlocked && !powerups.has("dynamite")) {
-            powerups.add({
-              id: "dynamite",
-              label: "Buy Dynamite",
-              icon: "💣",
-              cost: DYNAMITE_COST,
-              unit: "$",
-            });
-          }
-        }
-
-        // Throw button pinned to the left of the speed gauge (floats on mid-left of gauge on mobile)
-        const dynamiteBtn = document.createElement("button");
-        dynamiteBtn.id = "dynamite-btn";
-        dynamiteBtn.style.display = "none";
-        dynamiteBtn.addEventListener(
-          "mousedown",
-          () => (dynamiteBtn.style.transform = "scale(0.96)"),
-        );
-        dynamiteBtn.addEventListener(
-          "mouseup",
-          () => (dynamiteBtn.style.transform = "scale(1)"),
-        );
-        dynamiteBtn.addEventListener(
-          "touchstart",
-          (e) => {
-            dynamiteBtn.style.transform = "scale(0.96)";
-            throwDynamite();
-            if (e.cancelable) {
-              e.preventDefault();
-            }
-          },
-          { passive: false },
-        );
-        dynamiteBtn.addEventListener(
-          "touchend",
-          () => (dynamiteBtn.style.transform = "scale(1)"),
-          { passive: true },
-        );
-        dynamiteBtn.addEventListener(
-          "touchcancel",
-          () => (dynamiteBtn.style.transform = "scale(1)"),
-          { passive: true },
-        );
-        dynamiteBtn.addEventListener("click", throwDynamite);
-        document.body.appendChild(dynamiteBtn);
-
-        function updateDynamiteCounter() {
-          dynamiteBtn.textContent = `THROW\nDYNAMITE\n(x${dynamiteCount})`;
-          dynamiteBtn.style.opacity = dynamiteCount > 0 ? "1" : "0.4";
-          dynamiteBtn.style.cursor = dynamiteCount > 0 ? "pointer" : "default";
-          if (dynamiteUnlocked || dynamiteCount > 0) {
-            dynamiteBtn.style.display = "block";
-          } else {
-            dynamiteBtn.style.display = "none";
-          }
-        }
-        updateDynamiteCounter();
-
-        // Spawn a dynamite in the cab and launch it forward in an arc. It flies
-        // until it touches the ground, then despawns.
-        function throwDynamite() {
-          if (dynamiteCount <= 0) return;
-          dynamiteCount--;
-          updateDynamiteCounter();
-
-          const ent = createDynamite(sim, {
-            length: 2.4,
-            position: [0, 0, 0],
-            mass: 2,
-          });
-          const mesh = ent.mesh;
-          const body = ent.body;
-
-          const spawn = new THREE.Vector3(-2.6, 4.0, 0).applyMatrix4(
-            train.mesh.matrixWorld,
-          );
-          mesh.position.copy(spawn);
-          body.position.copy(spawn);
-          body.quaternion.setFromEuler(
-            Math.random() * Math.PI,
-            Math.random() * Math.PI,
-            0,
-          );
-
-          const fwd = follower.forwardAxis
-            .clone()
-            .applyQuaternion(train.mesh.quaternion);
-
-          // Aim at the point on the track 2 segments ahead of the train
-          const targetPose = track.getPoseAt(follower.s + 2 * segmentLen);
-          const targetPos = targetPose
-            ? targetPose.position
-            : spawn.clone().addScaledVector(fwd, 2 * segmentLen);
-
-          const aimDir = new THREE.Vector3(
-            targetPos.x - spawn.x,
-            0,
-            targetPos.z - spawn.z,
-          );
-          if (aimDir.lengthSq() > 0.001) {
-            aimDir.normalize();
-          } else {
-            aimDir.copy(fwd);
-          }
-
-          // Launch with a low, fast trajectory toward the track target ahead
-          const launchSpeed = follower.speed + 35;
-          body.velocity.set(aimDir.x * launchSpeed, 5, aimDir.z * launchSpeed);
-          body.angularVelocity.set(
-            (Math.random() - 0.5) * 8,
-            (Math.random() - 0.5) * 8,
-            (Math.random() - 0.5) * 8,
-          );
-
-          const dyn = {
-            mesh,
-            body,
-            ent,
-            landed: false,
-            exploded: false,
-            collided: false,
-          };
-          body.addEventListener("collide", () => {
-            dyn.collided = true;
-          });
-          thrownDynamites.add(dyn);
-        }
-
-        // Shatters a Giant Megalith Boulder into smaller rock fragments
-        // Monetary damage dealt by destroying a megalith scales with the cowcatcher
-        // tier currently installed (a better cowcatcher reduces the cost).
-        function megalithDamage() {
-          if (COWCATCHER_DEFENSE_IDS.has("wedge-plow")) return 60;
-          if (COWCATCHER_DEFENSE_IDS.has("big-cowcatcher")) return 70;
-          if (COWCATCHER_DEFENSE_IDS.has("cowcatcher")) return 80;
-          return MEGALITH_DAMAGE;
-        }
-
-        // Speed (mph) below which a megalith rolls aside instead of exploding,
-        // based on the equipped cowcatcher tier. A better cowcatcher lets you
-        // roll megaliths out of the way at higher speeds.
-        function megalithRollThreshold() {
-          if (COWCATCHER_DEFENSE_IDS.has("wedge-plow")) return 90;
-          if (COWCATCHER_DEFENSE_IDS.has("big-cowcatcher")) return 70;
-          if (COWCATCHER_DEFENSE_IDS.has("cowcatcher")) return 50;
-          return 30;
-        }
-
-        // Megaliths show which outcome your current speed would trigger: black
-        // means it'll be nudged aside (no penalty), deep red means it'd explode
-        // and cost money. Colors blend smoothly, but only in a tight band around
-        // the threshold so the signal stays readable.
-        const MEGALITH_SAFE_COLOR = new THREE.Color(0x161616);
-        const MEGALITH_DANGER_COLOR = new THREE.Color(0x8b0000);
-        const MEGALITH_COLOR_BAND = 3; // mph transition width around the threshold
-        function updateMegalithColors() {
-          const speedMph = currentSpeed * 2.237;
-          const threshold = megalithRollThreshold();
-          const t = Math.max(
-            0,
-            Math.min(
-              1,
-              (speedMph - (threshold - MEGALITH_COLOR_BAND)) /
-                (2 * MEGALITH_COLOR_BAND),
-            ),
-          );
-          const target = MEGALITH_SAFE_COLOR.clone().lerp(
-            MEGALITH_DANGER_COLOR,
-            t,
-          );
-          for (const sSeg of track.segments) {
-            if (!sSeg.obstacles) continue;
-            for (const obs of sSeg.obstacles) {
-              if (
-                obs.type === "giant-boulder" &&
-                obs.mat &&
-                !obs.hit &&
-                obs.mesh.parent
-              ) {
-                obs.mat.color.copy(target);
-              }
-            }
-          }
-        }
-
-        // Promotes the megalith group to a physics body and knocks it sideways
-        // with spin so it rolls off onto the shoulder (used for the low-speed
-        // "roll out of the way" outcome). No money is charged.
-        function rollMegalithAside(mesh, worldPos, worldQuat, fwdDir, speed) {
-          sim.scene.add(mesh);
-          mesh.position.copy(worldPos);
-          mesh.quaternion.copy(worldQuat);
-
-          const body = new CANNON.Body({
-            mass: 40000,
-            shape: new CANNON.Sphere(2.6),
-            linearDamping: 0.7,
-            angularDamping: 0.45,
-          });
-          body.position.set(worldPos.x, worldPos.y, worldPos.z);
-          body.quaternion.set(
-            worldQuat.x,
-            worldQuat.y,
-            worldQuat.z,
-            worldQuat.w,
-          );
-
-          // Perpendicular (lateral) direction to the forward axis, in XZ plane.
-          const lateralSide = Math.random() < 0.5 ? 1 : -1;
-          const latX = -fwdDir.z * lateralSide;
-          const latZ = fwdDir.x * lateralSide;
-          const lateralSpeed = speed * 0.6 + 6 + Math.random() * 4;
-          const fwdSpeed = speed * 0.2;
-
-          // Pin to the ground: no vertical launch. The megalith slides/rolls
-          // horizontally along the ground instead of bouncing into the air.
-          const vx = fwdDir.x * fwdSpeed + latX * lateralSpeed;
-          const vz = fwdDir.z * fwdSpeed + latZ * lateralSpeed;
-
-          body.velocity.set(vx, 0, vz);
-
-          // Give it a true rolling spin about the horizontal axis perpendicular
-          // to its direction of travel (omega = v / radius), so it rolls like a
-          // huge boulder rather than tumbling wildly.
-          const speedMag = Math.abs(vx) + Math.abs(vz);
-          const rollMag = speedMag > 0.01 ? speedMag / 2.6 : 0;
-          body.angularVelocity.set(
-            (speedMag > 0.01 ? -vz / speedMag : 0) * rollMag,
-            0,
-            (speedMag > 0.01 ? vx / speedMag : 0) * rollMag,
-          );
-
-          sim.world.addBody(body);
-          activeFlyers.add({
-            mesh,
-            body,
-            lifetime: 3.2,
-          });
-        }
-
-        // Scripted hop for a bunny that leaves the rails: it makes 5 controlled
-        // hops in the direction it faces (forward) with a small lateral drift to
-        // clear into the forest. Always stays level (bottom down) and never
-        // somersaults or hops backward. Despawns after the last hop lands.
-        // Reward the player for stopping: grant $20 and show a "$" shooting up
-        // from the bunny's head (in place of the first heart) as the bunny
-        // immediately hops away streaming hearts. The bunny enters the hopping
-        // set at once so it stays correctly rebased with the world.
-        function rewardAndHopBunny(mesh, worldPos, worldQuat) {
-          money += 20;
-          moneyCounter.setValue(money);
-          powerups.refresh();
-
-          // The "$" takes the place of the first heart, so skip that first one.
-          spawnBunnyMoneySign(worldPos);
-          beginBunnyHop(mesh, worldPos, worldQuat, true);
-        }
-
-        // Adds the bunny to the world and begins its scripted hop. Hops in the
-        // direction it faces so it clears into the forest rather than back toward
-        // the train. `moneyAsFirstHeart` replaces the first heart with the "$" sign.
-        function beginBunnyHop(
-          mesh,
-          worldPos,
-          worldQuat,
-          moneyAsFirstHeart = false,
-        ) {
-          sim.scene.add(mesh);
-          mesh.position.copy(worldPos);
-          mesh.quaternion.copy(worldQuat);
-
-          const yaw = new THREE.Euler().setFromQuaternion(worldQuat, "YXZ").y;
-          const hopYaw = yaw;
-          // The bunny faces its local +Z; rotate that by its yaw to get the true
-          // world direction it's looking, and hop along that.
-          const dir = new THREE.Vector3(
-            Math.sin(hopYaw),
-            0,
-            Math.cos(hopYaw),
-          ).normalize();
-
-          hoppingBunnies.add({
-            mesh,
-            yaw: hopYaw,
-            dir,
-            start: worldPos.clone(),
-            t: 0,
-            hopNum: 0,
-            hops: 5,
-            duration: 0.45,
-            hopDist: 2.4,
-            hopHeight: 1.4,
-            heartAccum: 0,
-            suppressFirstHeart: moneyAsFirstHeart,
-          });
-        }
-
-        // Launches a struck bunny into the air with the train's momentum so its
-        // collision bounce is visible before the screen cuts to black. Lives long
-        // enough (well past the fade) to avoid popping out mid-sequence.
-        function launchStruckBunny(mesh, worldPos, worldQuat, fwdDir, speed) {
-          sim.scene.add(mesh);
-          mesh.position.copy(worldPos);
-          mesh.quaternion.copy(worldQuat);
-
-          const body = new CANNON.Body({
-            mass: 8,
-            shape: new CANNON.Box(new CANNON.Vec3(0.45, 0.95, 0.6)),
-            linearDamping: 0.15,
-            angularDamping: 0.35,
-          });
-          body.position.set(worldPos.x, worldPos.y + 0.95, worldPos.z);
-
-          // Whipped forward and up by the impact.
-          body.velocity.set(
-            fwdDir.x * (speed * 1.4 + 6),
-            6 + speed * 0.4,
-            fwdDir.z * (speed * 1.4 + 6),
-          );
-          body.angularVelocity.set(
-            (Math.random() - 0.5) * 12,
-            (Math.random() - 0.5) * 12,
-            (Math.random() - 0.5) * 12,
-          );
-
-          sim.world.addBody(body);
-          activeFlyers.add({
-            mesh,
-            body,
-            lifetime: 8.0,
-          });
-        }
-
-        // "You monster." — if you fail to slow down and run a bunny over, the
-        // screen fades to black, the verdict fades in, then the game resets.
-        let gameOver = false;
-        function triggerYouMonster() {
-          if (gameOver) return;
-          gameOver = true;
-          currentSpeed = 0;
-          follower.speed = 0;
-
-          const overlay = document.createElement("div");
-          Object.assign(overlay.style, {
-            position: "fixed",
-            inset: "0",
-            background: "#000",
-            opacity: "0",
-            pointerEvents: "none",
-            zIndex: "200",
-            transition: "opacity 0.6s ease",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          });
-          const txt = document.createElement("div");
-          txt.textContent = "You monster! There's only one rule:";
-          Object.assign(txt.style, {
-            color: "#fff",
-            fontFamily: "serif",
-            fontSize: "3rem",
-            fontWeight: "700",
-            letterSpacing: "0.05em",
-            textAlign: "center",
-            opacity: "0",
-            transition: "opacity 0.6s ease",
-            userSelect: "none",
-          });
-          overlay.appendChild(txt);
-          document.body.appendChild(overlay);
-
-          // Fade the black in a quarter second after the strike, so the impact lands
-          // first before the screen cuts to the verdict.
-          setTimeout(() => (overlay.style.opacity = "1"), 250);
-          // Line 1 fades in on the black, then fades out...
-          setTimeout(() => (txt.style.opacity = "1"), 875);
-          setTimeout(() => (txt.style.opacity = "0"), 1900);
-          // ...and the second line takes its place before the reset.
-          setTimeout(() => {
-            txt.textContent = "Always stop for bunnies.";
-            txt.style.opacity = "1";
-          }, 2300);
-          setTimeout(() => location.reload(), 3400);
-        }
-
-        function shatterMegalith(obsWorldPos, baseFwdDir, baseSpeed = 15) {
-          const shardOffsets = [
-            [-1.2, 1.0, 0.4],
-            [1.2, 1.0, -0.4],
-            [-0.4, 0.6, 1.2],
-            [0.4, 0.6, -1.2],
-          ];
-
-          for (const offset of shardOffsets) {
-            const rockMesh = new THREE.Mesh(sharedShardGeo, sharedGiantMat);
-            rockMesh.scale.set(
-              0.9 + Math.random() * 0.4,
-              0.8 + Math.random() * 0.3,
-              0.9 + Math.random() * 0.4,
-            );
-            rockMesh.position.set(
-              obsWorldPos.x + offset[0],
-              obsWorldPos.y + offset[1],
-              obsWorldPos.z + offset[2],
-            );
-            rockMesh.rotation.set(
-              Math.random() * Math.PI,
-              Math.random() * Math.PI,
-              Math.random() * Math.PI,
-            );
-            sim.scene.add(rockMesh);
-
-            const rockBody = new CANNON.Body({
-              mass: 600,
-              shape: new CANNON.Sphere(0.8),
-              linearDamping: 0.3,
-              angularDamping: 0.4,
-            });
-            rockBody.position.copy(rockMesh.position);
-
-            // Fan the shards outward and upward from the impact point
-            const shardDir = new CANNON.Vec3(
-              baseFwdDir.x + offset[0] * 0.4,
-              2.0 + Math.random() * 2.5,
-              baseFwdDir.z + offset[2] * 0.4,
-            );
-            shardDir.normalize();
-            rockBody.velocity.set(
-              shardDir.x * baseSpeed +
-                baseFwdDir.z * (Math.random() - 0.5) * 10,
-              follower.speed * 0.3 + 1.5 + Math.random() * 2,
-              shardDir.z * baseSpeed -
-                baseFwdDir.x * (Math.random() - 0.5) * 10,
-            );
-            rockBody.angularVelocity.set(
-              (Math.random() - 0.5) * 14,
-              (Math.random() - 0.5) * 14,
-              (Math.random() - 0.5) * 14,
-            );
-
-            sim.world.addBody(rockBody);
-            activeFlyers.add({
-              mesh: rockMesh,
-              body: rockBody,
-              lifetime: 2.8,
-            });
-          }
-        }
-
-        // Spawns expanding orange explosion sphere(s) for 200ms and shatters nearby Megaliths.
-        // With Big Bangs, renders 3 spheres and a larger blast radius.
-        function spawnExplosion(pos) {
-          const count = bigBangs ? 3 : 1;
-          const maxRadius = bigBangs ? 14.0 : 9.0;
-          const duration = 0.2; // 200ms
-          const geo = new THREE.SphereGeometry(1, 24, 18);
-          const mat = new THREE.MeshStandardMaterial({
-            color: 0xff6600,
-            emissive: 0xff4400,
-            emissiveIntensity: 0.9,
-            roughness: 0.4,
-            transparent: true,
-            opacity: 0.9,
-          });
-          const baseY = Math.max(pos.y, 0.5);
-
-          for (let i = 0; i < count; i++) {
-            const mesh = new THREE.Mesh(geo, mat);
-            let px = pos.x,
-              py = baseY,
-              pz = pos.z;
-            // Sphere size and start delay: with Big Bangs, vary each sphere's
-            // radius and stagger them 100ms apart for a more interesting blast.
-            const radius = bigBangs
-              ? maxRadius * [1.0, 0.7, 0.85][i]
-              : maxRadius;
-            const delay = bigBangs ? i * 0.1 : 0;
-            if (bigBangs) {
-              // Spread the three spheres outward along the forward axis and up.
-              const off = i - 1; // -1, 0, 1
-              px = pos.x + off * 3.0;
-              py = baseY + Math.abs(off) * 1.4;
-            }
-            mesh.position.set(px, py, pz);
-            mesh.scale.setScalar(0.1);
-            sim.scene.add(mesh);
-
-            const expl = {
-              mesh,
-              age: 0,
-              delay,
-              duration,
-              maxRadius: radius,
-            };
-            activeExplosions.add(expl);
-          }
-
-          // Check for Megaliths and boulders in blast radius
-          const fwdDir = follower.forwardAxis
-            .clone()
-            .applyQuaternion(train.mesh.quaternion);
-          for (const sSeg of track.segments) {
-            if (sSeg.obstacles) {
-              for (const obs of sSeg.obstacles) {
-                if (
-                  !obs.hit &&
-                  obs.mesh.parent &&
-                  (obs.type === "giant-boulder" || obs.type === "boulder")
-                ) {
-                  const obsWorldPos = new THREE.Vector3();
-                  obs.mesh.getWorldPosition(obsWorldPos);
-                  if (pos.distanceTo(obsWorldPos) <= maxRadius + 3.0) {
-                    obs.hit = true;
-                    obs.mesh.parent.remove(obs.mesh);
-                    if (obs.type === "giant-boulder") {
-                      shatterMegalith(
-                        obsWorldPos,
-                        fwdDir,
-                        Math.max(16, follower.speed * 0.5),
-                      );
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        // Raise the governor cap (never lowering it) and keep the gauge in step.
-        function setGovernorCap(newCapMph) {
-          governor.setCap(Math.max(governor.getCap(), newCapMph));
-          rebuildGauge();
-        }
-
         // Attach auxiliary steam sipper cylinders to the left and right sides of the boiler
         function addSteamSippers() {
           const sipperMat = new THREE.MeshStandardMaterial({
@@ -1616,15 +2389,11 @@
           const leftSipper = new THREE.Mesh(sipperGeo, sipperMat);
           leftSipper.rotation.z = Math.PI / 2;
           leftSipper.position.set(1.8, 1.65, 0.72);
-          leftSipper.castShadow = true;
-          leftSipper.receiveShadow = true;
           train.mesh.add(leftSipper);
 
           const rightSipper = new THREE.Mesh(sipperGeo, sipperMat);
           rightSipper.rotation.z = Math.PI / 2;
           rightSipper.position.set(1.8, 1.65, -0.72);
-          rightSipper.castShadow = true;
-          rightSipper.receiveShadow = true;
           train.mesh.add(rightSipper);
         }
 
@@ -1638,8 +2407,6 @@
           const capGeo = new THREE.CylinderGeometry(0.4, 0.36, 0.24, 16);
           const pipeCap = new THREE.Mesh(capGeo, capMat);
           pipeCap.position.set(3.55, 3.34, 0);
-          pipeCap.castShadow = true;
-          pipeCap.receiveShadow = true;
           train.mesh.add(pipeCap);
         }
 
@@ -1655,26 +2422,184 @@
           const leftInjector = new THREE.Mesh(injectorGeo, injectorMat);
           leftInjector.rotation.z = Math.PI / 2;
           leftInjector.position.set(1.8, 1.95, 0.68);
-          leftInjector.castShadow = true;
-          leftInjector.receiveShadow = true;
           train.mesh.add(leftInjector);
 
           const rightInjector = new THREE.Mesh(injectorGeo, injectorMat);
           rightInjector.rotation.z = Math.PI / 2;
           rightInjector.position.set(1.8, 1.95, -0.68);
-          rightInjector.castShadow = true;
-          rightInjector.receiveShadow = true;
           train.mesh.add(rightInjector);
         }
+
+        // Powerups: each is granted when its `grantWhen` condition is met, then
+        // purchased by clicking its pill. `onBuy` applies the effect; the click is
+        // gated by cost so money can never go negative. A `requires` id gates a
+        // later tier behind the previous one — it isn't shown (or purchasable)
+        // until the prerequisite is purchased.
+        const POWERUPS = [
+          {
+            id: "cowcatcher",
+            label: "Cowcatcher",
+            icon: "▴",
+            cost: 50,
+            grantWhen: () => state.money >= 50,
+            onBuy: () =>
+              impacts.setCowcatcherTier({
+                defenseId: "cowcatcher",
+                valueMph: 1,
+                scale: 1,
+              }),
+          },
+          {
+            id: "big-cowcatcher",
+            label: "Big Cowcatcher",
+            icon: "▴",
+            cost: 150,
+            grantWhen: () => state.money >= 150,
+            requires: "cowcatcher",
+            onBuy: () =>
+              impacts.setCowcatcherTier({
+                defenseId: "big-cowcatcher",
+                valueMph: 3,
+                scale: 1.45,
+              }),
+          },
+          {
+            id: "wedge-plow",
+            label: "Wedge Plow",
+            icon: "▴",
+            cost: 400,
+            grantWhen: () => state.money >= 400,
+            requires: "big-cowcatcher",
+            onBuy: () =>
+              impacts.setCowcatcherTier({
+                defenseId: "wedge-plow",
+                valueMph: 6,
+                scale: 1.9,
+              }),
+          },
+          {
+            id: "sandbox-1",
+            label: "Accel I",
+            icon: "▲",
+            cost: 20,
+            grantWhen: () => state.money >= 20,
+            debug: true,
+            onBuy: () => {
+              state.accelRate += 5;
+              controls.enableSandBlast();
+            },
+          },
+          {
+            id: "sandbox-2",
+            label: "Accel II",
+            icon: "▲",
+            cost: 80,
+            grantWhen: () => state.money >= 80,
+            requires: "sandbox-1",
+            onBuy: () => {
+              state.accelRate += 5;
+            },
+          },
+          {
+            id: "sandbox-3",
+            label: "Accel III",
+            icon: "▲",
+            cost: 250,
+            grantWhen: () => state.money >= 250,
+            requires: "sandbox-2",
+            onBuy: () => {
+              state.accelRate += 5;
+            },
+          },
+          {
+            id: "governor-1",
+            label: "Steam Sippers",
+            icon: "🔥",
+            cost: 100,
+            grantWhen: () => state.money >= 100,
+            onBuy: () => {
+              setGovernorCap(85);
+              addSteamSippers();
+            },
+          },
+          {
+            id: "governor-2",
+            label: "Steam Burner",
+            icon: "🔥",
+            cost: 200,
+            grantWhen: () => state.money >= 200,
+            requires: "governor-1",
+            onBuy: () => {
+              setGovernorCap(100);
+              addPipeCap();
+            },
+          },
+          {
+            id: "governor-3",
+            label: "Steam Injectors",
+            icon: "🔥",
+            cost: 300,
+            grantWhen: () => state.money >= 300,
+            requires: "governor-2",
+            onBuy: () => {
+              setGovernorCap(150);
+              addSteamInjectors();
+            },
+          },
+          {
+            id: "big-bangs",
+            label: "Big Bangs",
+            icon: "💥",
+            cost: 200,
+            grantWhen: () => state.money >= 200,
+            onBuy: () => {
+              state.bigBangs = true;
+            },
+          },
+          {
+            id: "golden-rocks",
+            label: "Golden Rocks",
+            icon: "🪨",
+            cost: 75,
+            grantWhen: () => state.money >= 75,
+            onBuy: () => {
+              state.goldenRocks = true;
+            },
+          },
+          {
+            id: "golden-boulders",
+            label: "Golden Boulders",
+            icon: "🪨",
+            cost: 200,
+            grantWhen: () => state.money >= 200,
+            onBuy: () => {
+              state.goldenBoulders = true;
+            },
+          },
+          {
+            id: "bunny-xing",
+            label: "BunnyXing",
+            icon: "🐰",
+            cost: 75,
+            grantWhen: () => state.money >= 75,
+            onBuy: () => {
+              bunnyXing = true;
+            },
+          },
+        ];
+
+        const grantedPowerups = new Set();
+        const purchasedPowerups = new Set();
+
         // Award any powerup whose grant condition is now met (each only once).
         function grantPowerups() {
           if (
-            !dynamiteUnlocked &&
-            (money >= DYNAMITE_COST || dynamiteCount > 0)
+            !state.dynamiteUnlocked &&
+            (state.money >= DYNAMITE_COST || state.dynamiteCount > 0)
           ) {
-            dynamiteUnlocked = true;
+            state.dynamiteUnlocked = true;
+            dyn.unlock();
             ensureDynamite();
-            updateDynamiteCounter();
           }
           for (const def of POWERUPS) {
             if (grantedPowerups.has(def.id)) continue;
@@ -1692,161 +2617,43 @@
           }
         }
 
-        // Renders the wedge cowcatcher at the front of the train and applies its
-        // defense. Upgrades replace the previous one with a larger one. The sloped
-        // teeth tip obstacles up/away, softening collisions.
-        let cowcatcherEntity = null;
-        const COWCATCHER_DEFENSE_IDS = new Set();
-        function setCowcatcherTier({ defenseId, valueMph, scale }) {
-          // Swap in the new defense, dropping any prior cowcatcher-class one.
-          for (const id of COWCATCHER_DEFENSE_IDS) removeDefense(id);
-          COWCATCHER_DEFENSE_IDS.clear();
-          addDefense({ id: defenseId, valueMph });
-          COWCATCHER_DEFENSE_IDS.add(defenseId);
+        // Dynamite: a renewable consumable ($50 each, unlimited purchases).
+        const DYNAMITE_COST = 50;
 
-          // Replace the existing cowcatcher with a larger one.
-          if (cowcatcherEntity) {
-            train.mesh.remove(cowcatcherEntity.mesh);
-            sim.removeEntity(cowcatcherEntity);
-            cowcatcherEntity = null;
+        // Renders the Buy Dynamite pill via the powerups framework so it shares
+        // the uniform width, theme, and bank-driven availability. Re-added after
+        // each purchase to keep the renewable shop entry available.
+        function ensureDynamite() {
+          if (state.dynamiteUnlocked && !powerups.has("dynamite")) {
+            powerups.add({
+              id: "dynamite",
+              label: "Buy Dynamite",
+              icon: "💣",
+              cost: DYNAMITE_COST,
+              unit: "$",
+            });
           }
-          const cowcatcher = createCowcatcher(sim, {
-            color: 0x222b33,
-            width: 0.32 * scale,
-            gap: 0.16 * scale,
-            depth: 1.2 * scale,
-            height: 0.75 * scale,
-            position: [4.1, 0.5, 0],
-            rotation: [0, -Math.PI / 2 - Math.PI, 0],
-          });
-          train.mesh.add(cowcatcher.mesh);
-          cowcatcherEntity = cowcatcher;
         }
 
-        // Flying "$" signs that emit from the smokestack at top speed
-        const moneySigns = [];
-        let moneySpawnAccum = 0;
-        const MONEY_SIGN_LIFETIME = 1.0;
-
-        const moneyCanvas = document.createElement("canvas");
-        moneyCanvas.width = moneyCanvas.height = 64;
-        const moneyCtx = moneyCanvas.getContext("2d");
-        moneyCtx.fillStyle = "#e7d984";
-        moneyCtx.font = 'bold 46px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-        moneyCtx.textAlign = "center";
-        moneyCtx.textBaseline = "middle";
-        moneyCtx.fillText("$", 32, 32);
-        const moneyTexture = new THREE.CanvasTexture(moneyCanvas);
-        moneyTexture.needsUpdate = true;
-
-        function spawnMoneySign() {
-          const sprite = new THREE.Sprite(
-            new THREE.SpriteMaterial({
-              map: moneyTexture,
-              transparent: true,
-              depthTest: false,
-              opacity: 1,
-            }),
-          );
-          // Spawn just below the smokestack top, child of the train so it travels with it.
-          sprite.position.set(
-            3.55,
-            2.9 + Math.random() * 0.3,
-            (Math.random() - 0.5) * 0.2,
-          );
-          sprite.scale.set(0.5, 0.5, 0.5);
-          sprite.userData.age = 0;
-          train.mesh.add(sprite);
-          moneySigns.push(sprite);
-        }
-
-        // Red 3D hearts that emit from a hopping bunny's head and float upward,
-        // matching the smokestack "$" sign style. They use the same sculpted
-        // heart contour as the heart primitive, rising above the bunny and
-        // gently shrinking as they fade.
-        const bunnyHearts = [];
-        const HEART_LIFETIME = 1.0;
-
-        function spawnBunnyHeart(position, yaw) {
-          const heartM = createHeartMaterial({
-            color: 0xff3344,
-            roughness: 0.3,
-            metalness: 0.1,
-          });
-          heartM.transparent = true;
-          heartM.opacity = 1;
-          const heart = createHeartMesh({
-            scale: [0.84, 0.84, 0.84],
-            material: heartM,
-          });
-          heart.position.copy(position);
-          heart.position.y += 1.5; // above the bunny's head
-          heart.userData.age = 0;
-          heart.userData.yaw = yaw;
-          // The bunny hops away from the train, so face the heart's front (+Z)
-          // back toward the train (the opposite of the hop direction).
-          heart.rotation.y = yaw + Math.PI;
-          sim.scene.add(heart);
-          bunnyHearts.push(heart);
-        }
-
-        // A "$" sprite that shoots straight up from the bunny's head in world
-        // space (not attached to the train), then fades. Used to flash the $20
-        // reward for stopping before the bunny hops away.
-        const bunnyMoneySigns = [];
-        const BUNNY_MONEY_LIFETIME = 1.0;
-
-        function spawnBunnyMoneySign(position) {
-          const sprite = new THREE.Sprite(
-            new THREE.SpriteMaterial({
-              map: moneyTexture,
-              transparent: true,
-              depthTest: false,
-              opacity: 1,
-            }),
-          );
-          sprite.position.set(position.x, position.y + 1.6, position.z);
-          sprite.scale.set(2.8, 2.8, 2.8);
-          sprite.userData.age = 0;
-          sim.scene.add(sprite);
-          bunnyMoneySigns.push(sprite);
-        }
-
-        // Red "-$X" that flashes at dead-center screen and flies up like the
-        // smokestack money, then fades. Used for monetary damage (e.g. megaliths).
-        const MEGALITH_DAMAGE = 100;
-        function spawnDamageSign(amount = MEGALITH_DAMAGE) {
-          const el = document.createElement("div");
-          el.textContent = `-$${amount}`;
-          Object.assign(el.style, {
-            position: "fixed",
-            left: "50%",
-            top: "50%",
-            transform: "translate(-50%, -50%)",
-            color: "#ff4444",
-            fontFamily:
-              '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-            fontSize: "2.4rem",
-            fontWeight: "900",
-            textShadow: "0 0 12px rgba(255,0,0,0.7)",
-            pointerEvents: "none",
-            zIndex: "120",
-            userSelect: "none",
-            willChange: "transform, opacity",
-          });
-          document.body.appendChild(el);
-          el.animate(
-            [
-              { transform: "translate(-50%, -50%)", opacity: 1 },
-              { transform: "translate(-50%, -90%)", opacity: 0 },
-            ],
-            { duration: 1000, easing: "ease-out" },
-          ).onfinish = () => el.remove();
-        }
-
-        // 3D master-controller lever (bottom-right screen overlay)
-        const lever = createLever();
-        sim.scene.add(lever);
+        powerups.setBank(() => state.money);
+        powerups.on((item) => {
+          if (item.id === "dynamite") {
+            state.money -= DYNAMITE_COST;
+            moneyCounter.setValue(state.money);
+            dyn.buy();
+            powerups.refresh();
+            ensureDynamite();
+            return;
+          }
+          const def = POWERUPS.find((d) => d.id === item.id);
+          if (!def) return;
+          const cost = def.debug ? 0 : item.cost;
+          state.money -= cost;
+          moneyCounter.setValue(state.money);
+          powerups.refresh();
+          purchasedPowerups.add(def.id);
+          if (def.onBuy) def.onBuy();
+        });
 
         // Initial train position
         const initPose = follower.getPose();
@@ -1859,696 +2666,17 @@
           train.mesh.updateMatrixWorld(true);
         }
 
-        // Camera rig with draggable FOV/offset sliders (bottom-right panel)
-        const camCtrl = createCameraControls(sim, {
-          mesh: train.mesh,
-          fov: 60,
-          offset: [-3.2, 5.4, 0],
-          look: [2.0, 3.2, 0],
-          visible: false,
-        });
-
-        // Pre-allocated scratch objects for update loop to prevent GC pauses
-        const _invMat = new THREE.Matrix4();
-        const _obsWorldPos = new THREE.Vector3();
-        const _obsWorldQuat = new THREE.Quaternion();
-        const _rearCamPos = new THREE.Vector3();
-        const _rearCamLook = new THREE.Vector3();
-        const _cabCamPos = new THREE.Vector3();
-        const _cabCamLook = new THREE.Vector3();
-        const _cowcatcherWorldPos = new THREE.Vector3();
-        const _rollQuat = new THREE.Quaternion();
-        const _fwdDir = new THREE.Vector3();
-        const _levelAxis = new THREE.Vector3(0, 1, 0);
-        const _frontLocal = new THREE.Vector3(4.0, 0.85, 0);
-
-        train.updateFn = (dt, entity, simulation) => {
-          const isRearView = keys.has("Space");
-
-          // Master controller lever: W (or tap) accelerates, no W decelerates.
-          const throttling = keys.has("KeyW") || keys.has("ArrowUp");
-          isAccelerating = throttling && currentSpeed < governor.getCapMps() - 1e-4;
-          if (throttling) {
-            const next = currentSpeed + accelRate * dt;
-            currentSpeed = governor.limit(next);
-          } else {
-            currentSpeed = Math.max(0, currentSpeed - decelRate * dt);
-          }
-          follower.speed = currentSpeed;
-
-          const speedMph = currentSpeed * 2.237;
-          gauge.setValue(speedMph);
-
-          // Red threshold mark follows the current boulder-damage threshold.
-          gauge.setThreshold(megalithRollThreshold());
-
-          // Money is earned flat at 1/s below top speed, and scales with speed
-          // once at top speed. The smokestack emits one "$" per dollar earned.
-          // When the train is stopped, no money is earned (and no smoke signs).
-          const atMaxSpeed = currentSpeed >= governor.getCapMps() - 1e-6;
-          gauge.setMax(atMaxSpeed);
-          const moving = currentSpeed > 0.22; // ~0.5 mph
-          const moneyRate = !moving ? 0 : atMaxSpeed ? speedMph * 0.14 : 1.0;
-          money += dt * moneyRate;
-          moneyCounter.setValue(money);
-          powerups.refresh();
-
-          // Emit a "$" sign from the smokestack, one per dollar earned
-          moneySpawnAccum += dt * moneyRate;
-          while (moneySpawnAccum >= 1) {
-            moneySpawnAccum -= 1;
-            spawnMoneySign();
-          }
-
-          // Grant any powerup whose condition is now met
-          grantPowerups();
-
-          // Tint megaliths by whether the current speed would nudge or cost money
-          updateMegalithColors();
-
-          // Animate flying money signs upward and despawn them after 1s
-          for (let i = moneySigns.length - 1; i >= 0; i--) {
-            const sign = moneySigns[i];
-            sign.userData.age += dt;
-            const t = sign.userData.age / MONEY_SIGN_LIFETIME;
-            sign.position.y += 2.5 * dt;
-            sign.position.x += 0.6 * dt;
-            sign.material.opacity = 1 - t;
-            if (t >= 1) {
-              train.mesh.remove(sign);
-              sign.material.dispose();
-              moneySigns.splice(i, 1);
-            }
-          }
-
-          // Advance distance along track
-          follower.s += follower.speed * dt;
-
-          // Recycle segments while maintaining rear segment buffer behind train
-          const advanceThreshold = (rearSegments + 1) * segmentLen;
-          while (follower.s >= advanceThreshold) {
-            follower.s -= segmentLen;
-            const nextOrigin = track.segments[1]?.entryPose.position.clone();
-            const nextHeading = track.segments[1]?.entryPose.heading || 0;
-
-            track.advance();
-
-            if (nextOrigin) {
-              rebaseItems(activeFlyers, nextOrigin, nextHeading);
-              rebaseItems(thrownDynamites, nextOrigin, nextHeading);
-              rebaseItems(activeExplosions, nextOrigin, nextHeading);
-
-              // Rebase hopping bunnies analytically
-              const ca = Math.cos(nextHeading);
-              const sa = Math.sin(nextHeading);
-
-              for (const bunny of hoppingBunnies) {
-                const dx = bunny.start.x - nextOrigin.x;
-                const dz = bunny.start.z - nextOrigin.z;
-
-                // Shift the analytical start position backward
-                bunny.start.x = dx * ca + dz * sa;
-                bunny.start.z = -dx * sa + dz * ca;
-
-                // Rotate the trajectory and facing yaw to match the new segment
-                bunny.yaw -= nextHeading;
-                bunny.dir
-                  .set(Math.sin(bunny.yaw), 0, Math.cos(bunny.yaw))
-                  .normalize();
-              }
-            }
-          }
-
-          // Sync & despawn thrown dynamite sticks (spawn explosion on ground contact)
-          for (const dyn of thrownDynamites) {
-            dyn.mesh.position.set(
-              dyn.body.position.x,
-              dyn.body.position.y,
-              dyn.body.position.z,
-            );
-            dyn.mesh.quaternion.set(
-              dyn.body.quaternion.x,
-              dyn.body.quaternion.y,
-              dyn.body.quaternion.z,
-              dyn.body.quaternion.w,
-            );
-
-            // Megalith collision is checked EVERY frame regardless of altitude, so
-            // a fast, flat-thrown stick can't tunnel straight through a megalith
-            // after merely grazing the ground. Uses horizontal distance so a low
-            // stick still clips the megalith's measured footprint.
-            let hitMegalith = false;
-            if (!dyn.exploded) {
-              for (const sSeg of track.segments) {
-                if (sSeg.obstacles) {
-                  for (const obs of sSeg.obstacles) {
-                    if (
-                      !obs.hit &&
-                      obs.mesh.parent &&
-                      (obs.type === "giant-boulder" || obs.type === "boulder")
-                    ) {
-                      const obsWorldPos = new THREE.Vector3();
-                      obs.mesh.getWorldPosition(obsWorldPos);
-                      const contactRadius = obs.contactRadius ?? 3.6;
-                      const dx = dyn.body.position.x - obsWorldPos.x;
-                      const dz = dyn.body.position.z - obsWorldPos.z;
-                      if (dx * dx + dz * dz < contactRadius * contactRadius) {
-                        dyn.exploded = true;
-                        spawnExplosion(dyn.body.position);
-                        simulation.removeEntity(dyn.ent);
-                        thrownDynamites.delete(dyn);
-                        hitMegalith = true;
-                        break;
-                      }
-                    }
-                  }
-                }
-                if (hitMegalith) break;
-              }
-            }
-            if (hitMegalith) continue;
-
-            // Land on the ground: explode shortly after contact
-            if (dyn.body.position.y <= 0.3) {
-              dyn.landed = true;
-            }
-            if (dyn.collided) {
-              dyn.landed = true;
-            }
-            if (dyn.landed) {
-              spawnExplosion(dyn.body.position);
-              simulation.removeEntity(dyn.ent);
-              thrownDynamites.delete(dyn);
-            }
-          }
-
-          // Animate & despawn explosion spheres (expand to large radius in 200ms)
-          for (const expl of activeExplosions) {
-            expl.age += dt;
-            const progress = (expl.age - (expl.delay ?? 0)) / expl.duration;
-            if (expl.age >= (expl.delay ?? 0) + expl.duration) {
-              simulation.scene.remove(expl.mesh);
-              expl.mesh.geometry?.dispose();
-              expl.mesh.material?.dispose();
-              activeExplosions.delete(expl);
-            } else if (progress > 0) {
-              const currentScale =
-                0.1 +
-                (expl.maxRadius - 0.1) * Math.sin((progress * Math.PI) / 2);
-              expl.mesh.scale.setScalar(currentScale);
-              expl.mesh.material.opacity = 0.9 * (1 - progress * 0.7);
-            }
-          }
-
-          // Update & sync active flying obstacles
-          for (const flyer of activeFlyers) {
-            flyer.mesh.position.set(
-              flyer.body.position.x,
-              flyer.body.position.y,
-              flyer.body.position.z,
-            );
-            if (flyer.level) {
-              // Keep the bunny's feet planted toward the ground; only yaw spins.
-              flyer.mesh.quaternion.setFromAxisAngle(_levelAxis, flyer.yaw);
-            } else {
-              flyer.mesh.quaternion.set(
-                flyer.body.quaternion.x,
-                flyer.body.quaternion.y,
-                flyer.body.quaternion.z,
-                flyer.body.quaternion.w,
-              );
-            }
-            flyer.lifetime -= dt;
-            if (flyer.lifetime <= 0) {
-              simulation.scene.remove(flyer.mesh);
-              simulation.world.removeBody(flyer.body);
-              flyer.mesh.traverse((child) => {
-                if (child.isMesh) {
-                  child.geometry?.dispose();
-                  if (Array.isArray(child.material))
-                    child.material.forEach((m) => m.dispose());
-                  else child.material?.dispose();
-                }
-              });
-              activeFlyers.delete(flyer);
-            }
-          }
-
-          // Drive the hopped bunnies: each is a parabolic arc in its facing
-          // direction. On landing it hops again until it has made 5 hops, then
-          // it despawns.
-          for (const bunny of hoppingBunnies) {
-            bunny.t += dt;
-            const p = Math.min(1, bunny.t / bunny.duration);
-            const end = bunny.start
-              .clone()
-              .addScaledVector(bunny.dir, bunny.hopDist);
-            bunny.mesh.position.set(
-              bunny.start.x + (end.x - bunny.start.x) * p,
-              4 * bunny.hopHeight * p * (1 - p),
-              bunny.start.z + (end.z - bunny.start.z) * p,
-            );
-            bunny.mesh.quaternion.setFromAxisAngle(_levelAxis, bunny.yaw);
-
-            // Emit a red heart above the bunny's head on walk away, roughly
-            // every hop-blink, floating up as the bunny hops into the forest.
-            bunny.heartAccum += dt;
-            while (bunny.heartAccum >= 0.22) {
-              bunny.heartAccum -= 0.22;
-              // The reward "$" replaces the first heart, so skip it.
-              if (bunny.suppressFirstHeart) {
-                bunny.suppressFirstHeart = false;
-                continue;
-              }
-              spawnBunnyHeart(bunny.mesh.position, bunny.yaw);
-            }
-
-            if (bunny.t >= bunny.duration) {
-              bunny.hopNum++;
-              if (bunny.hopNum >= bunny.hops) {
-                sim.scene.remove(bunny.mesh);
-                hoppingBunnies.delete(bunny);
-              } else {
-                // Next hop: tighter and a touch lower.
-                bunny.start.copy(end);
-                bunny.t = 0;
-                bunny.hopHeight *= 0.82;
-                bunny.duration = Math.max(0.3, bunny.duration * 0.85);
-              }
-            }
-          }
-
-          // Animate the hopping bunny's hearts: rise straight up, gently wobble
-          // in yaw, shrink, and fade before despawning.
-          for (let i = bunnyHearts.length - 1; i >= 0; i--) {
-            const heart = bunnyHearts[i];
-            heart.userData.age += dt;
-            const t = heart.userData.age / HEART_LIFETIME;
-            heart.position.y += 2.2 * dt;
-            heart.rotation.y = heart.userData.yaw + Math.PI + t * 0.8;
-            const s = 0.84 * (1 - t * 0.55);
-            heart.scale.setScalar(s);
-            heart.material.opacity = 1 - t;
-            if (t >= 1) {
-              sim.scene.remove(heart);
-              heart.material.dispose();
-              bunnyHearts.splice(i, 1);
-            }
-          }
-
-          // Animate the bunny's reward "$" signs: shoot straight up and fade.
-          for (let i = bunnyMoneySigns.length - 1; i >= 0; i--) {
-            const sign = bunnyMoneySigns[i];
-            sign.userData.age += dt;
-            const t = sign.userData.age / BUNNY_MONEY_LIFETIME;
-            sign.position.y += 3.0 * dt;
-            sign.material.opacity = 1 - t;
-            if (t >= 1) {
-              sim.scene.remove(sign);
-              sign.material.dispose();
-              bunnyMoneySigns.splice(i, 1);
-            }
-          }
-
-          // Sync train mesh to rebased track pose
-          const pose = follower.getPose();
-          if (pose) {
-            entity.mesh.position.copy(pose.position);
-            entity.mesh.quaternion.setFromUnitVectors(
-              follower.forwardAxis,
-              pose.forward,
-            );
-
-            // Track curvature ahead/behind for train visual tilt
-            const poseAhead = track.getPoseAt(follower.s + 1.6);
-            const poseBehind = track.getPoseAt(Math.max(0, follower.s - 1.6));
-            let dHeading = 0;
-            if (poseAhead && poseBehind) {
-              let dh = poseAhead.heading - poseBehind.heading;
-              dh = Math.atan2(Math.sin(dh), Math.cos(dh));
-              dHeading = dh / 3.2;
-            }
-
-            // Sample track curve ahead to look around upcoming bends without matrix lag
-            const aheadDist = 26;
-            const lookPoseAhead = track.getPoseAt(follower.s + aheadDist);
-            let curveLateralAhead = 0;
-            if (lookPoseAhead && !isRearView) {
-              const dx = lookPoseAhead.position.x - pose.position.x;
-              const dz = lookPoseAhead.position.z - pose.position.z;
-              // Local +Z lateral offset in train reference frame: cross(forward, up) = (-fwd.z, 0, fwd.x)
-              curveLateralAhead = -dx * pose.forward.z + dz * pose.forward.x;
-            }
-
-            // Dynamic camera look-ahead aiming and lateral lean to gently see around corners
-            const targetLookZ = Math.max(
-              -3.0,
-              Math.min(3.0, curveLateralAhead * 0.25),
-            );
-            const targetOffsetZ = -Math.max(
-              -1.0,
-              Math.min(1.0, curveLateralAhead * 0.08),
-            );
-            currentCameraLookZ +=
-              (targetLookZ - currentCameraLookZ) * Math.min(1, dt * 4.5);
-            currentCameraOffsetZ +=
-              (targetOffsetZ - currentCameraOffsetZ) * Math.min(1, dt * 4.5);
-
-            camCtrl.state.offset.z = currentCameraOffsetZ;
-            camCtrl.state.look.z = currentCameraLookZ;
-
-            // Visual corner tilt on train: starts at 50 mph and grows sharply with
-            // speed, so the train leans harder into corners the faster it goes.
-            let targetTilt = 0;
-            if (speedMph > 50) {
-              const excessSpeed = speedMph - 50;
-              targetTilt = -dHeading * (excessSpeed / 15.0);
-              targetTilt = Math.max(-0.9, Math.min(0.9, targetTilt));
-            }
-            currentTilt += (targetTilt - currentTilt) * Math.min(1, dt * 8);
-
-            // Apply corner tilt along train's forward axis
-            _rollQuat.setFromAxisAngle(follower.forwardAxis, currentTilt);
-            entity.mesh.quaternion.multiply(_rollQuat);
-            entity.mesh.updateMatrixWorld(true);
-
-            // Sync kinematic cowcatcher collider to front of locomotive
-            _cowcatcherWorldPos
-              .copy(_frontLocal)
-              .applyMatrix4(entity.mesh.matrixWorld);
-            cowcatcherBody.position.set(
-              _cowcatcherWorldPos.x,
-              _cowcatcherWorldPos.y,
-              _cowcatcherWorldPos.z,
-            );
-            cowcatcherBody.quaternion.set(
-              entity.mesh.quaternion.x,
-              entity.mesh.quaternion.y,
-              entity.mesh.quaternion.z,
-              entity.mesh.quaternion.w,
-            );
-
-            // Give kinematic collider forward/upward impulse velocity
-            _fwdDir
-              .copy(follower.forwardAxis)
-              .applyQuaternion(entity.mesh.quaternion);
-            const impulseSpeed = follower.speed * 1.6 + 10;
-            cowcatcherBody.velocity.set(
-              _fwdDir.x * impulseSpeed,
-              follower.speed * 0.35 + 5,
-              _fwdDir.z * impulseSpeed,
-            );
-
-            // Impact detection: when locomotive cowcatcher reaches an obstacle, launch it with physics
-            for (const sSeg of track.segments) {
-              if (sSeg.obstacles) {
-                for (const obs of sSeg.obstacles) {
-                  if (!obs.hit && obs.mesh.parent) {
-                    obs.mesh.getWorldPosition(_obsWorldPos);
-                    const dist = _cowcatcherWorldPos.distanceTo(_obsWorldPos);
-
-                    // Bunnies that are not slowing-down-able hop off into the
-                    // forest while the train is still half a segment away and
-                    // below 10 mph, then despawn 5s later.
-                    if (obs.type === "bunny" && !obs.hopped && dist < 20) {
-                      const mph = currentSpeed * 2.237;
-                      if (mph < 10) {
-                        obs.hopped = true;
-                        obs.hit = true;
-                        obs.mesh.getWorldQuaternion(_obsWorldQuat);
-                        obs.mesh.parent.remove(obs.mesh);
-                        rewardAndHopBunny(
-                          obs.mesh,
-                          _obsWorldPos,
-                          _obsWorldQuat,
-                        );
-                        continue;
-                      }
-                    }
-
-                    if (dist < 3.0) {
-                      obs.hit = true;
-
-                      // Striking a bunny that didn't hop is unforgivable: launch
-                      // it with physics so the bounce is visible, then half a
-                      // second later cut to the verdict.
-                      if (obs.type === "bunny") {
-                        obs.mesh.getWorldQuaternion(_obsWorldQuat);
-                        obs.mesh.parent.remove(obs.mesh);
-                        launchStruckBunny(
-                          obs.mesh,
-                          _obsWorldPos,
-                          _obsWorldQuat,
-                          _fwdDir,
-                          follower.speed,
-                        );
-                        setTimeout(triggerYouMonster, 500);
-                        continue;
-                      }
-
-                      obs.mesh.getWorldQuaternion(_obsWorldQuat);
-
-                      // Detach from segment and promote to world simulation
-                      obs.mesh.parent.remove(obs.mesh);
-
-                      // Giant Megalith Boulder shatters into smaller rocks on impact
-                      if (obs.type === "giant-boulder") {
-                        const impactMph = currentSpeed * 2.237;
-                        const rollThreshold = megalithRollThreshold();
-
-                        // Low-speed hit: roll the megalith off to the side (free of
-                        // money, but a heavy 90% speed bleed) instead of exploding.
-                        if (impactMph <= rollThreshold) {
-                          rollMegalithAside(
-                            obs.mesh,
-                            _obsWorldPos,
-                            _obsWorldQuat,
-                            _fwdDir,
-                            follower.speed,
-                          );
-                          currentSpeed = Math.max(0, currentSpeed * 0.1);
-                          screenShake = Math.min(1.4, screenShake + 0.5);
-                          follower.speed = currentSpeed;
-                          continue;
-                        }
-
-                        // Cowcatcher impacts cost money (tiered discount), shown
-                        // as a red "-$X" at screen center. Dynamite blows are free.
-                        const cost = megalithDamage();
-                        money -= cost;
-                        moneyCounter.setValue(money);
-                        spawnDamageSign(cost);
-
-                        shatterMegalith(
-                          _obsWorldPos,
-                          _fwdDir,
-                          follower.speed * 0.5,
-                        );
-
-                        // Above the threshold the megalith explodes; only 50% speed bleed.
-                        currentSpeed = Math.max(0, currentSpeed * 0.5);
-                        screenShake = Math.min(1.4, screenShake + 1.2);
-                        follower.speed = currentSpeed;
-                        continue;
-                      }
-
-                      simulation.scene.add(obs.mesh);
-                      obs.mesh.position.copy(_obsWorldPos);
-                      obs.mesh.quaternion.copy(_obsWorldQuat);
-
-                      // Knock a tiny rock aside with Golden Rocks active: turn it
-                      // golden (clone so other rocks stay gray).
-                      if (obs.type === "tiny-rock" && goldenRocks) {
-                        obs.mesh.material = sharedTinyMat.clone();
-                        obs.mesh.material.color.set(0xffc940);
-                      } else if (obs.type === "boulder" && goldenBoulders) {
-                        obs.mesh.material = sharedBoulderMat.clone();
-                        obs.mesh.material.color.set(0xffc940);
-                      }
-
-                      let body;
-                      if (obs.type === "log") {
-                        body = new CANNON.Body({
-                          mass: 400,
-                          shape: new CANNON.Box(
-                            new CANNON.Vec3(obs.logLen / 2, 0.4, 0.4),
-                          ),
-                        });
-                      } else if (obs.type === "tiny-rock") {
-                        body = new CANNON.Body({
-                          mass: 30,
-                          shape: new CANNON.Sphere(0.3),
-                          linearDamping: 0.2,
-                          angularDamping: 0.3,
-                        });
-                      } else {
-                        body = new CANNON.Body({
-                          mass: 1200,
-                          shape: new CANNON.Sphere(0.95),
-                        });
-                      }
-                      body.position.set(
-                        _obsWorldPos.x,
-                        _obsWorldPos.y,
-                        _obsWorldPos.z,
-                      );
-                      body.quaternion.set(
-                        _obsWorldQuat.x,
-                        _obsWorldQuat.y,
-                        _obsWorldQuat.z,
-                        _obsWorldQuat.w,
-                      );
-
-                      // Impulse scaled to obstacle mass & inertia
-                      {
-                        const lateralSide =
-                          (Math.random() < 0.5 ? 1 : -1) *
-                          (follower.speed * 0.4 + Math.random() * 8);
-                        const hitSpeed = follower.speed * 0.9;
-                        body.velocity.set(
-                          _fwdDir.x * hitSpeed + _fwdDir.z * lateralSide,
-                          follower.speed * 0.3 + 2 + Math.random() * 3,
-                          _fwdDir.z * hitSpeed - _fwdDir.x * lateralSide,
-                        );
-                        body.angularVelocity.set(
-                          (Math.random() - 0.5) * 15,
-                          (Math.random() - 0.5) * 15,
-                          (Math.random() - 0.5) * 15,
-                        );
-                      }
-
-                      // Subtract velocity commensurate with obstacle mass & apply impact feedback
-                      if (COWCATCHER_DEFENSE_IDS.has("wedge-plow")) {
-                        // Wedge plow: branch, boulder, and rock are knocked aside with
-                        // no speed bleed — just a light rattle for feedback.
-                        screenShake = Math.min(0.15, screenShake + 0.08);
-                      } else if (obs.type === "log") {
-                        applyImpact(
-                          Math.max(5.0, currentSpeed * 0.22),
-                          0.22,
-                          0.35,
-                        );
-                      } else if (obs.type === "tiny-rock") {
-                        // Tiny rocks: negligible impact, just a small rattle
-                        applyImpact(
-                          Math.max(0.4, currentSpeed * 0.05),
-                          0.08,
-                          0.15,
-                        );
-                        // Golden Rocks: each tiny rock knocked aside is worth $1
-                        if (goldenRocks) {
-                          money += 1;
-                          moneyCounter.setValue(money);
-                          powerups.refresh();
-                          spawnMoneySign();
-                        }
-                      } else if (obs.type === "boulder") {
-                        applyImpact(
-                          Math.max(14.0, currentSpeed * 0.45),
-                          0.55,
-                          0.75,
-                        );
-                        // Golden Boulders: each (non-megalith) boulder is worth $5
-                        if (goldenBoulders) {
-                          money += 5;
-                          moneyCounter.setValue(money);
-                          powerups.refresh();
-                          spawnMoneySign();
-                        }
-                      }
-                      follower.speed = currentSpeed;
-
-                      sim.world.addBody(body);
-                      activeFlyers.add({
-                        mesh: obs.mesh,
-                        body,
-                        lifetime: 2.8,
-                      });
-                    }
-                  }
-                }
-              }
-            }
-          }
-
-          // Center ground beneath the train
-          if (ground?.mesh) {
-            ground.mesh.position.x = entity.mesh.position.x;
-            ground.mesh.position.z = entity.mesh.position.z;
-          }
-
-          // Update camera pose. Space swaps to the reverse rig: a camera mounted
-          // in front of the train that looks back down its length to frame the
-          // whole train. Holding 'C' drops the camera inside the cab looking forward.
-          const isCabView = keys.has("KeyC");
-          if (isCabView) {
-            _cabCamPos.set(1.4, 2.7, 0.4).applyMatrix4(entity.mesh.matrixWorld);
-            _cabCamLook.set(7.0, 2.1, 0).applyMatrix4(entity.mesh.matrixWorld);
-            simulation.camera.position.copy(_cabCamPos);
-            simulation.camera.lookAt(_cabCamLook);
-          } else if (isRearView) {
-            _rearCamPos.set(7.5, 4.8, 0).applyMatrix4(entity.mesh.matrixWorld);
-            _rearCamLook.set(1.6, 1.9, 0).applyMatrix4(entity.mesh.matrixWorld);
-            simulation.camera.position.copy(_rearCamPos);
-            simulation.camera.lookAt(_rearCamLook);
-          } else {
-            camCtrl.update({ mirror: false });
-          }
-
-          // FOV scales exponentially with speed: 60° at rest → 80° at 250 mph
-          const fovBase = camCtrl.state.fov;
-          const speedRatio = Math.min(1, Math.max(0, speedMph / 250));
-          simulation.camera.fov = fovBase * Math.pow(80 / fovBase, speedRatio);
-          simulation.camera.updateProjectionMatrix();
-
-          // Dynamic fog adjustment: bring fog closer in rear view to hide limited rear draw distance
-          const targetFogNear = isRearView ? 15 : 50;
-          const targetFogFar = isRearView ? 95 : 220;
-          simulation.scene.fog.near +=
-            (targetFogNear - simulation.scene.fog.near) * Math.min(1, dt * 10);
-          simulation.scene.fog.far +=
-            (targetFogFar - simulation.scene.fog.far) * Math.min(1, dt * 10);
-
-          // Impact screen shake
-          if (screenShake > 0.001) {
-            simulation.camera.position.x += (Math.random() - 0.5) * screenShake;
-            simulation.camera.position.y += (Math.random() - 0.5) * screenShake;
-            screenShake *= Math.exp(-dt * 9.0);
-          }
-
-          // Master-controller lever: pinned to bottom-right of the screen
-          const camQuat = simulation.camera.quaternion;
-          const vRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camQuat);
-          const vUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camQuat);
-          const vFwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camQuat);
-
-          const leverDist = 7;
-          const halfH =
-            Math.tan((simulation.camera.fov * Math.PI) / 360) * leverDist;
-          const halfW = halfH * simulation.camera.aspect;
-          const nx = 0.73;
-          const ny = -0.6;
-
-          lever.position
-            .copy(simulation.camera.position)
-            .addScaledVector(vFwd, leverDist)
-            .addScaledVector(vRight, nx * halfW)
-            .addScaledVector(vUp, ny * halfH);
-          lever.scale.setScalar(1.1);
-          lever.lookAt(simulation.camera.position);
-          lever.updateMatrixWorld(true);
-
-          // Hide the accel lever in reverse and cab views
-          lever.visible = !isRearView && !isCabView;
-          if (lever.visible) {
-            // Tilt toward/away from the user based on throttle input.
-            let targetLever = 0;
-            if (keys.has("KeyW") || keys.has("ArrowUp"))
-              targetLever = -0.7; // into screen (away from user)
-            else targetLever = 0.7; // toward user (decelerating)
-            leverAngle += (targetLever - leverAngle) * Math.min(1, dt * 8);
-            lever.userData.pivot.rotation.x = leverAngle;
-          }
+        // Top-level frame update: dispatch to each game system in order
+        train.updateFn = (dt) => {
+          controls.update(dt);
+          econ.update(dt);
+          runner.update(dt);
+          dyn.update(dt);
+          fx.update(dt);
+          bunnySys.update(dt);
+          poseSync.update(dt);
+          impacts.update(dt);
+          rig.update(dt);
         };
 
         // Initial camera pose

@@ -1,6 +1,73 @@
 // Reusable Particle and Visual Effects.
 import * as THREE from "three";
 
+/**
+ * Generic system for short-lived floating decorations (sprites or meshes):
+ * they rise, optionally drift/spin/shrink, fade out, then despawn.
+ *
+ * Attach each object to its desired parent yourself, register it with `add`,
+ * and call `update(dt)` once per frame. Only the object's material is
+ * disposed on death (never geometry or textures, which may be shared).
+ */
+export function createFloatingEffects() {
+  const items = [];
+
+  function add(object, opts = {}) {
+    const {
+      lifetime = 1.0,
+      rise = 0,
+      drift = null,
+      spin = 0,
+      endScale = 1,
+      fade = true,
+      disposeMaterial = true,
+    } = opts;
+
+    object.userData.fx = {
+      age: 0,
+      lifetime,
+      rise,
+      drift: drift ? drift.clone() : null,
+      spin,
+      endScale,
+      fade,
+      disposeMaterial,
+      baseScale: object.scale.x,
+    };
+    items.push(object);
+  }
+
+  function update(dt) {
+    for (let i = items.length - 1; i >= 0; i--) {
+      const object = items[i];
+      const fx = object.userData.fx;
+      fx.age += dt;
+      const t = Math.min(1, fx.age / fx.lifetime);
+
+      if (fx.rise) object.position.y += fx.rise * dt;
+      if (fx.drift) {
+        object.position.x += fx.drift.x * dt;
+        object.position.y += fx.drift.y * dt;
+        object.position.z += fx.drift.z * dt;
+      }
+      if (fx.spin) object.rotation.y += fx.spin * dt;
+      if (fx.endScale !== 1) {
+        object.scale.setScalar(fx.baseScale * (1 - (1 - fx.endScale) * t));
+      }
+      if (fx.fade && object.material) object.material.opacity = 1 - t;
+
+      if (t >= 1) {
+        if (object.parent) object.parent.remove(object);
+        if (fx.disposeMaterial && object.material) object.material.dispose();
+        delete object.userData.fx;
+        items.splice(i, 1);
+      }
+    }
+  }
+
+  return { add, update };
+}
+
 let cachedSandTexture = null;
 function getSandTexture() {
   if (cachedSandTexture) return cachedSandTexture;
