@@ -7,6 +7,7 @@
 //   number: <input type=number> with min/max/step
 //   color:  <input type=color>  (value hex, converts to int 0xRRGGBB)
 //   vector: <input type=text>   (comma-separated numbers -> array)
+//   text:   <input type=text>   (free-form string)
 
 import {
   createGround,

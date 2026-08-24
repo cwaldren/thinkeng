@@ -18,13 +18,12 @@
         inset: 0;
       }
 
-      /* Sidebar: card list of entities */
-      #list {
+      /* Overlay panels */
+      #list,
+      #controls {
         position: fixed;
         top: 0;
-        left: 0;
         bottom: 0;
-        width: 220px;
         padding: 16px;
         overflow-y: auto;
         background: rgba(20, 20, 26, 0.85);
@@ -32,14 +31,27 @@
         z-index: 10;
       }
 
-      #list h2 {
+      /* Sidebar: card list of entities */
+      #list {
+        left: 0;
+        width: 220px;
+      }
+
+      /* Right panel: live controls for the active entity */
+      #controls {
+        right: 0;
+        width: 240px;
+        display: none;
+      }
+
+      #list h2,
+      #controls h2 {
         margin: 0 0 12px;
         font-size: 1.1rem;
         opacity: 0.8;
       }
 
       #filter {
-        width: 100%;
         margin-bottom: 12px;
         background: #1a1a20;
         border: 1px solid #2a2a33;
@@ -78,13 +90,16 @@
           transform 0.15s ease;
       }
 
-      .card:hover {
+      .card:hover,
+      .card.active {
         border-color: #4caf50;
+      }
+
+      .card:hover {
         transform: translateX(2px);
       }
 
       .card.active {
-        border-color: #4caf50;
         background: #20202a;
       }
 
@@ -125,31 +140,6 @@
 
       .badge.effect {
         color: #ff55aa;
-      }
-
-      /* Right panel: live controls for the active entity */
-      #controls {
-        position: fixed;
-        top: 0;
-        right: 0;
-        bottom: 0;
-        width: 240px;
-        padding: 16px;
-        overflow-y: auto;
-        background: rgba(20, 20, 26, 0.85);
-        backdrop-filter: blur(4px);
-        z-index: 10;
-        display: none;
-      }
-
-      #controls.open {
-        display: block;
-      }
-
-      #controls h2 {
-        margin: 0 0 10px;
-        font-size: 1.1rem;
-        opacity: 0.8;
       }
 
       .field {
@@ -255,6 +245,9 @@
       //   number: <input type=number> with min/max/step
       //   color:  <input type=color>  (value hex, converts to int 0xRRGGBB)
       //   vector: <input type=text>   (comma-separated numbers -> array)
+      //   text:   <input type=text>   (free-form string)
+      // Filter links swap the visible card list in-place (replaceState, no
+      // reload), so the simulation keeps running across filter changes.
       // ------------------------------------------------------------------
 
       const CATEGORIES = {
@@ -265,10 +258,8 @@
       };
 
       // Read ?type= from the URL; empty/unknown => combined All view.
-      const urlType = new URLSearchParams(location.search).get("type");
-      const type = CATEGORIES[urlType] ? urlType : "";
-      const entries =
-        type === "" ? ENTRIES : ENTRIES.filter((e) => e.category === type);
+      let filterType = new URLSearchParams(location.search).get("type") ?? "";
+      if (!CATEGORIES[filterType]) filterType = "";
 
       const sim = new Simulation({
         container: document.getElementById("viewport"),
@@ -276,121 +267,106 @@
         enableShadows: true,
         gravity: [0, 0, 0],
       });
+
+      // ------------------------------------------------------------------
       // Orbit camera around a target. Drag to rotate, wheel to zoom. The
       // camera is driven directly from a spherical (theta/phi/distance) state
       // so the gallery view stays stable while entities are rebuilt.
-      const orbitTarget = new THREE.Vector3(0, 1, 0);
-      const orbit = { theta: 0, phi: 1.0, distance: 9.0 };
-      const orbitMin = 2;
-      const orbitMax = 40;
+      // ------------------------------------------------------------------
+      function createOrbitControls(sim, target) {
+        // Initial vantage point (world space), converted to spherical coords.
+        const dir = new THREE.Vector3(0, 5, 8).sub(target);
+        const len = dir.length();
+        const state = {
+          theta: Math.atan2(dir.x, dir.z),
+          phi: Math.acos(dir.y / len),
+          distance: len,
+        };
 
-      function applyOrbit() {
-        sim.camera.position.set(
-          orbitTarget.x +
-            orbit.distance * Math.sin(orbit.phi) * Math.sin(orbit.theta),
-          orbitTarget.y + orbit.distance * Math.cos(orbit.phi),
-          orbitTarget.z +
-            orbit.distance * Math.sin(orbit.phi) * Math.cos(orbit.theta),
+        const apply = () => {
+          sim.camera.position.set(
+            target.x +
+              state.distance * Math.sin(state.phi) * Math.sin(state.theta),
+            target.y + state.distance * Math.cos(state.phi),
+            target.z +
+              state.distance * Math.sin(state.phi) * Math.cos(state.theta),
+          );
+          sim.camera.lookAt(target);
+        };
+
+        const el = sim.container;
+        let dragging = false;
+        let lastX = 0;
+        let lastY = 0;
+
+        el.addEventListener("pointerdown", (e) => {
+          dragging = true;
+          lastX = e.clientX;
+          lastY = e.clientY;
+          el.setPointerCapture(e.pointerId);
+        });
+        el.addEventListener("pointermove", (e) => {
+          if (!dragging) return;
+          const dx = e.clientX - lastX;
+          const dy = e.clientY - lastY;
+          lastX = e.clientX;
+          lastY = e.clientY;
+          state.theta -= dx * 0.005;
+          state.phi = Math.max(
+            0.05,
+            Math.min(Math.PI - 0.05, state.phi - dy * 0.005),
+          );
+          apply();
+        });
+        const endDrag = (e) => {
+          dragging = false;
+          el.releasePointerCapture(e.pointerId);
+        };
+        el.addEventListener("pointerup", endDrag);
+        el.addEventListener("pointercancel", endDrag);
+        el.addEventListener(
+          "wheel",
+          (e) => {
+            e.preventDefault();
+            state.distance = Math.max(
+              2,
+              Math.min(40, state.distance * (e.deltaY > 0 ? 1.1 : 0.9)),
+            );
+            apply();
+          },
+          { passive: false },
         );
-        sim.camera.lookAt(orbitTarget);
+
+        apply();
       }
 
-      // Derive the initial orbit state from the default camera placement.
-      const initDir = new THREE.Vector3(0, 5, 8).sub(orbitTarget);
-      orbit.distance = initDir.length();
-      orbit.phi = Math.acos(initDir.y / orbit.distance);
-      orbit.theta = Math.atan2(initDir.x, -initDir.z);
-
-      const viewport = document.getElementById("viewport");
-      let dragging = false;
-      let lastX = 0;
-      let lastY = 0;
-
-      viewport.addEventListener("pointerdown", (e) => {
-        dragging = true;
-        lastX = e.clientX;
-        lastY = e.clientY;
-        viewport.setPointerCapture(e.pointerId);
-      });
-      viewport.addEventListener("pointermove", (e) => {
-        if (!dragging) return;
-        const dx = e.clientX - lastX;
-        const dy = e.clientY - lastY;
-        lastX = e.clientX;
-        lastY = e.clientY;
-        orbit.theta -= dx * 0.005;
-        orbit.phi = Math.max(
-          0.05,
-          Math.min(Math.PI - 0.05, orbit.phi - dy * 0.005),
-        );
-        applyOrbit();
-      });
-      const endDrag = (e) => {
-        dragging = false;
-        viewport.releasePointerCapture(e.pointerId);
-      };
-      viewport.addEventListener("pointerup", endDrag);
-      viewport.addEventListener("pointercancel", endDrag);
-      viewport.addEventListener(
-        "wheel",
-        (e) => {
-          e.preventDefault();
-          orbit.distance = Math.max(
-            orbitMin,
-            Math.min(orbitMax, orbit.distance * (e.deltaY > 0 ? 1.1 : 0.9)),
-          );
-          applyOrbit();
-        },
-        { passive: false },
-      );
+      createOrbitControls(sim, new THREE.Vector3(0, 1, 0));
 
       const listEl = document.getElementById("list");
       const controlsPanel = document.getElementById("controls");
       const controlsForm = document.getElementById("controls-form");
 
-      // Highlight the active filter link. Intercept clicks so we update the
-      // URL in-place (replaceState) instead of pushing a new history entry;
-      // otherwise the browser back button cycles through every filter you
-      // touched instead of returning to index.html.
-      for (const link of document.querySelectorAll("#filter a")) {
-        link.classList.toggle("active", link.dataset.type === type);
-        link.addEventListener("click", (e) => {
-          e.preventDefault();
-          if (link.dataset.type === type) return;
-          history.replaceState(null, "", link.getAttribute("href"));
-          location.reload();
-        });
-      }
+      const PARSERS = {
+        number: (raw) => Number(raw),
+        color: (raw) => parseInt(String(raw).replace(/^#/, ""), 16), // #rrggbb or 0xrrggbb -> number
+        vector: (raw) =>
+          String(raw)
+            .split(",")
+            .map((s) => Number(s.trim()))
+            .filter((n) => Number.isFinite(n)),
+      };
+      const parseValue = (spec, raw) => PARSERS[spec.type]?.(raw) ?? raw;
+
+      const SERIALIZERS = {
+        color: (v) => "#" + Number(v).toString(16).padStart(6, "0"),
+        vector: (v) => (Array.isArray(v) ? v.join(", ") : String(v)),
+      };
+      const serializeValue = (spec, value) => SERIALIZERS[spec.type]?.(value) ?? value;
 
       let active = null; // { entry, values }
       let liveEntity = null;
 
-      function parseValue(spec, raw) {
-        switch (spec.type) {
-          case "number":
-            return Number(raw);
-          case "color":
-            return parseInt(String(raw).replace(/^#/, ""), 16); // #rrggbb or 0xrrggbb -> number
-          case "vector":
-            return String(raw)
-              .split(",")
-              .map((s) => Number(s.trim()))
-              .filter((n) => Number.isFinite(n));
-          default:
-            return raw;
-        }
-      }
-
-      function serializeValue(spec, value) {
-        switch (spec.type) {
-          case "color":
-            return "#" + Number(value).toString(16).padStart(6, "0");
-          case "vector":
-            return Array.isArray(value) ? value.join(", ") : String(value);
-          default:
-            return value;
-        }
-      }
+      const INPUT_TYPES = { color: "color", vector: "text", text: "text" };
 
       function buildControls() {
         controlsForm.innerHTML = "";
@@ -398,36 +374,18 @@
           active.entry.controls(controlsForm, () => liveEntity);
           return;
         }
-        for (const spec of active.entry.opts) {
+        for (const spec of active.entry.opts ?? []) {
           const field = document.createElement("div");
           field.className = "field";
-          const scaled = serializeValue(spec, active.values[spec.key]);
-
-          let input;
-          if (spec.type === "color") {
-            input = document.createElement("input");
-            input.type = "color";
-            input.value = scaled;
-          } else if (spec.type === "vector") {
-            input = document.createElement("input");
-            input.type = "text";
-            input.value = scaled;
-          } else if (spec.type === "text") {
-            input = document.createElement("input");
-            input.type = "text";
-            input.value = scaled;
-          } else {
-            input = document.createElement("input");
-            input.type = "number";
-            input.value = scaled;
-            input.min = spec.min;
-            input.max = spec.max;
-            input.step = spec.step;
-          }
 
           const label = document.createElement("label");
           label.textContent = spec.label;
 
+          const input = document.createElement("input");
+          input.type = INPUT_TYPES[spec.type] ?? "number";
+          input.value = serializeValue(spec, active.values[spec.key]);
+          if (input.type === "number")
+            Object.assign(input, { min: spec.min, max: spec.max, step: spec.step });
           input.addEventListener("input", () => {
             active.values[spec.key] = parseValue(spec, input.value);
             rebuild();
@@ -440,10 +398,12 @@
       }
 
       function setActive(entry) {
-        if (active && active.entry.key === entry.key) return;
+        if (active?.entry === entry) return;
         active = {
           entry,
-          values: Object.fromEntries(entry.opts.map((s) => [s.key, parseValue(s, s.default)])),
+          values: Object.fromEntries(
+            (entry.opts ?? []).map((s) => [s.key, parseValue(s, s.default)]),
+          ),
         };
 
         for (const card of listEl.querySelectorAll(".card")) {
@@ -463,17 +423,21 @@
         liveEntity = active.entry.fn(sim, { ...active.values });
       }
 
+      function clearSelection() {
+        active = null;
+        controlsPanel.classList.remove("open");
+        rebuild();
+      }
+
       // Serialize the active entity's current control values into a concise,
       // LLM-friendly format: one key=value per line, starting with the entity.
       function serializeConfig() {
         if (!active) return "";
         const lines = [`entity=${active.entry.key}`];
-        if (active.entry.opts) {
-          for (const spec of active.entry.opts) {
-            let out = serializeValue(spec, active.values[spec.key]);
-            if (spec.type === "vector") out = "[" + out + "]";
-            lines.push(`${spec.key}=${out}`);
-          }
+        for (const spec of active.entry.opts ?? []) {
+          let out = serializeValue(spec, active.values[spec.key]);
+          if (spec.type === "vector") out = `[${out}]`;
+          lines.push(`${spec.key}=${out}`);
         }
         return lines.join("\n");
       }
@@ -481,9 +445,8 @@
       const copyBtn = document.getElementById("copy-config");
       let copyTimer = null;
       copyBtn.addEventListener("click", () => {
-        const text = serializeConfig();
         navigator.clipboard
-          .writeText(text)
+          .writeText(serializeConfig())
           .then(() => {
             copyBtn.textContent = "Copied!";
             copyBtn.classList.add("confirmed");
@@ -496,22 +459,63 @@
           .catch(() => {});
       });
 
-      // Populate the side list (tagged by category in the All view)
-      for (const entry of entries) {
+      function buildCard(entry, withBadge) {
         const card = document.createElement("button");
         card.className = "card";
         card.dataset.key = entry.key;
-        const tag =
-          type === ""
-            ? `<span class="badge ${entry.category}">${entry.category}</span>`
-            : "";
-        card.innerHTML = `<h3>${entry.label}${tag}</h3><p>${entry.desc}</p>`;
+
+        const title = document.createElement("h3");
+        title.textContent = entry.label;
+        if (withBadge) {
+          const badge = document.createElement("span");
+          badge.className = `badge ${entry.category}`;
+          badge.textContent = entry.category;
+          title.appendChild(badge);
+        }
+
+        const desc = document.createElement("p");
+        desc.textContent = entry.desc;
+
+        card.append(title, desc);
         card.addEventListener("click", () => setActive(entry));
-        listEl.appendChild(card);
+        return card;
       }
 
-      // Auto-select the first entry so the view is never empty on load.
-      if (entries.length) setActive(entries[0]);
+      // Populate the side list (tagged by category in the All view) and
+      // auto-select the first entry so the view is never empty.
+      function renderList() {
+        for (const card of [...listEl.querySelectorAll(".card")]) card.remove();
+        const visible =
+          filterType === ""
+            ? ENTRIES
+            : ENTRIES.filter((e) => e.category === filterType);
+        for (const entry of visible)
+          listEl.appendChild(buildCard(entry, filterType === ""));
+        if (visible.length) setActive(visible[0]);
+        else clearSelection();
+      }
+
+      // Update the URL in-place (replaceState) so the browser back button
+      // returns to index.html instead of cycling through every filter.
+      function setFilter(next) {
+        if (next === filterType) return;
+        filterType = next;
+        history.replaceState(null, "", next ? `?type=${next}` : location.pathname);
+        for (const link of document.querySelectorAll("#filter a")) {
+          link.classList.toggle("active", link.dataset.type === next);
+        }
+        renderList();
+      }
+
+      for (const link of document.querySelectorAll("#filter a")) {
+        link.classList.toggle("active", link.dataset.type === filterType);
+        link.addEventListener("click", (e) => {
+          e.preventDefault();
+          setFilter(link.dataset.type);
+        });
+      }
+
+      renderList();
 
       sim.start();
     </script>
