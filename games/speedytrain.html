@@ -1,0 +1,1899 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Speedy Train</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: #111116;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      }
+      #ui {
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        color: #fff;
+        pointer-events: none;
+        transition: opacity 1s ease;
+      }
+
+      /* Throw button: desaturated red while restocking from empty (the fill
+         rises bottom-to-top only for the 0 -> 1 stick); solid vivid red while
+         stocked. Count changes roll slot-machine style. */
+      #dynamite-btn {
+        position: fixed;
+        bottom: 24px;
+        left: calc(50% - 415px);
+        width: 122px;
+        height: 122px;
+        padding: 0;
+        background: #71393a;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        overflow: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        user-select: none;
+        z-index: 100;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+        transition: transform 0.05s, opacity 0.2s;
+      }
+      #dynamite-btn .dyn-fill {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 0%;
+        background: #96423e;
+      }
+      #dynamite-btn.stocked {
+        background: #c62828;
+      }
+      #dynamite-btn .dyn-label {
+        position: relative;
+        z-index: 2;
+        display: block;
+        padding: 0 6px;
+        color: #fff;
+        font-size: 1.15rem;
+        font-weight: 900;
+        line-height: 1.15;
+      }
+      #dynamite-btn .dyn-label span {
+        display: block;
+      }
+      /* One-line window the count digit rolls down through */
+      #dynamite-btn .dyn-countline {
+        font-size: 2.4rem;
+        line-height: 1;
+        margin-top: 2px;
+      }
+      #dynamite-btn .dyn-reel {
+        display: inline-block;
+        position: relative;
+        height: 1em;
+        overflow: hidden;
+        vertical-align: bottom;
+        text-align: center;
+        min-width: 1.2ch;
+      }
+      #dynamite-btn .dyn-reel span {
+        height: 1em;
+      }
+      @media (max-width: 800px), (pointer: coarse) {
+        #dynamite-btn {
+          bottom: clamp(48px, 13vw, 75px);
+          left: calc(50% - min(165px, 42vw));
+          width: clamp(84px, 24vw, 108px);
+          height: clamp(84px, 24vw, 108px);
+          border-radius: 10px;
+        }
+        #dynamite-btn .dyn-label {
+          font-size: clamp(0.75rem, 2.3vw, 0.95rem);
+        }
+      }
+
+      /* Skill tree: two upgrade paths pinned below the FPS counter */
+      #skill-tree {
+        position: fixed;
+        top: 40px;
+        right: 14px;
+        display: flex;
+        gap: 12px;
+        z-index: 100;
+        color: #fff;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        user-select: none;
+      }
+      .skill-col {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 172px;
+      }
+      .skill-col h2 {
+        margin: 0 2px;
+        font-size: 0.72rem;
+        font-weight: 900;
+        letter-spacing: 0.14em;
+        opacity: 0.75;
+      }
+      .skill-node {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 12px;
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.55);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        font-size: 0.95rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: opacity 0.15s, border-color 0.15s, transform 0.05s;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .skill-node:active {
+        transform: scale(0.97);
+      }
+      .skill-node .skill-cost {
+        margin-left: auto;
+        font-size: 0.85rem;
+        padding: 1px 8px;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.14);
+      }
+      .skill-node.locked {
+        opacity: 0.35;
+        pointer-events: none;
+      }
+      .skill-node.poor {
+        opacity: 0.6;
+        cursor: default;
+      }
+      .skill-node.owned {
+        border-color: #4caf50;
+        color: #8fd694;
+        pointer-events: none;
+      }
+      .skill-node.owned .skill-cost {
+        text-decoration: line-through;
+        opacity: 0.6;
+      }
+      @media (max-width: 800px), (pointer: coarse) {
+        #skill-tree {
+          top: 34px;
+          right: 8px;
+          gap: 8px;
+        }
+        .skill-col {
+          min-width: 128px;
+        }
+        .skill-node {
+          padding: 8px 10px;
+          font-size: 0.82rem;
+        }
+        .skill-node .skill-cost {
+          font-size: 0.75rem;
+        }
+      }
+    </style>
+
+    <!-- 1. Import Map (Constant Across All Games) -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "/vendor/three.module.js",
+          "cannon-es": "/vendor/cannon-es.js",
+          "engine/": "/engine/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="ui">
+      <h1 style="margin: 0; font-size: 1.2rem; opacity: 0.8">Speedy Train</h1>
+      <p
+        id="controls-hint"
+        style="margin: 4px 0 0; font-size: 0.85rem; opacity: 0.7"
+      >
+        Full steam ahead! &bull; <strong>Space</strong> rear camera &bull;
+        <strong>C</strong> cab view
+      </p>
+    </div>
+
+    <script type="module">
+      import * as THREE from "three";
+      import * as CANNON from "cannon-es";
+      import { Simulation, syncMeshFromBody, setBodyPose } from "engine/core.js";
+      import { createGround } from "engine/primitives.js";
+      import {
+        createTrain,
+        createRailSegment,
+        createDynamite,
+        InfiniteTrack,
+        TrackFollower,
+        getLocalSpinePose,
+        createFPSCounter,
+      } from "engine/components.js";
+      import { Input } from "engine/input.js";
+      import { createCameraControls } from "engine/cameraControls.js";
+      import { createGauge, createMoneyCounter } from "engine/ui.js";
+      import { createFloatingEffects } from "engine/effects.js";
+
+      const MPS_TO_MPH = 2.237;
+
+      // The train always runs flat-out: it accelerates on its own toward its
+      // current max speed (raised by Velocity skill tiers).
+      const ACCEL_RATE = 5; // m/s^2
+      const BASE_MAX_MPH = 70;
+
+      // Megaliths are the only track obstacle (~1 in 5-6 segments at base).
+      const MEGALITH_CHANCE = 0.18;
+
+      // Dynamite skill tiers thicken the field: Big Bangs +6%, Fast Fuse
+      // +6% more, Strafe +12% more (module-level so the segment factory can
+      // read it as new track generates).
+      let megalithChanceBonus = 0;
+
+      // 2. Initialize Core Engine with Options
+      const sim = new Simulation({
+        gravity: [0, -9.81, 0],
+        clearColor: 0x8ecae6,
+        enableShadows: false,
+      });
+
+      // Uniform random tumble vector, e.g. randomSpin(14) for debris spin.
+      function randomSpin(scale) {
+        return new CANNON.Vec3(
+          (Math.random() - 0.5) * scale,
+          (Math.random() - 0.5) * scale,
+          (Math.random() - 0.5) * scale,
+        );
+      }
+
+      // Rebase world-space objects (flying debris, dynamite, explosions) so
+      // they track with the train as track segments recycle. Items with a
+      // physics `body` have their quaternion and velocity rebased too; items
+      // with only a `mesh` (explosions) get just their position rebased.
+      // Index of the track segment the player spawns into; cleared of obstacles.
+      let noObstacleSegmentIndex = -1;
+
+      function rebaseItems(items, origin, heading) {
+        const ca = Math.cos(heading);
+        const sa = Math.sin(heading);
+        const qRebase = new CANNON.Quaternion();
+        qRebase.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), -heading);
+
+        for (const item of items) {
+          const b = item.body;
+          const src = b || item.mesh;
+          const dx = src.position.x - origin.x;
+          const dz = src.position.z - origin.z;
+          const nx = dx * ca + dz * sa;
+          const nz = -dx * sa + dz * ca;
+
+          if (b) {
+            b.position.x = nx;
+            b.position.z = nz;
+            b.quaternion = qRebase.mult(b.quaternion);
+
+            const vx = b.velocity.x;
+            const vz = b.velocity.z;
+            b.velocity.x = vx * ca + vz * sa;
+            b.velocity.z = -vx * sa + vz * ca;
+
+            syncMeshFromBody(item.mesh, b);
+          } else {
+            item.mesh.position.x = nx;
+            item.mesh.position.z = nz;
+          }
+        }
+      }
+
+      // Reusable shared geometries and lightweight Lambert materials for
+      // scenery & megaliths
+      const sharedTrunkGeo = new THREE.CylinderGeometry(0.3, 0.45, 3, 5);
+      const sharedFoliage1Geo = new THREE.ConeGeometry(1.8, 4, 5);
+      const sharedFoliage2Geo = new THREE.ConeGeometry(1.35, 3, 5);
+      const sharedRockGeo = new THREE.DodecahedronGeometry(1, 0);
+      const sharedGrassGeo = new THREE.ConeGeometry(0.1, 1.0, 3);
+      const sharedGiantMainGeo = new THREE.DodecahedronGeometry(2.4, 0);
+      const sharedGiantSub1Geo = new THREE.DodecahedronGeometry(1.4, 0);
+      const sharedGiantSub2Geo = new THREE.DodecahedronGeometry(1.3, 0);
+      const sharedShardGeo = new THREE.DodecahedronGeometry(0.9, 0);
+
+      const sharedTrunkMat = new THREE.MeshLambertMaterial({ color: 0x5c4033 });
+      const sharedRockMat = new THREE.MeshLambertMaterial({ color: 0x75787b });
+      const sharedGrassMat = new THREE.MeshLambertMaterial({ color: 0x56a442 });
+      const sharedGiantMat = new THREE.MeshLambertMaterial({ color: 0x2a2d30 });
+
+      const sharedTreePalettes = [
+        {
+          foliage1: new THREE.MeshLambertMaterial({ color: 0x1a4524 }),
+          foliage2: new THREE.MeshLambertMaterial({ color: 0x245a30 }),
+        },
+        {
+          foliage1: new THREE.MeshLambertMaterial({ color: 0x286337 }),
+          foliage2: new THREE.MeshLambertMaterial({ color: 0x367e47 }),
+        },
+        {
+          foliage1: new THREE.MeshLambertMaterial({ color: 0x3d7e32 }),
+          foliage2: new THREE.MeshLambertMaterial({ color: 0x519e42 }),
+        },
+        {
+          foliage1: new THREE.MeshLambertMaterial({ color: 0x4f8c3e }),
+          foliage2: new THREE.MeshLambertMaterial({ color: 0x65ab50 }),
+        },
+        {
+          foliage1: new THREE.MeshLambertMaterial({ color: 0x3b5930 }),
+          foliage2: new THREE.MeshLambertMaterial({ color: 0x4c703e }),
+        },
+      ];
+
+      // Contact radius for a megalith, measured from the group origin. The
+      // dynamite approaches at low height, so we use the horizontal footprint
+      // (max |x|/|z| of the bounding box) rather than the farthest-corner
+      // distance, which would be inflated by the boulder's upward offset.
+      function megalithContactRadius(giantGroup) {
+        giantGroup.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(giantGroup);
+        const worldPos = new THREE.Vector3();
+        giantGroup.getWorldPosition(worldPos);
+        const min = box.min.clone().sub(worldPos);
+        const max = box.max.clone().sub(worldPos);
+        return Math.max(
+          Math.abs(min.x),
+          Math.abs(max.x),
+          Math.abs(min.z),
+          Math.abs(max.z),
+        );
+      }
+
+      // Pine tree with varied natural foliage hues
+      function addPineTree(group, x, z) {
+        const treeGroup = new THREE.Group();
+        treeGroup.position.set(x, 0, z);
+        const scale = 0.8 + Math.random() * 0.7;
+        treeGroup.scale.set(scale, scale, scale);
+
+        const pal =
+          sharedTreePalettes[
+            Math.floor(Math.random() * sharedTreePalettes.length)
+          ];
+
+        const trunk = new THREE.Mesh(sharedTrunkGeo, sharedTrunkMat);
+        trunk.position.y = 1.5;
+        treeGroup.add(trunk);
+
+        const foliage1 = new THREE.Mesh(sharedFoliage1Geo, pal.foliage1);
+        foliage1.position.y = 4.0;
+        treeGroup.add(foliage1);
+
+        const foliage2 = new THREE.Mesh(sharedFoliage2Geo, pal.foliage2);
+        foliage2.position.y = 5.6;
+        treeGroup.add(foliage2);
+
+        group.add(treeGroup);
+      }
+
+      // Scattered roadside rock
+      function addSceneryRock(group, x, z) {
+        const rock = new THREE.Mesh(sharedRockGeo, sharedRockMat);
+        const sX = 0.8 + Math.random() * 1.4;
+        const sY = 0.6 + Math.random() * 0.9;
+        const sZ = 0.8 + Math.random() * 1.4;
+        rock.scale.set(sX, sY, sZ);
+        rock.position.set(x, sY * 0.6, z);
+        rock.rotation.set(
+          Math.random() * Math.PI,
+          Math.random() * Math.PI,
+          0,
+        );
+        group.add(rock);
+      }
+
+      // Lush grass patch - collect blade transforms for InstancedMesh
+      function collectGrassBlades(blades, x, z) {
+        const patchRadius = 2.0 + Math.random() * 2.0;
+        const bladeCount = 20 + Math.floor(Math.random() * 12);
+
+        for (let b = 0; b < bladeCount; b++) {
+          const ang = Math.random() * Math.PI * 2;
+          const dist = Math.sqrt(Math.random()) * patchRadius;
+          const bx = x + Math.cos(ang) * dist;
+          const bz = z + Math.sin(ang) * dist;
+          const bHeight = 0.7 + Math.random() * 0.5;
+
+          blades.push({
+            x: bx,
+            y: bHeight / 2,
+            z: bz,
+            rx: (Math.random() - 0.5) * 0.35,
+            ry: Math.random() * Math.PI,
+            rz: (Math.random() - 0.5) * 0.35,
+            scale: bHeight,
+          });
+        }
+      }
+
+      // Create single instanced mesh for all grass in this segment (1 draw call)
+      function buildInstancedGrass(group, blades) {
+        if (blades.length === 0) return;
+
+        const instancedGrass = new THREE.InstancedMesh(
+          sharedGrassGeo,
+          sharedGrassMat,
+          blades.length,
+        );
+        const dummy = new THREE.Object3D();
+
+        for (let i = 0; i < blades.length; i++) {
+          const t = blades[i];
+          dummy.position.set(t.x, t.y, t.z);
+          dummy.rotation.set(t.rx, t.ry, t.rz);
+          dummy.scale.set(1, t.scale, 1);
+          dummy.updateMatrix();
+          instancedGrass.setMatrixAt(i, dummy.matrix);
+        }
+        instancedGrass.instanceMatrix.needsUpdate = true;
+        group.add(instancedGrass);
+      }
+
+      // Massive Giant Megalith Boulder (towering monolithic mountain rock).
+      // The sole on-track hazard in Speedy Train.
+      function addMegalith(seg, group, radius, length, s) {
+        const pose = getLocalSpinePose(radius, length, s);
+        const giantGroup = new THREE.Group();
+        giantGroup.position.set(pose.position.x, 0, pose.position.z);
+        giantGroup.rotation.y =
+          -pose.heading + (Math.random() - 0.5) * 0.5;
+
+        const mainRock = new THREE.Mesh(sharedGiantMainGeo, sharedGiantMat);
+        mainRock.scale.set(1.4, 1.6, 1.3);
+        mainRock.position.set(0, 2.6, 0);
+        mainRock.rotation.set(
+          Math.random() * 0.5,
+          Math.random() * Math.PI,
+          0,
+        );
+        giantGroup.add(mainRock);
+
+        // Side support boulders forming a massive barrier
+        const subRock1 = new THREE.Mesh(sharedGiantSub1Geo, sharedGiantMat);
+        subRock1.position.set(-1.4, 1.3, 0.4);
+        giantGroup.add(subRock1);
+
+        const subRock2 = new THREE.Mesh(sharedGiantSub2Geo, sharedGiantMat);
+        subRock2.position.set(1.4, 1.2, -0.3);
+        giantGroup.add(subRock2);
+
+        group.add(giantGroup);
+        seg.obstacles.push({
+          mesh: giantGroup,
+          type: "giant-boulder",
+          s,
+          hit: false,
+          contactRadius: megalithContactRadius(giantGroup),
+        });
+      }
+
+      function createSceneryRailSegment(simulation, opts = {}) {
+        const seg = createRailSegment(simulation, opts);
+        const group = seg.mesh;
+        const { length = 40, radius = 0 } = opts;
+
+        // Never place obstacles on the spawn segment so the player always
+        // gets a clear runway where they first appear.
+        const isSpawnSegment = opts.index === noObstacleSegmentIndex;
+
+        // Place random trees, rocks, and grass along the sides of the track
+        const grassBlades = [];
+        const sceneryCount = 16 + Math.floor(Math.random() * 8);
+
+        for (let i = 0; i < sceneryCount; i++) {
+          const s = Math.random() * length;
+          const local = getLocalSpinePose(radius, length, s);
+          const perp = {
+            x: -Math.sin(local.heading),
+            z: Math.cos(local.heading),
+          };
+
+          // Keep scenery safely off the rails (at least 4.5m away)
+          const side = Math.random() < 0.5 ? 1 : -1;
+          const offset = 4.5 + Math.random() * 26;
+          const x = local.position.x + perp.x * offset * side;
+          const z = local.position.z + perp.z * offset * side;
+
+          const rand = Math.random();
+          if (rand < 0.28) {
+            addPineTree(group, x, z);
+          } else if (rand < 0.48) {
+            addSceneryRock(group, x, z);
+          } else {
+            collectGrassBlades(grassBlades, x, z);
+          }
+        }
+
+        buildInstancedGrass(group, grassBlades);
+
+        // Megaliths are the only on-track obstacle
+        seg.obstacles = seg.obstacles || [];
+
+        if (!isSpawnSegment && Math.random() < MEGALITH_CHANCE + megalithChanceBonus) {
+          const obsS = length * (0.3 + Math.random() * 0.4);
+          addMegalith(seg, group, radius, length, obsS);
+        }
+
+        return seg;
+      }
+
+      // ------------------------------------------------------------------
+      // Game systems. Each factory returns a controller exposing update(dt)
+      // plus whatever API the wiring needs. train.updateFn invokes them in a
+      // fixed order every frame (see setup). Shared mutable scalars live in
+      // one `state` object; everything else is private to its system.
+      // ------------------------------------------------------------------
+
+      // Auto-throttle: no driver input — the locomotive always works up to
+      // its current max speed. Publishes state.speedMps and mirrors it onto
+      // follower.speed.
+      function createAutoThrottle({ state, follower }) {
+        return {
+          update(dt) {
+            const capMps = state.maxSpeedMph / MPS_TO_MPH;
+            if (state.speedMps < capMps) {
+              state.speedMps = Math.min(capMps, state.speedMps + ACCEL_RATE * dt);
+              follower.speed = state.speedMps;
+            }
+          },
+        };
+      }
+
+      // Money accrual, gauge readout, smokestack "$" emission, and skill-tree
+      // affordability refresh.
+      function createEconomy({
+        state,
+        gaugeApi,
+        moneyCounter,
+        spawnMoneySign,
+        refreshSkills,
+      }) {
+        let moneySpawnAccum = 0;
+        let lastMoneyInt = -1;
+        return {
+          update(dt) {
+            const speedMph = state.speedMps * MPS_TO_MPH;
+            gaugeApi.setValue(speedMph);
+
+            // Money is earned flat at 1/s below top speed, and scales with
+            // speed once at top speed. The smokestack emits one "$" per
+            // dollar earned. When stopped, no money is earned.
+            const capMps = state.maxSpeedMph / MPS_TO_MPH;
+            const atMaxSpeed = state.speedMps >= capMps - 1e-6;
+            gaugeApi.setMax(atMaxSpeed);
+            const moving = state.speedMps > 0.22; // ~0.5 mph
+            const moneyRate = !moving ? 0 : atMaxSpeed ? speedMph * 0.14 : 1.0;
+            state.money += dt * moneyRate;
+            moneyCounter.setValue(state.money);
+
+            moneySpawnAccum += dt * moneyRate;
+            while (moneySpawnAccum >= 1) {
+              moneySpawnAccum -= 1;
+              spawnMoneySign();
+            }
+
+            // Refresh skill-node affordability only when the whole-dollar
+            // balance changes (avoids per-frame DOM churn)
+            const moneyInt = Math.floor(state.money);
+            if (moneyInt !== lastMoneyInt) {
+              lastMoneyInt = moneyInt;
+              refreshSkills();
+            }
+          },
+        };
+      }
+
+      // Advances distance along the track, recycles segments behind the train
+      // and rebases every world-space collection so it tracks with the rails.
+      function createTrackRunner({
+        track,
+        follower,
+        segmentLen,
+        rearSegments,
+        flyers,
+        explosions,
+        dynamites,
+      }) {
+        return {
+          update(dt) {
+            follower.s += follower.speed * dt;
+
+            const advanceThreshold = (rearSegments + 1) * segmentLen;
+            while (follower.s >= advanceThreshold) {
+              follower.s -= segmentLen;
+              const nextOrigin = track.segments[1]?.entryPose.position.clone();
+              const nextHeading = track.segments[1]?.entryPose.heading || 0;
+
+              track.advance();
+
+              if (!nextOrigin) continue;
+
+              rebaseItems(flyers, nextOrigin, nextHeading);
+              rebaseItems(dynamites, nextOrigin, nextHeading);
+              rebaseItems(explosions, nextOrigin, nextHeading);
+            }
+          },
+        };
+      }
+
+      // Visual effects: floating decorations ($ signs), physics-driven debris
+      // flyers, explosion spheres, and the megalith shatter outcome.
+      function createEffectsSystem({ sim, train, follower, track, state }) {
+        const floatFx = createFloatingEffects();
+        const flyers = new Set();
+        const explosions = new Set();
+
+        // "$" sprite texture shared by the smokestack and reward signs
+        const moneyCanvas = document.createElement("canvas");
+        moneyCanvas.width = moneyCanvas.height = 64;
+        const moneyCtx = moneyCanvas.getContext("2d");
+        moneyCtx.fillStyle = "#e7d984";
+        moneyCtx.font =
+          'bold 46px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        moneyCtx.textAlign = "center";
+        moneyCtx.textBaseline = "middle";
+        moneyCtx.fillText("$", 32, 32);
+        const moneyTexture = new THREE.CanvasTexture(moneyCanvas);
+        moneyTexture.needsUpdate = true;
+
+        function makeMoneySprite(scale) {
+          const sprite = new THREE.Sprite(
+            new THREE.SpriteMaterial({
+              map: moneyTexture,
+              transparent: true,
+              depthTest: false,
+              opacity: 1,
+            }),
+          );
+          sprite.scale.set(scale, scale, scale);
+          return sprite;
+        }
+
+        // Flying "$" sign emitted from the smokestack; child of the train so
+        // it travels with it, drifting up and sideways as it fades.
+        function spawnMoneySign() {
+          const sprite = makeMoneySprite(0.5);
+          // Spawn just below the smokestack top
+          sprite.position.set(
+            3.55,
+            2.9 + Math.random() * 0.3,
+            (Math.random() - 0.5) * 0.2,
+          );
+          train.mesh.add(sprite);
+          floatFx.add(sprite, {
+            rise: 2.5,
+            drift: new THREE.Vector3(0.6, 0, 0),
+          });
+        }
+
+        // Registers a mesh+body pair as a transient physics-driven flyer that
+        // despawns (and disposes) after `lifetime` seconds.
+        function spawnFlyer(mesh, body, lifetime) {
+          sim.scene.add(mesh);
+          sim.world.addBody(body);
+          flyers.add({ mesh, body, lifetime });
+        }
+
+        // Shatters a Giant Megalith Boulder into smaller rock fragments.
+        function shatterMegalith(obsWorldPos, baseFwdDir, baseSpeed = 15) {
+          const shardOffsets = [
+            [-1.2, 1.0, 0.4],
+            [1.2, 1.0, -0.4],
+            [-0.4, 0.6, 1.2],
+            [0.4, 0.6, -1.2],
+          ];
+
+          for (const offset of shardOffsets) {
+            const rockMesh = new THREE.Mesh(sharedShardGeo, sharedGiantMat);
+            rockMesh.scale.set(
+              0.9 + Math.random() * 0.4,
+              0.8 + Math.random() * 0.3,
+              0.9 + Math.random() * 0.4,
+            );
+            rockMesh.position.set(
+              obsWorldPos.x + offset[0],
+              obsWorldPos.y + offset[1],
+              obsWorldPos.z + offset[2],
+            );
+            rockMesh.rotation.set(
+              Math.random() * Math.PI,
+              Math.random() * Math.PI,
+              Math.random() * Math.PI,
+            );
+
+            const rockBody = new CANNON.Body({
+              mass: 600,
+              shape: new CANNON.Sphere(0.8),
+              linearDamping: 0.3,
+              angularDamping: 0.4,
+            });
+            setBodyPose(rockBody, rockMesh.position);
+
+            // Fan the shards outward and upward from the impact point
+            const shardDir = new CANNON.Vec3(
+              baseFwdDir.x + offset[0] * 0.4,
+              2.0 + Math.random() * 2.5,
+              baseFwdDir.z + offset[2] * 0.4,
+            );
+            shardDir.normalize();
+            rockBody.velocity.set(
+              shardDir.x * baseSpeed +
+                baseFwdDir.z * (Math.random() - 0.5) * 10,
+              follower.speed * 0.3 + 1.5 + Math.random() * 2,
+              shardDir.z * baseSpeed -
+                baseFwdDir.x * (Math.random() - 0.5) * 10,
+            );
+            rockBody.angularVelocity.copy(randomSpin(14));
+
+            spawnFlyer(rockMesh, rockBody, 2.8);
+          }
+        }
+
+        // Spawns expanding orange explosion sphere(s) for 200ms and shatters
+        // nearby Megaliths. With Big Bangs, renders 3 spheres and larger radius.
+        function spawnExplosion(pos) {
+          const count = state.bigBangs ? 3 : 1;
+          const maxRadius = state.bigBangs ? 14.0 : 9.0;
+          const duration = 0.2; // 200ms
+          const geo = new THREE.SphereGeometry(1, 24, 18);
+          const mat = new THREE.MeshStandardMaterial({
+            color: 0xff6600,
+            emissive: 0xff4400,
+            emissiveIntensity: 0.9,
+            roughness: 0.4,
+            transparent: true,
+            opacity: 0.9,
+          });
+          const baseY = Math.max(pos.y, 0.5);
+
+          for (let i = 0; i < count; i++) {
+            const mesh = new THREE.Mesh(geo, mat);
+            let px = pos.x,
+              py = baseY,
+              pz = pos.z;
+            // Sphere size and start delay: with Big Bangs, vary each sphere's
+            // radius and stagger them 100ms apart for a more interesting blast.
+            const radius = state.bigBangs
+              ? maxRadius * [1.0, 0.7, 0.85][i]
+              : maxRadius;
+            const delay = state.bigBangs ? i * 0.1 : 0;
+            if (state.bigBangs) {
+              // Spread the three spheres outward along the forward axis and up.
+              const off = i - 1; // -1, 0, 1
+              px = pos.x + off * 3.0;
+              py = baseY + Math.abs(off) * 1.4;
+            }
+            mesh.position.set(px, py, pz);
+            mesh.scale.setScalar(0.1);
+            sim.scene.add(mesh);
+
+            explosions.add({
+              mesh,
+              age: 0,
+              delay,
+              duration,
+              maxRadius: radius,
+            });
+          }
+
+          // Shatter any Megalith in blast radius
+          const fwdDir = follower.forwardAxis
+            .clone()
+            .applyQuaternion(train.mesh.quaternion);
+          let shattered = false;
+          for (const sSeg of track.segments) {
+            if (!sSeg.obstacles) continue;
+            for (const obs of sSeg.obstacles) {
+              if (
+                !obs.hit &&
+                obs.mesh.parent &&
+                obs.type === "giant-boulder"
+              ) {
+                const obsWorldPos = new THREE.Vector3();
+                obs.mesh.getWorldPosition(obsWorldPos);
+                if (pos.distanceTo(obsWorldPos) <= maxRadius + 3.0) {
+                  obs.hit = true;
+                  obs.mesh.parent.remove(obs.mesh);
+                  shattered = true;
+                  shatterMegalith(
+                    obsWorldPos,
+                    fwdDir,
+                    Math.max(16, follower.speed * 0.5),
+                  );
+                }
+              }
+            }
+          }
+
+          // Blowing up any megalith resets the crash-penalty escalation
+          if (shattered) state.penaltyTier = 0;
+        }
+
+        return {
+          floatFx,
+          flyers,
+          explosions,
+          spawnFlyer,
+          spawnMoneySign,
+          spawnExplosion,
+          shatterMegalith,
+          update(dt) {
+            // Animate all floating decorations ($ sprites)
+            floatFx.update(dt);
+
+            // Animate & despawn explosion spheres (expand to full radius)
+            for (const expl of explosions) {
+              expl.age += dt;
+              const progress = (expl.age - (expl.delay ?? 0)) / expl.duration;
+              if (expl.age >= (expl.delay ?? 0) + expl.duration) {
+                sim.scene.remove(expl.mesh);
+                expl.mesh.geometry?.dispose();
+                expl.mesh.material?.dispose();
+                explosions.delete(expl);
+              } else if (progress > 0) {
+                const currentScale =
+                  0.1 +
+                  (expl.maxRadius - 0.1) * Math.sin((progress * Math.PI) / 2);
+                expl.mesh.scale.setScalar(currentScale);
+                expl.mesh.material.opacity = 0.9 * (1 - progress * 0.7);
+              }
+            }
+
+            // Update & sync active flying debris
+            for (const flyer of flyers) {
+              syncMeshFromBody(flyer.mesh, flyer.body);
+              flyer.lifetime -= dt;
+              if (flyer.lifetime <= 0) {
+                sim.scene.remove(flyer.mesh);
+                sim.world.removeBody(flyer.body);
+                flyer.mesh.traverse((child) => {
+                  if (child.isMesh) {
+                    child.geometry?.dispose();
+                    if (Array.isArray(child.material))
+                      child.material.forEach((m) => m.dispose());
+                    else child.material?.dispose();
+                  }
+                });
+                flyers.delete(flyer);
+              }
+            }
+          },
+        };
+      }
+
+      // Free dynamite: a stick is granted every state.grantSeconds (shortened
+      // by the Fast Fuse tier). No purchasing — the throw button's fill bar
+      // shows progress toward the next stick. With Strafe, each press throws
+      // two sticks at staggered distances down the track.
+      function createDynamiteSystem({
+        sim,
+        simulation,
+        track,
+        follower,
+        train,
+        segmentLen,
+        state,
+        spawnExplosion,
+      }) {
+        const items = new Set();
+        let grantAccum = 0;
+
+        // Throw button pinned to the left of the speed gauge
+        const btn = document.createElement("button");
+        btn.id = "dynamite-btn";
+        btn.style.display = "none";
+        const fill = document.createElement("div");
+        fill.className = "dyn-fill";
+        btn.appendChild(fill);
+        const label = document.createElement("span");
+        label.className = "dyn-label";
+        const lineThrow = document.createElement("span");
+        lineThrow.textContent = "THROW";
+        const lineDynamite = document.createElement("span");
+        lineDynamite.textContent = "DYNAMITE";
+        const countLine = document.createElement("span");
+        // Slot-machine counter: while stocked, count changes roll the digit
+        // downward (the new value drops in from above). The 0 -> 1 refill is
+        // instead shown by the fill bar, so it just snaps into place.
+        const reel = document.createElement("span");
+        reel.className = "dyn-reel";
+        const strip = document.createElement("span");
+        strip.className = "dyn-strip";
+        reel.appendChild(strip);
+        countLine.appendChild(reel);
+        label.append(lineThrow, lineDynamite, countLine);
+        btn.appendChild(label);
+
+        const throwCost = () => (state.strafe ? 2 : 1);
+
+        let shownCount = state.dynamiteCount;
+        let reelAnim = null;
+
+        function renderCount(n) {
+          shownCount = n;
+          strip.replaceChildren();
+          const digit = document.createElement("span");
+          digit.textContent = n;
+          strip.appendChild(digit);
+        }
+
+        function rollCountTo(n) {
+          if (n === shownCount) return;
+          const prev = shownCount;
+          reelAnim?.cancel();
+          strip.replaceChildren();
+          const nextDigit = document.createElement("span");
+          nextDigit.textContent = n;
+          const prevDigit = document.createElement("span");
+          prevDigit.textContent = prev;
+          strip.append(nextDigit, prevDigit);
+          // Strip starts showing the old value (shifted up behind the clip
+          // window), then slides down so the new value drops in while the
+          // old one exits below.
+          reelAnim = strip.animate(
+            [
+              { transform: "translateY(-1em)" },
+              { transform: "translateY(0)" },
+            ],
+            { duration: 1000, easing: "cubic-bezier(.2,.7,.3,1)" },
+          );
+          reelAnim.onfinish = () => {
+            strip.replaceChildren(nextDigit);
+            reelAnim = null;
+          };
+          shownCount = n;
+        }
+
+        function refreshButton(progress = null) {
+          const canThrow = state.dynamiteCount >= throwCost();
+          btn.classList.toggle("stocked", state.dynamiteCount > 0);
+          // The fill bar only tracks the refill while restocking from empty;
+          // once stocked the solid red button takes over.
+          const frac =
+            state.dynamiteCount === 0 && progress != null
+              ? Math.min(1, progress)
+              : 0;
+          fill.style.height = `${Math.round(frac * 100)}%`;
+          btn.style.opacity = canThrow ? "1" : "0.55";
+          btn.style.cursor = canThrow ? "pointer" : "default";
+          btn.style.display = "block";
+        }
+
+        btn.addEventListener(
+          "mousedown",
+          () => (btn.style.transform = "scale(0.96)"),
+        );
+        btn.addEventListener("mouseup", () => (btn.style.transform = "scale(1)"));
+        btn.addEventListener(
+          "touchstart",
+          (e) => {
+            btn.style.transform = "scale(0.96)";
+            throwDynamite();
+            if (e.cancelable) {
+              e.preventDefault();
+            }
+          },
+          { passive: false },
+        );
+        btn.addEventListener(
+          "touchend",
+          () => (btn.style.transform = "scale(1)"),
+          { passive: true },
+        );
+        btn.addEventListener(
+          "touchcancel",
+          () => (btn.style.transform = "scale(1)"),
+          { passive: true },
+        );
+        btn.addEventListener("click", () => throwDynamite());
+        document.body.appendChild(btn);
+        renderCount(shownCount);
+        refreshButton();
+
+        // Shared throw aiming: the spawn point (with optional lateral offset)
+        // plus the unit direction toward the track N segments ahead.
+        function computeAim(segmentsAhead, lateralOffset) {
+          const spawn = new THREE.Vector3(
+            -2.6,
+            4.0,
+            lateralOffset,
+          ).applyMatrix4(train.mesh.matrixWorld);
+
+          const fwd = follower.forwardAxis
+            .clone()
+            .applyQuaternion(train.mesh.quaternion);
+
+          const targetPose = track.getPoseAt(follower.s + segmentsAhead * segmentLen);
+          const targetPos = targetPose
+            ? targetPose.position
+            : spawn.clone().addScaledVector(fwd, segmentsAhead * segmentLen);
+
+          const aimDir = new THREE.Vector3(
+            targetPos.x - spawn.x,
+            0,
+            targetPos.z - spawn.z,
+          );
+          if (aimDir.lengthSq() > 0.001) {
+            aimDir.normalize();
+          } else {
+            aimDir.copy(fwd);
+          }
+
+          return { spawn, aimDir };
+        }
+
+        // Launch one stick aimed at the track `segmentsAhead` segments down
+        // the line. Farther sticks fly flatter and faster so they overshoot
+        // the near one.
+        function launchStick(segmentsAhead, lateralOffset = 0) {
+          const ent = createDynamite(sim, {
+            length: 2.4,
+            position: [0, 0, 0],
+            mass: 2,
+          });
+          const mesh = ent.mesh;
+          const body = ent.body;
+
+          const { spawn, aimDir } = computeAim(segmentsAhead, lateralOffset);
+          mesh.position.copy(spawn);
+          body.position.copy(spawn);
+          body.quaternion.setFromEuler(
+            Math.random() * Math.PI,
+            Math.random() * Math.PI,
+            0,
+          );
+
+          // Sticks never collide with other sticks: a simultaneous strafe
+          // pair spawns close together and must not detonate off each other.
+          body.collisionFilterGroup = 2;
+          body.collisionFilterMask = ~2;
+
+          // Longer tosses get more speed and a flatter arc
+          const reach = segmentsAhead / 2; // 1.0 near toss, 1.6 strafe-far toss
+          const launchSpeed = (follower.speed + 35) * reach;
+          body.velocity.set(
+            aimDir.x * launchSpeed,
+            5 - (reach - 1) * 2.5,
+            aimDir.z * launchSpeed,
+          );
+          body.angularVelocity.copy(randomSpin(8));
+
+          const dyn = {
+            mesh,
+            body,
+            ent,
+            landed: false,
+            exploded: false,
+            collided: false,
+          };
+          body.addEventListener("collide", () => {
+            dyn.collided = true;
+          });
+          items.add(dyn);
+        }
+
+        function throwDynamite() {
+          const cost = throwCost();
+          if (state.dynamiteCount < cost) return;
+          state.dynamiteCount -= cost;
+
+          launchStick(2.0, state.strafe ? -1.3 : 0); // near stick: ~2 segments ahead
+          if (state.strafe) launchStick(3.2, 1.3); // far stick sails beyond it
+
+          rollCountTo(state.dynamiteCount);
+          refreshButton();
+        }
+
+        return {
+          items,
+          update(dt) {
+            // Grant free sticks on the refill clock (Strafe grants 2x sticks
+            // so you can keep firing twin tosses without stalling)
+            let granted = false;
+            grantAccum += dt;
+            const grantAmount = state.strafe ? 2 : 1;
+            while (grantAccum >= state.grantSeconds) {
+              grantAccum -= state.grantSeconds;
+              state.dynamiteCount += grantAmount;
+              granted = true;
+            }
+            if (granted) {
+              // 0 -> 1 belongs to the fill bar; beyond that, roll the digit
+              if (shownCount >= 1) rollCountTo(state.dynamiteCount);
+              else renderCount(state.dynamiteCount);
+            }
+            refreshButton(grantAccum / state.grantSeconds);
+
+            // Sync & despawn thrown sticks (explode on ground or megalith)
+            for (const dyn of items) {
+              syncMeshFromBody(dyn.mesh, dyn.body);
+
+              // Megalith collision is checked EVERY frame regardless of
+              // altitude, so a fast, flat-thrown stick can't tunnel straight
+              // through a megalith after merely grazing the ground. Uses
+              // horizontal distance so a low stick still clips the footprint.
+              let hitMegalith = false;
+              if (!dyn.exploded) {
+                for (const sSeg of track.segments) {
+                  if (!sSeg.obstacles) continue;
+                  for (const obs of sSeg.obstacles) {
+                    if (
+                      !obs.hit &&
+                      obs.mesh.parent &&
+                      obs.type === "giant-boulder"
+                    ) {
+                      const obsWorldPos = new THREE.Vector3();
+                      obs.mesh.getWorldPosition(obsWorldPos);
+                      const contactRadius = obs.contactRadius ?? 3.6;
+                      const dx = dyn.body.position.x - obsWorldPos.x;
+                      const dz = dyn.body.position.z - obsWorldPos.z;
+                      if (
+                        dx * dx + dz * dz <
+                        contactRadius * contactRadius
+                      ) {
+                        dyn.exploded = true;
+                        spawnExplosion(dyn.body.position);
+                        simulation.removeEntity(dyn.ent);
+                        items.delete(dyn);
+                        hitMegalith = true;
+                        break;
+                      }
+                    }
+                  }
+                  if (hitMegalith) break;
+                }
+              }
+              if (hitMegalith) continue;
+
+              // Land on the ground: explode shortly after contact
+              if (dyn.body.position.y <= 0.3) {
+                dyn.landed = true;
+              }
+              if (dyn.collided) {
+                dyn.landed = true;
+              }
+              if (dyn.landed) {
+                spawnExplosion(dyn.body.position);
+                simulation.removeEntity(dyn.ent);
+                items.delete(dyn);
+              }
+            }
+          },
+        };
+      }
+
+      // Cowcatcher collider, megalith impact detection and the single impact
+      // outcome: at full speed there is no nudging a megalith aside — it
+      // shatters, bills the railway, and bleeds half your speed.
+      function createImpactSystem({
+        sim,
+        entity,
+        follower,
+        track,
+        state,
+        effects,
+        moneyCounter,
+      }) {
+        // Kinematic cowcatcher collider mounted on front of train
+        const cowcatcherBody = new CANNON.Body({
+          mass: 0,
+          type: CANNON.Body.KINEMATIC,
+          shape: new CANNON.Box(new CANNON.Vec3(1.4, 1.2, 1.2)),
+        });
+        sim.world.addBody(cowcatcherBody);
+
+        // Escalating crash penalties: $50, $40, $30, $20, then a flat $10 for
+        // every hit after that. Blowing up any megalith resets the escalation
+        // (see the explosion system).
+        const PENALTY_TIERS = [50, 40, 30, 20];
+        const PENALTY_FLAT = 10;
+
+        // Red "-$X" that flashes at dead-center screen and flies up like the
+        // smokestack money, then fades.
+        function spawnDamageSign(amount) {
+          const el = document.createElement("div");
+          el.textContent = `-$${amount}`;
+          Object.assign(el.style, {
+            position: "fixed",
+            left: "50%",
+            top: "50%",
+            transform: "translate(-50%, -50%)",
+            color: "#ff4444",
+            fontFamily:
+              '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+            fontSize: "2.4rem",
+            fontWeight: "900",
+            textShadow: "0 0 12px rgba(255,0,0,0.7)",
+            pointerEvents: "none",
+            zIndex: "120",
+            userSelect: "none",
+            willChange: "transform, opacity",
+          });
+          document.body.appendChild(el);
+          el.animate(
+            [
+              { transform: "translate(-50%, -50%)", opacity: 1 },
+              { transform: "translate(-50%, -90%)", opacity: 0 },
+            ],
+            { duration: 1000, easing: "ease-out" },
+          ).onfinish = () => el.remove();
+        }
+
+        // Scratch objects reused every frame to avoid GC pauses
+        const _obsWorldPos = new THREE.Vector3();
+        const _cowcatcherWorldPos = new THREE.Vector3();
+        const _fwdDir = new THREE.Vector3();
+        const _frontLocal = new THREE.Vector3(4.0, 0.85, 0);
+
+        return {
+          update(dt) {
+            // Forward axis of the locomotive in world space
+            _fwdDir
+              .copy(follower.forwardAxis)
+              .applyQuaternion(entity.mesh.quaternion);
+
+            // Sync kinematic cowcatcher collider to front of locomotive
+            _cowcatcherWorldPos
+              .copy(_frontLocal)
+              .applyMatrix4(entity.mesh.matrixWorld);
+            setBodyPose(cowcatcherBody, _cowcatcherWorldPos, entity.mesh.quaternion);
+
+            // Give kinematic collider forward/upward impulse velocity
+            const impulseSpeed = follower.speed * 1.6 + 10;
+            cowcatcherBody.velocity.set(
+              _fwdDir.x * impulseSpeed,
+              follower.speed * 0.35 + 5,
+              _fwdDir.z * impulseSpeed,
+            );
+
+            // Impact detection: when the cowcatcher reaches a megalith,
+            // shatter it at a price. The auto-throttle climbs back to speed.
+            for (const sSeg of track.segments) {
+              if (!sSeg.obstacles) continue;
+              for (const obs of sSeg.obstacles) {
+                if (!obs.hit && obs.mesh.parent) {
+                  obs.mesh.getWorldPosition(_obsWorldPos);
+                  if (_cowcatcherWorldPos.distanceTo(_obsWorldPos) >= 3.0) {
+                    continue;
+                  }
+                  obs.hit = true;
+
+                  // Detach from segment so it no longer renders with the rails
+                  obs.mesh.parent.remove(obs.mesh);
+
+                  const cost =
+                    state.penaltyTier < PENALTY_TIERS.length
+                      ? PENALTY_TIERS[state.penaltyTier]
+                      : PENALTY_FLAT;
+                  state.money -= cost;
+                  moneyCounter.setValue(state.money);
+                  spawnDamageSign(cost);
+                  state.penaltyTier = Math.min(
+                    state.penaltyTier + 1,
+                    PENALTY_TIERS.length,
+                  );
+
+                  effects.shatterMegalith(
+                    _obsWorldPos,
+                    _fwdDir,
+                    follower.speed * 0.5,
+                  );
+
+                  // Half speed bleed, then the auto-throttle recovers it
+                  state.speedMps *= 0.5;
+                  state.screenShake = Math.min(1.4, state.screenShake + 1.2);
+                  follower.speed = state.speedMps;
+                }
+              }
+            }
+          },
+        };
+      }
+
+      // Syncs the train mesh to the rebased track pose, applies visual corner
+      // tilt and look-around-corner camera shaping, recenters the ground plane.
+      function createPoseSync({ track, follower, camCtrl, entity, ground, state, keys }) {
+        let tilt = 0;
+        let lookZ = 0;
+        let offsetZ = 0;
+        const _rollQuat = new THREE.Quaternion();
+
+        return {
+          update(dt) {
+            const isRearView = keys.has("Space");
+            const pose = follower.getPose();
+            if (!pose) return;
+
+            entity.mesh.position.copy(pose.position);
+            entity.mesh.quaternion.setFromUnitVectors(
+              follower.forwardAxis,
+              pose.forward,
+            );
+
+            // Track curvature ahead/behind for train visual tilt
+            const poseAhead = track.getPoseAt(follower.s + 1.6);
+            const poseBehind = track.getPoseAt(Math.max(0, follower.s - 1.6));
+            let dHeading = 0;
+            if (poseAhead && poseBehind) {
+              let dh = poseAhead.heading - poseBehind.heading;
+              dh = Math.atan2(Math.sin(dh), Math.cos(dh));
+              dHeading = dh / 3.2;
+            }
+
+            // Sample track curve ahead to look around upcoming bends without
+            // matrix lag
+            const aheadDist = 26;
+            const lookPoseAhead = track.getPoseAt(follower.s + aheadDist);
+            let curveLateralAhead = 0;
+            if (lookPoseAhead && !isRearView) {
+              const dx = lookPoseAhead.position.x - pose.position.x;
+              const dz = lookPoseAhead.position.z - pose.position.z;
+              // Local +Z lateral offset in train frame: cross(forward, up)
+              curveLateralAhead = -dx * pose.forward.z + dz * pose.forward.x;
+            }
+
+            // Dynamic camera look-ahead aiming and lateral lean to gently see
+            // around corners
+            const targetLookZ = Math.max(
+              -3.0,
+              Math.min(3.0, curveLateralAhead * 0.25),
+            );
+            const targetOffsetZ = -Math.max(
+              -1.0,
+              Math.min(1.0, curveLateralAhead * 0.08),
+            );
+            lookZ += (targetLookZ - lookZ) * Math.min(1, dt * 4.5);
+            offsetZ += (targetOffsetZ - offsetZ) * Math.min(1, dt * 4.5);
+
+            camCtrl.state.offset.z = offsetZ;
+            camCtrl.state.look.z = lookZ;
+
+            // Visual corner tilt on train: starts at 50 mph and grows sharply
+            // with speed, so the train leans harder into corners the faster
+            // it goes.
+            const speedMph = state.speedMps * MPS_TO_MPH;
+            let targetTilt = 0;
+            if (speedMph > 50) {
+              const excessSpeed = speedMph - 50;
+              targetTilt = -dHeading * (excessSpeed / 15.0);
+              targetTilt = Math.max(-0.9, Math.min(0.9, targetTilt));
+            }
+            tilt += (targetTilt - tilt) * Math.min(1, dt * 8);
+
+            // Apply corner tilt along train's forward axis
+            _rollQuat.setFromAxisAngle(follower.forwardAxis, tilt);
+            entity.mesh.quaternion.multiply(_rollQuat);
+            entity.mesh.updateMatrixWorld(true);
+
+            // Center ground beneath the train
+            if (ground?.mesh) {
+              ground.mesh.position.x = entity.mesh.position.x;
+              ground.mesh.position.z = entity.mesh.position.z;
+            }
+          },
+        };
+      }
+
+      // Camera views (chase / rear / cab), speed-scaled FOV, dynamic fog and
+      // impact screen shake.
+      function createCameraRig({ simulation, camCtrl, keys, entity, state }) {
+        const _rearCamPos = new THREE.Vector3();
+        const _rearCamLook = new THREE.Vector3();
+        const _cabCamPos = new THREE.Vector3();
+        const _cabCamLook = new THREE.Vector3();
+
+        return {
+          update(dt) {
+            // Space swaps to the reverse rig: a camera mounted in front of
+            // the train that looks back down its length to frame the whole
+            // train. Holding 'C' drops the camera inside the cab looking
+            // forward.
+            const isRearView = keys.has("Space");
+            const isCabView = keys.has("KeyC");
+            if (isCabView) {
+              _cabCamPos.set(1.4, 2.7, 0.4).applyMatrix4(entity.mesh.matrixWorld);
+              _cabCamLook.set(7.0, 2.1, 0).applyMatrix4(entity.mesh.matrixWorld);
+              simulation.camera.position.copy(_cabCamPos);
+              simulation.camera.lookAt(_cabCamLook);
+            } else if (isRearView) {
+              _rearCamPos.set(7.5, 4.8, 0).applyMatrix4(entity.mesh.matrixWorld);
+              _rearCamLook.set(1.6, 1.9, 0).applyMatrix4(entity.mesh.matrixWorld);
+              simulation.camera.position.copy(_rearCamPos);
+              simulation.camera.lookAt(_rearCamLook);
+            } else {
+              camCtrl.update({ mirror: false });
+            }
+
+            // FOV scales exponentially with speed: 60° at rest → 80° at 250 mph
+            const fovBase = camCtrl.state.fov;
+            const speedMph = state.speedMps * MPS_TO_MPH;
+            const speedRatio = Math.min(1, Math.max(0, speedMph / 250));
+            simulation.camera.fov = fovBase * Math.pow(80 / fovBase, speedRatio);
+            simulation.camera.updateProjectionMatrix();
+
+            // Dynamic fog adjustment: bring fog closer in rear view to hide
+            // limited rear draw distance
+            const targetFogNear = isRearView ? 15 : 50;
+            const targetFogFar = isRearView ? 95 : 220;
+            simulation.scene.fog.near +=
+              (targetFogNear - simulation.scene.fog.near) * Math.min(1, dt * 10);
+            simulation.scene.fog.far +=
+              (targetFogFar - simulation.scene.fog.far) * Math.min(1, dt * 10);
+
+            // Impact screen shake
+            if (state.screenShake > 0.001) {
+              simulation.camera.position.x +=
+                (Math.random() - 0.5) * state.screenShake;
+              simulation.camera.position.y +=
+                (Math.random() - 0.5) * state.screenShake;
+              state.screenShake *= Math.exp(-dt * 9.0);
+            }
+          },
+        };
+      }
+
+      // 3. Game-Specific Setup (The LLM focus area)
+      function setup(sim) {
+        // FPS Counter
+        createFPSCounter(sim);
+
+        // Bright daylight lighting & atmosphere
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x446644, 0.8);
+        sim.scene.add(hemiLight);
+
+        // Fog of war / Atmospheric horizon blending
+        const skyColor = 0x8ecae6;
+        sim.scene.fog = new THREE.Fog(skyColor, 50, 220);
+
+        // Ground plane
+        const ground = createGround(sim, {
+          size: 2000,
+          color: 0x4e8a4a,
+          position: [0, -0.5, 0],
+        });
+
+        // Track generation with winding sections & high-speed straightaways (>= 10 segments)
+        let straightawayCount = 6; // Start with a straight runway
+        let windingCount = 0;
+
+        const generateTrackCurve = (index) => {
+          if (index < 6) return 0;
+
+          // Currently in a designated straightaway
+          if (straightawayCount > 0) {
+            straightawayCount--;
+            return 0;
+          }
+
+          // After Fast Fuse, long flat stretches are less common: the
+          // straightaway trigger chance drops from 38% to 18%, making turns
+          // about 20% more frequent.
+          const straightChance = state.grantSeconds < 5 ? 0.18 : 0.38;
+
+          // Transition between winding zones and straightaways
+          if (windingCount <= 0) {
+            if (Math.random() < straightChance) {
+              // Trigger a long straightaway: 10 to 15 consecutive straight segments
+              straightawayCount = 10 + Math.floor(Math.random() * 6);
+              straightawayCount--;
+              return 0;
+            } else {
+              // Trigger a winding zone: 12 to 18 curved/winding segments
+              windingCount = 12 + Math.floor(Math.random() * 7);
+            }
+          }
+
+          windingCount--;
+          // After Fast Fuse, winding zones have fewer straight respite segments
+          // (15% vs 25%) so they feel more consistently twisty.
+          const straightInWinding = state.grantSeconds < 5 ? 0.15 : 0.25;
+          if (Math.random() < straightInWinding) return 0;
+          const sign = Math.random() < 0.5 ? 1 : -1;
+          return sign * (60 + Math.random() * 90);
+        };
+
+        // Infinite Track with straight & curved sections + roadside scenery
+        const segmentLen = 40;
+        const rearSegments = 3; // Keep 3 segments of track/scenery active behind the train
+        // The train starts on this segment — keep it obstacle-free (set before
+        // the track spawns its initial segments).
+        noObstacleSegmentIndex = rearSegments;
+        const track = new InfiniteTrack(sim, {
+          segmentLength: segmentLen,
+          windowCount: 11,
+          segmentFactory: createSceneryRailSegment,
+          camera: null, // Camera managed directly by train
+          curveGenerator: generateTrackCurve,
+        });
+
+        // Train & Controls (positioned past the rear buffer segments)
+        const train = createTrain(sim, { position: [0, 0, 0] });
+        const follower = new TrackFollower(track, train.mesh, {
+          s: rearSegments * segmentLen + 10,
+          speed: 0,
+        });
+
+        // Shared mutable game state read/written across systems
+        const state = {
+          speedMps: 0,
+          maxSpeedMph: BASE_MAX_MPH,
+          money: 0,
+          screenShake: 0,
+          bigBangs: false,
+          grantSeconds: 5,
+          strafe: false,
+          dynamiteCount: 1, // Start stocked so the first stick is ready
+          penaltyTier: 0, // Escalating crash cost; dynamite blasts reset it
+        };
+
+        // Keyboard state drives only the camera views now (Space / C)
+        const input = new Input();
+        const keys = input.keys;
+
+        // Speed gauge (circular semicircle, full scale = current max speed).
+        // Velocity tiers raise the cap, so the gauge is rebuilt on purchase.
+        let gauge = createGauge({
+          min: 0,
+          max: state.maxSpeedMph,
+        });
+        const gaugeApi = {
+          setValue: (v) => gauge.setValue(v),
+          setMax: (v) => gauge.setMax(v),
+        };
+        function rebuildGauge() {
+          gauge.dispose();
+          gauge = createGauge({ min: 0, max: state.maxSpeedMph });
+        }
+
+        // Money display centered inside the speed gauge above the hub
+        const moneyCounter = createMoneyCounter({
+          left: "50%",
+          bottom: "clamp(32px, 8vw, 52px)",
+          size: "clamp(1.5rem, 5.5vw, 2.2rem)",
+        });
+
+        // Camera rig with draggable FOV/offset sliders (bottom-right panel)
+        const camCtrl = createCameraControls(sim, {
+          mesh: train.mesh,
+          fov: 60,
+          offset: [-3.2, 5.4, 0],
+          look: [2.0, 3.2, 0],
+          visible: false,
+        });
+
+        // Attach auxiliary steam sipper cylinders to the left and right sides of the boiler
+        function addSteamSippers() {
+          const sipperMat = new THREE.MeshStandardMaterial({
+            color: 0xc23b2e,
+            roughness: 0.5,
+            metalness: 0.1,
+          });
+          const sipperGeo = new THREE.CylinderGeometry(0.26, 0.26, 2.5, 16);
+
+          const leftSipper = new THREE.Mesh(sipperGeo, sipperMat);
+          leftSipper.rotation.z = Math.PI / 2;
+          leftSipper.position.set(1.8, 1.65, 0.72);
+          train.mesh.add(leftSipper);
+
+          const rightSipper = new THREE.Mesh(sipperGeo, sipperMat);
+          rightSipper.rotation.z = Math.PI / 2;
+          rightSipper.position.set(1.8, 1.65, -0.72);
+          train.mesh.add(rightSipper);
+        }
+
+        // Attach a black cap cylinder to the top of the smokestack (front pipe)
+        function addPipeCap() {
+          const capMat = new THREE.MeshStandardMaterial({
+            color: 0x181818,
+            roughness: 0.4,
+            metalness: 0.2,
+          });
+          const capGeo = new THREE.CylinderGeometry(0.4, 0.36, 0.24, 16);
+          const pipeCap = new THREE.Mesh(capGeo, capMat);
+          pipeCap.position.set(3.55, 3.34, 0);
+          train.mesh.add(pipeCap);
+        }
+
+        // Attach two long thin black injector pipes above the steam sippers
+        function addSteamInjectors() {
+          const injectorMat = new THREE.MeshStandardMaterial({
+            color: 0x181818,
+            roughness: 0.35,
+            metalness: 0.4,
+          });
+          const injectorGeo = new THREE.CylinderGeometry(0.08, 0.08, 2.5, 12);
+
+          const leftInjector = new THREE.Mesh(injectorGeo, injectorMat);
+          leftInjector.rotation.z = Math.PI / 2;
+          leftInjector.position.set(1.8, 1.95, 0.68);
+          train.mesh.add(leftInjector);
+
+          const rightInjector = new THREE.Mesh(injectorGeo, injectorMat);
+          rightInjector.rotation.z = Math.PI / 2;
+          rightInjector.position.set(1.8, 1.95, -0.68);
+          train.mesh.add(rightInjector);
+        }
+
+        // Skill tree: two sequential paths rendered side by side below the
+        // FPS counter. VELOCITY raises the permanent max speed (with matching
+        // boiler hardware); DYNAMITE improves the free sticks. A tier unlocks
+        // once the previous one is owned AND the player can afford it.
+        function createSkillTree() {
+          const PATHS = [
+            {
+              title: "VELOCITY",
+              tiers: [
+                {
+                  id: "vel-1",
+                  label: "Steam Sippers",
+                  cost: 100,
+                  apply() {
+                    state.maxSpeedMph = 90;
+                    addSteamSippers();
+                    rebuildGauge();
+                  },
+                },
+                {
+                  id: "vel-2",
+                  label: "Steam Burner",
+                  cost: 250,
+                  requires: "vel-1",
+                  apply() {
+                    state.maxSpeedMph = 110;
+                    addPipeCap();
+                    rebuildGauge();
+                  },
+                },
+                {
+                  id: "vel-3",
+                  label: "Steam Injectors",
+                  cost: 500,
+                  requires: "vel-2",
+                  apply() {
+                    state.maxSpeedMph = 130;
+                    addSteamInjectors();
+                    rebuildGauge();
+                  },
+                },
+              ],
+            },
+            {
+              title: "DYNAMITE",
+              tiers: [
+                {
+                  id: "dyn-1",
+                  label: "Big Bangs",
+                  cost: 150,
+                  apply() {
+                    state.bigBangs = true;
+                    megalithChanceBonus += 0.06;
+                  },
+                },
+                {
+                  id: "dyn-2",
+                  label: "Fast Fuse",
+                  cost: 300,
+                  requires: "dyn-1",
+                  apply() {
+                    state.grantSeconds = 3;
+                    megalithChanceBonus += 0.06;
+                  },
+                },
+                {
+                  id: "dyn-3",
+                  label: "Strafe",
+                  cost: 600,
+                  requires: "dyn-2",
+                  apply() {
+                    state.strafe = true;
+                    megalithChanceBonus += 0.12;
+                  },
+                },
+              ],
+            },
+          ];
+
+          const root = document.createElement("div");
+          root.id = "skill-tree";
+          document.body.appendChild(root);
+
+          const owned = new Set();
+          const nodes = [];
+
+          for (const path of PATHS) {
+            const col = document.createElement("div");
+            col.className = "skill-col";
+
+            const heading = document.createElement("h2");
+            heading.textContent = path.title;
+            col.appendChild(heading);
+
+            for (const tier of path.tiers) {
+              const node = document.createElement("div");
+              node.className = "skill-node";
+
+              const labelEl = document.createElement("span");
+              labelEl.textContent = tier.label;
+              node.appendChild(labelEl);
+
+              if (tier.cost > 0) {
+                const costEl = document.createElement("span");
+                costEl.className = "skill-cost";
+                costEl.textContent = `$${tier.cost}`;
+                node.appendChild(costEl);
+              }
+
+              const buy = () => {
+                if (owned.has(tier.id)) return;
+                if (tier.requires && !owned.has(tier.requires)) return;
+                if (state.money < tier.cost) return;
+                state.money -= tier.cost;
+                owned.add(tier.id);
+                tier.apply();
+                moneyCounter.setValue(state.money);
+                refresh();
+              };
+              node.addEventListener("click", buy);
+              node.addEventListener(
+                "touchstart",
+                (e) => {
+                  buy();
+                  if (e.cancelable) {
+                    e.preventDefault();
+                  }
+                },
+                { passive: false },
+              );
+
+              col.appendChild(node);
+              nodes.push({ tier, node });
+            }
+
+            root.appendChild(col);
+          }
+
+          function refresh() {
+            for (const { tier, node } of nodes) {
+              const isOwned = owned.has(tier.id);
+              const unlocked = !tier.requires || owned.has(tier.requires);
+              node.classList.toggle("owned", isOwned);
+              node.classList.toggle("locked", !isOwned && !unlocked);
+              node.classList.toggle(
+                "poor",
+                !isOwned && unlocked && state.money < tier.cost,
+              );
+            }
+          }
+          refresh();
+
+          return { refresh };
+        }
+
+        const skillTree = createSkillTree();
+
+        // Systems, constructed in dependency order. train.updateFn invokes
+        // them every frame in play order:
+        //   throttle -> economy -> track runner -> dynamite -> effects ->
+        //   pose sync -> impacts -> camera rig
+        // Hard ordering constraints:
+        //   - runner rebases world-space sets before dyn/fx read them
+        //   - poseSync refreshes entity.matrixWorld before impacts uses it
+        //   - impacts (which add screen shake) run before the rig places the
+        //     camera so shake offsets land on the fresh camera pose
+        const throttle = createAutoThrottle({ state, follower });
+        const fx = createEffectsSystem({ sim, train, follower, track, state });
+        const dyn = createDynamiteSystem({
+          sim,
+          simulation: sim,
+          track,
+          follower,
+          train,
+          segmentLen,
+          state,
+          spawnExplosion: fx.spawnExplosion,
+        });
+        const impacts = createImpactSystem({
+          sim,
+          entity: train,
+          follower,
+          track,
+          state,
+          effects: fx,
+          moneyCounter,
+        });
+        const econ = createEconomy({
+          state,
+          gaugeApi,
+          moneyCounter,
+          spawnMoneySign: fx.spawnMoneySign,
+          refreshSkills: () => skillTree.refresh(),
+        });
+        const runner = createTrackRunner({
+          track,
+          follower,
+          segmentLen,
+          rearSegments,
+          flyers: fx.flyers,
+          explosions: fx.explosions,
+          dynamites: dyn.items,
+        });
+        const poseSync = createPoseSync({
+          track,
+          follower,
+          camCtrl,
+          entity: train,
+          ground,
+          state,
+          keys,
+        });
+        const rig = createCameraRig({
+          simulation: sim,
+          camCtrl,
+          keys,
+          entity: train,
+          state,
+        });
+        // Hide title & control hints after 10s of play time
+        let playStarted = false;
+        function onFirstInteraction() {
+          if (playStarted) return;
+          playStarted = true;
+          window.removeEventListener("keydown", onFirstInteraction);
+          window.removeEventListener("pointerdown", onFirstInteraction);
+          setTimeout(() => {
+            const uiEl = document.getElementById("ui");
+            if (uiEl) uiEl.style.opacity = "0";
+          }, 10000);
+        }
+        window.addEventListener("keydown", onFirstInteraction);
+        window.addEventListener("pointerdown", onFirstInteraction);
+
+        // Initial train position
+        const initPose = follower.getPose();
+        if (initPose) {
+          train.mesh.position.copy(initPose.position);
+          train.mesh.quaternion.setFromUnitVectors(
+            follower.forwardAxis,
+            initPose.forward,
+          );
+          train.mesh.updateMatrixWorld(true);
+        }
+
+        // Top-level frame update: dispatch to each game system in order
+        train.updateFn = (dt) => {
+          throttle.update(dt);
+          econ.update(dt);
+          runner.update(dt);
+          dyn.update(dt);
+          fx.update(dt);
+          poseSync.update(dt);
+          impacts.update(dt);
+          rig.update(dt);
+        };
+
+        // Initial camera pose
+        camCtrl.update({ mirror: false });
+      }
+
+      // Run
+      setup(sim);
+      sim.start();
+    </script>
+  </body>
+</html>
