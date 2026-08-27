@@ -28,6 +28,7 @@ import {
   createCowcatcher,
   createBunny,
   createSign,
+  createGatlingGun,
 } from "./components.js";
 
 import { createPowerupsPreview } from "./powerups.js";
@@ -776,6 +777,70 @@ export const ENTRIES = [
         type: "vector",
         default: [0, 0, 0],
       },
+    ],
+  },
+  {
+    category: "component",
+    key: "gatlinggun",
+    label: "Gatling Gun",
+    desc: "5-barrel rotating gun with start/stop controls",
+    fn: createGatlingGun,
+    opts: [
+      {
+        key: "barrelCount",
+        label: "Barrel Count",
+        type: "number",
+        default: 5,
+        min: 3,
+        max: 12,
+        step: 1,
+      },
+      {
+        key: "barrelLength",
+        label: "Barrel Length",
+        type: "number",
+        default: 3.0,
+        min: 0.5,
+        max: 8,
+        step: 0.1,
+      },
+      {
+        key: "barrelRadius",
+        label: "Barrel Radius",
+        type: "number",
+        default: 0.06,
+        min: 0.02,
+        max: 0.3,
+        step: 0.01,
+      },
+      {
+        key: "speed",
+        label: "Spin Speed",
+        type: "number",
+        default: 12,
+        min: 1,
+        max: 40,
+        step: 0.5,
+      },
+      { key: "color", label: "Body Color", type: "color", default: "0x3a3a3e" },
+      { key: "barrelColor", label: "Barrel Color", type: "color", default: "0x555558" },
+      { key: "baseColor", label: "Mount Color", type: "color", default: "0x2a2a2e" },
+      {
+        key: "position",
+        label: "Position [x,y,z]",
+        type: "vector",
+        default: [0, 0, 0],
+      },
+      {
+        key: "rotation",
+        label: "Rotation [x,y,z]",
+        type: "vector",
+        default: [0, 0, 0],
+      },
+    ],
+    actions: [
+      { label: "Start", method: "start" },
+      { label: "Stop", method: "stop" },
     ],
   },
   {

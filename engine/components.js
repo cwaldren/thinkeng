@@ -684,4 +684,121 @@ export function createBunny(sim, opts = {}) {
 
 export const createBunnie = createBunny;
 
+// A gatling gun: 5 thin barrels bundled in a circle (like dynamite sticks),
+// mounted on a vertical post and base plate. start() begins barrel rotation,
+// stop() halts it. Decorative (no physics) — built from createCylinder + createBox.
+export function createGatlingGun(sim, opts = {}) {
+  const {
+    barrelCount = 5,
+    barrelRadius = 0.06,
+    barrelLength = 3.0,
+    color = 0x3a3a3e,
+    barrelColor = 0x555558,
+    baseColor = 0x2a2a2e,
+    position = [0, 0, 0],
+    rotation = [0, 0, 0],
+    speed = 12,
+  } = opts;
+
+  const group = new THREE.Group();
+  // Center geometry so the gallery camera (orbiting y=1) frames it nicely.
+  const R = (2 * barrelRadius) / Math.sqrt(3);
+  const postHeight = 0.7;
+  const halfLen = barrelLength / 2;
+  const centerY = (R + barrelRadius - (R + barrelRadius + postHeight)) / 2;
+  group.position.set(
+    position[0] - halfLen,
+    position[1] - centerY,
+    position[2],
+  );
+  group.rotation.set(rotation[0], rotation[1], rotation[2]);
+  const children = [];
+
+  // Barrel group — spins around the local X axis
+  const barrelGroup = new THREE.Group();
+  group.add(barrelGroup);
+
+  // Pack barrels in a circle in the YZ plane (all run along +X, like dynamite)
+  for (let i = 0; i < barrelCount; i++) {
+    const angle = (i / barrelCount) * Math.PI * 2;
+    const y = Math.cos(angle) * R;
+    const z = Math.sin(angle) * R;
+    const stick = createCylinder(sim, {
+      radiusTop: barrelRadius,
+      radiusBottom: barrelRadius,
+      height: barrelLength,
+      color: barrelColor,
+      mass: 0,
+      position: [barrelLength / 2, y, z],
+      rotation: [0, 0, Math.PI / 2],
+      radialSegments: 12,
+    });
+    barrelGroup.add(stick.mesh);
+    children.push(stick);
+  }
+
+  // Support ring — short cylinder band around the barrel bundle
+  const ringRadius = R + barrelRadius + 0.04;
+  const ring = createCylinder(sim, {
+    radiusTop: ringRadius,
+    radiusBottom: ringRadius,
+    height: 0.12,
+    color,
+    mass: 0,
+    position: [barrelLength * 0.18, 0, 0],
+    rotation: [0, 0, Math.PI / 2],
+    radialSegments: 24,
+  });
+  barrelGroup.add(ring.mesh);
+  children.push(ring);
+
+  // Second support ring near the muzzle end
+  const ring2 = createCylinder(sim, {
+    radiusTop: ringRadius,
+    radiusBottom: ringRadius,
+    height: 0.10,
+    color,
+    mass: 0,
+    position: [barrelLength * 0.82, 0, 0],
+    rotation: [0, 0, Math.PI / 2],
+    radialSegments: 24,
+  });
+  barrelGroup.add(ring2.mesh);
+  children.push(ring2);
+
+  // Mounting post — vertical cylinder below the barrel bundle back end
+  const post = createCylinder(sim, {
+    radiusTop: 0.1,
+    radiusBottom: 0.12,
+    height: postHeight,
+    color: baseColor,
+    mass: 0,
+    position: [0.15, -(R + barrelRadius) - postHeight / 2, 0],
+    radialSegments: 10,
+  });
+  group.add(post.mesh);
+  children.push(post);
+
+  // Rotation state
+  let spinning = false;
+
+  const updateFn = (dt) => {
+    if (spinning) {
+      barrelGroup.rotation.x += speed * dt;
+    }
+  };
+
+  const entity = sim.addEntity(group, null, updateFn);
+  entity.children = children;
+
+  entity.start = () => {
+    spinning = true;
+  };
+  entity.stop = () => {
+    spinning = false;
+  };
+
+  return entity;
+}
+
 

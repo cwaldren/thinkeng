@@ -44,6 +44,10 @@
         display: none;
       }
 
+      #controls.open {
+        display: block;
+      }
+
       #list h2,
       #controls h2 {
         margin: 0 0 12px;
@@ -394,6 +398,27 @@
           field.appendChild(label);
           field.appendChild(input);
           controlsForm.appendChild(field);
+        }
+        if (active.entry.actions?.length) {
+          const wrap = document.createElement("div");
+          wrap.className = "field";
+          wrap.style.display = "flex";
+          wrap.style.gap = "8px";
+          for (const action of active.entry.actions) {
+            const btn = document.createElement("button");
+            btn.textContent = action.label;
+            btn.style.flex = "1";
+            btn.style.padding = "7px 0";
+            btn.style.border = "none";
+            btn.style.borderRadius = "6px";
+            btn.style.fontWeight = "600";
+            btn.style.cursor = "pointer";
+            btn.addEventListener("click", () =>
+              liveEntity?.[action.method]?.(),
+            );
+            wrap.appendChild(btn);
+          }
+          controlsForm.appendChild(wrap);
         }
       }
 
