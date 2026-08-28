@@ -15,7 +15,8 @@ export function createGround(sim, opts = {}) {
     position = [0, 0, 0],
   } = opts;
 
-  const geometry = new THREE.BoxGeometry(size, height, size);
+  const s = sizeVector(size);
+  const geometry = new THREE.BoxGeometry(s.x, height, s.z);
   const material = new THREE.MeshStandardMaterial({ color });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.position.set(position[0], position[1], position[2]);
@@ -23,7 +24,7 @@ export function createGround(sim, opts = {}) {
 
   const body = new CANNON.Body({
     mass: 0,
-    shape: new CANNON.Box(new CANNON.Vec3(size / 2, height / 2, size / 2)),
+    shape: new CANNON.Box(new CANNON.Vec3(s.x / 2, height / 2, s.z / 2)),
   });
   body.position.set(position[0], position[1], position[2]);
 

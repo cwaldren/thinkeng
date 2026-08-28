@@ -801,4 +801,146 @@ export function createGatlingGun(sim, opts = {}) {
   return entity;
 }
 
+// A manual push lawnmower: two parallel reel rings connected by a spiral
+// (helix) of cutting blades, with a push handle leading up-and-back. Purely
+// decorative (no physics). Composes createCylinder primitives plus plain
+// box meshes for the helix blades, all under one group.
+export function createLawnmower(sim, opts = {}) {
+  const {
+    wheelRadius = 0.5,
+    ringThickness = 0.18,
+    bodyColor = 0x2a3d56,
+    bladeColor = 0xb8c2cc,
+    wheelColor = 0x1a1a1a,
+    reelWidth = 1.0,
+    bladeThickness = 0.03,
+    handleAngle = 0.55,
+    handleLength = 1.5,
+    reelRatio = 2,
+    blades = 4,
+    position = [0, 0, 0],
+    rotation = [0, 0, 0],
+  } = opts;
+
+  const group = new THREE.Group();
+  group.position.set(position[0], position[1], position[2]);
+  group.rotation.set(rotation[0], rotation[1], rotation[2]);
+  const children = [];
+
+  const halfReel = reelWidth / 2;
+
+  // The reel and each wheel get their own pivot so they can spin about their
+  // own hub. Each pivot sits ON the part's centerline (height wheelRadius), so
+  // rotation makes it spin in place rather than orbit the ground-level axle.
+  const wheelPivots = [];
+  const reelPivot = new THREE.Group();
+  reelPivot.position.set(0, wheelRadius, 0);
+  group.add(reelPivot);
+
+  // Two parallel reel rings (thin discs), lying in the YZ plane with the reel
+  // axis along local X. Axle along X, rings at each end. Each sits in its own
+  // hub pivot so it spins about its own center (height wheelRadius).
+  for (const side of [-1, 1]) {
+    const pivot = new THREE.Group();
+    pivot.position.set(side * halfReel, wheelRadius, 0);
+    group.add(pivot);
+    const ring = createCylinder(sim, {
+      radiusTop: wheelRadius,
+      radiusBottom: wheelRadius,
+      height: ringThickness,
+      color: wheelColor,
+      mass: 0,
+      position: [0, 0, 0],
+      rotation: [0, 0, Math.PI / 2],
+      radialSegments: 24,
+    });
+    pivot.add(ring.mesh);
+    children.push(ring);
+    wheelPivots.push(pivot);
+  }
+
+  // Spiral (helix) of cutting blades running between the two rings, wrapping
+  // around the reel axis (local X). Each blade is a thin box tangent to the
+  // drum, twisted progressively so together they form a helix.
+  const bladeLen = reelWidth;
+  const bladeMat = new THREE.MeshStandardMaterial({ color: bladeColor });
+  for (let i = 0; i < blades; i++) {
+    const twist = (i / blades) * Math.PI * 2;
+    const blade = new THREE.Mesh(
+      new THREE.BoxGeometry(bladeLen, bladeThickness, wheelRadius * 1.4),
+      bladeMat,
+    );
+    // Sit the blade against the drum surface, tangent along its length, with a
+    // progressive twist around the X axis so the set forms a helix. The blade
+    // is centered on the reelPivot origin (at height wheelRadius).
+    blade.position.set(0, 0, 0);
+    blade.rotation.set(
+      twist,
+      0,
+      0,
+    );
+    blade.castShadow = true;
+    blade.receiveShadow = true;
+    reelPivot.add(blade);
+  }
+
+  // Push handle: two handlebar tubes of fixed length rising up-and-back from
+  // the reel axle, meeting a horizontal grip across the top. handleAngle
+  // (radians from vertical) tilts the handle, keeping handleLength constant.
+  const handleSpread = 0.22;
+  const gripY = wheelRadius + handleLength * Math.cos(handleAngle);
+  const gripZ = handleLength * Math.sin(handleAngle);
+  const handleMat = new THREE.MeshStandardMaterial({ color: bodyColor });
+  // The tube already has length handleLength (its angle is handleAngle), so it
+  // runs exactly from the axle to the grip.
+  for (const side of [-1, 1]) {
+    const tube = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.03, 0.03, handleLength, 8),
+      handleMat,
+    );
+    tube.position.set(side * handleSpread, (gripY + wheelRadius) / 2, gripZ / 2);
+    tube.rotation.x = handleAngle;
+    tube.castShadow = true;
+    tube.receiveShadow = true;
+    group.add(tube);
+  }
+  // Grip bar spans exactly between the two tube tops.
+  const grip = createCylinder(sim, {
+    radiusTop: 0.025,
+    radiusBottom: 0.025,
+    height: handleSpread * 2 + 0.05,
+    color: bodyColor,
+    mass: 0,
+    position: [0, gripY, gripZ],
+    rotation: [0, 0, Math.PI / 2],
+    radialSegments: 8,
+  });
+  group.add(grip.mesh);
+  children.push(grip);
+
+  // Rotation state: the mower is pushed at a forward speed (local +Z). Wheels
+  // spin at speed/wheelRadius; the reel spins reelRatio times faster.
+  let speed = 0;
+  let wheelAngle = 0;
+  let reelAngle = 0;
+
+  const updateFn = (dt) => {
+    if (speed === 0) return;
+    const wheelOmega = speed / wheelRadius;
+    wheelAngle += wheelOmega * dt;
+    reelAngle += reelRatio * wheelOmega * dt;
+    for (const pivot of wheelPivots) pivot.rotation.x = wheelAngle;
+    reelPivot.rotation.x = reelAngle;
+  };
+
+  const entity = sim.addEntity(group, null, updateFn);
+  entity.children = children;
+
+  // Forward speed in m/s (local +Z). 0 stops. Negative pushes backward/reverses.
+  entity.setSpeed = (v) => {
+    speed = v;
+  };
+
+  return entity;
+}
 

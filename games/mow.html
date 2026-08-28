@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Zen Mow</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: #111116;
+        font-family: sans-serif;
+      }
+      #ui {
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        color: #fff;
+        pointer-events: none;
+      }
+    </style>
+
+    <!-- 1. Import Map (Constant Across All Games) -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "/vendor/three.module.js",
+          "cannon-es": "/vendor/cannon-es.js",
+          "engine/": "/engine/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="ui">
+      <h1 style="margin: 0; font-size: 1.2rem; opacity: 0.8">
+        Zen Mow
+      </h1>
+      <p style="margin: 4px 0 0; font-size: 0.85rem; opacity: 0.5">
+        W/A/S/D or arrow keys to move.
+      </p>
+    </div>
+
+    <script type="module">
+      import { Simulation } from "engine/core.js";
+      import {
+        createGround,
+        createBox,
+        createSphere,
+      } from "engine/primitives.js";
+      import { createLawnmower } from "engine/components.js";
+      import {} from "engine/materials.js";
+      import * as THREE from "three";
+
+      const sim = new Simulation({
+        gravity: [0, -9.81, 0],
+        clearColor: 0x87ceeb,
+        enableShadows: true,
+      });
+
+      function setup(sim) {
+        // Ground plane.
+        const groundGeo = new THREE.PlaneGeometry(200, 200);
+        const groundMat = new THREE.MeshStandardMaterial({ color: 0x2b180c });
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = -0.01;
+        ground.receiveShadow = true;
+        sim.scene.add(ground);
+
+        // Grass: single instanced mesh, 3x3 patches tiled across 100x100.
+        const W = 3, D = 3, N = 202;
+        const COLS = 20, ROWS = 20;
+        const total = COLS * ROWS * N;
+        const bladeGeo = new THREE.ConeGeometry(0.08, 1.7, 4);
+        const bladeMat = new THREE.MeshStandardMaterial({ color: 0x44aa55, roughness: 0.8 });
+        const grassMesh = new THREE.InstancedMesh(bladeGeo, bladeMat, total);
+        grassMesh.castShadow = true;
+        grassMesh.receiveShadow = true;
+        const dummy = new THREE.Object3D();
+        const bladePos = [];
+        const bladeRot = [];
+        const bladeScale = new Float32Array(total);
+        const bladeGrowth = new Float32Array(total);
+        let idx = 0;
+        for (let r = 0; r < ROWS; r++) {
+          for (let c = 0; c < COLS; c++) {
+            const ox = (c - COLS / 2 + 0.5) * W;
+            const oz = (r - ROWS / 2 + 0.5) * D;
+            const hw = W / 2, hd = D / 2;
+            for (let i = 0; i < N; i++) {
+              const s = 0.6 + Math.random() * 0.8;
+              bladeScale[idx] = s;
+              bladeGrowth[idx] = 1; // start fully grown
+              bladePos[idx] = new THREE.Vector3(
+                ox + Math.random() * W - hw,
+                0,
+                oz + Math.random() * D - hd,
+              );
+              bladeRot[idx] = new THREE.Quaternion().setFromEuler(
+                new THREE.Euler(
+                  (Math.random() - 0.5) * 0.35,
+                  Math.random() * Math.PI * 2,
+                  (Math.random() - 0.5) * 0.35,
+                ),
+              );
+              dummy.position.copy(bladePos[idx]);
+              dummy.quaternion.copy(bladeRot[idx]);
+              dummy.scale.set(s, s, s);
+              dummy.updateMatrix();
+              grassMesh.setMatrixAt(idx++, dummy.matrix);
+            }
+          }
+        }
+        grassMesh.instanceMatrix.needsUpdate = true;
+        sim.scene.add(grassMesh);
+
+        // Place a push lawnmower on the lawn.
+        const mower = createLawnmower(sim, {
+          wheelRadius: 0.4,
+          reelWidth: 1.25,
+          bladeThickness: 0.01,
+          blades: 4,
+          handleAngle: 0.75,
+          handleLength: 1.7,
+          bodyColor: 0x2a3d56,
+          bladeColor: 0x014101,
+          wheelColor: 0x1a1a1a,
+          position: [0, 0, 0],
+          rotation: [0, 0, 0],
+        });
+
+        // Drive the mower: W/S (or up/down arrows) move, A/D (or left/right)
+        // turn. Reel spins 2x.
+        const keys = new Set();
+        window.addEventListener("keydown", (e) => keys.add(e.code));
+        window.addEventListener("keyup", (e) => keys.delete(e.code));
+        const forward = new THREE.Vector3(0, 0, 1);
+        const turnDir = new THREE.Vector3(0, 1, 0);
+        let mowerMoving = false;
+        const keyF = () =>
+          keys.has("KeyS") || keys.has("ArrowDown") ? 1 : keys.has("KeyW") || keys.has("ArrowUp") ? -1 : 0;
+        const keyTurn = () =>
+          keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : keys.has("KeyD") || keys.has("ArrowRight") ? -1 : 0;
+
+        // Reel cut footprint (matches the grass-cutting test below).
+        const CUT_HALF_W = 1.25 / 2; // across the reel (local X)
+        const CUT_HALF_D = 0.4 * 0.7; // cutting depth (local Z)
+        const CUT_MIN_GROWTH = 0.15; // only cuts/emits over grass this tall
+        const localPos = new THREE.Vector3();
+        const invMower = new THREE.Matrix4();
+        // Whether cuttable grass (strictly above the mower's minimum height)
+        // currently sits under the reel.
+        const hasGrassToCut = () => {
+          invMower.copy(mower.mesh.matrixWorld).invert();
+          for (let i = 0; i < total; i++) {
+            if (bladeGrowth[i] <= CUT_MIN_GROWTH) continue;
+            localPos.copy(bladePos[i]).applyMatrix4(invMower);
+            if (Math.abs(localPos.x) < CUT_HALF_W && Math.abs(localPos.z) < CUT_HALF_D) {
+              return true;
+            }
+          }
+          return false;
+        };
+
+        // --- Grass-clipping particle effect (emitted when the mower moves) ---
+        const CLIP_COUNT = 120;
+        // Each clipping is a real 3D blade mesh so it can carry a random 3D
+        // rotation and tumble as it flies.
+        const clipGeo = new THREE.ConeGeometry(0.03, 0.5, 4);
+        const clipMat = new THREE.MeshStandardMaterial({
+          color: 0x3f8f3f,
+          roughness: 0.9,
+        });
+        const clipMesh = new THREE.InstancedMesh(clipGeo, clipMat, CLIP_COUNT);
+        clipMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        clipMesh.frustumCulled = false;
+        sim.scene.add(clipMesh);
+        const clipDummy = new THREE.Object3D();
+        const clipQuat = new THREE.Quaternion();
+        const clipEuler = new THREE.Euler();
+        const clips = [];
+        for (let i = 0; i < CLIP_COUNT; i++) {
+          clips.push({ x: 0, y: -1000, z: 0, vx: 0, vy: 0, vz: 0, rx: 0, ry: 0, rz: 0, wrx: 0, wry: 0, wrz: 0, life: 0, alive: false });
+          clipDummy.position.set(-1000, -1000, -1000);
+          clipDummy.updateMatrix();
+          clipMesh.setMatrixAt(i, clipDummy.matrix);
+        }
+        let clipCursor = 0;
+        let clipAccum = 0;
+
+        sim.addEntity(null, null, (dt) => {
+          // Mower local +Z (handle push direction) mapped to the horizontal
+          // world direction; with no roll/pitch this is the forward heading.
+          const dir = forward.clone().applyQuaternion(mower.mesh.quaternion);
+          const turn = keyTurn();
+          const v = keyF();
+          const speed = 2;
+          const turnSpeed = v === 0 ? 3.0 : 1.5; // spin on the spot when stopped
+
+          mowerMoving = v !== 0;
+          mower.mesh.rotateOnWorldAxis(turnDir, turn * turnSpeed * dt);
+          mower.setSpeed(v * speed);
+          mower.mesh.position.addScaledVector(dir, v * speed * dt);
+          // Reflect the fresh transform immediately so the cut-footprint check
+          // (which uses matrixWorld) matches the mower's real position this frame.
+          mower.mesh.updateWorldMatrix(true, false);
+
+          // Emit clippings from the reel when moving AND actually cutting grass.
+          const cutting = hasGrassToCut();
+          const reelWorld = mower.mesh.localToWorld(new THREE.Vector3(0, 0.1, 0));
+          const right = new THREE.Vector3(1, 0, 0).applyQuaternion(mower.mesh.quaternion);
+          if (mowerMoving && cutting) {
+            clipAccum += dt * 250;
+            while (clipAccum >= 1) {
+              clipAccum -= 1;
+              const p = clips[clipCursor];
+              clipCursor = (clipCursor + 1) % CLIP_COUNT; // reuse a slot each time
+              const off = (Math.random() - 0.5) * 0.8; // across the reel (local X)
+              p.x = reelWorld.x + off * right.x;
+              p.z = reelWorld.z + off * right.z;
+              p.y = reelWorld.y + Math.random() * 0.1;
+              const spread = 1.6;
+              p.vx = (Math.random() - 0.5) * spread;
+              p.vz = (Math.random() - 0.5) * spread;
+              p.vy = 1.2 + Math.random() * 1.6;
+              // Random starting 3D rotation and fixed tumble rates.
+              p.rx = Math.random() * Math.PI * 2;
+              p.ry = Math.random() * Math.PI * 2;
+              p.rz = Math.random() * Math.PI * 2;
+              p.wrx = (Math.random() - 0.5) * 14;
+              p.wry = (Math.random() - 0.5) * 14;
+              p.wrz = (Math.random() - 0.5) * 14;
+              p.life = 0;
+              p.alive = true;
+            }
+          } else {
+            clipAccum = 0;
+          }
+
+          // Age clippings: tumble and arc with gravity, then despawn.
+          for (let i = 0; i < CLIP_COUNT; i++) {
+            const p = clips[i];
+            if (!p.alive) {
+              clipDummy.position.set(-1000, -1000, -1000);
+              clipDummy.quaternion.identity();
+              clipDummy.scale.set(1, 1, 1);
+              clipDummy.updateMatrix();
+              clipMesh.setMatrixAt(i, clipDummy.matrix);
+              continue;
+            }
+            p.life += dt;
+            p.vy -= 5 * dt;
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            p.z += p.vz * dt;
+            p.rx += p.wrx * dt;
+            p.ry += p.wry * dt;
+            p.rz += p.wrz * dt;
+            if (p.life > 0.9 || p.y < 0.01) {
+              p.alive = false;
+              p.y = -1000;
+            }
+            clipDummy.position.set(p.x, p.y, p.z);
+            clipEuler.set(p.rx, p.ry, p.rz);
+            clipQuat.setFromEuler(clipEuler);
+            clipDummy.quaternion.copy(clipQuat);
+            clipDummy.updateMatrix();
+            clipMesh.setMatrixAt(i, clipDummy.matrix);
+          }
+          clipMesh.instanceMatrix.needsUpdate = true;
+        });
+
+        // Orbit camera.
+        let theta = 0, phi = Math.PI / 6, radius = 25;
+        let dragging = false, lastX = 0, lastY = 0;
+        const target = new THREE.Vector3(0, 0, 0);
+
+        const canvas = sim.renderer.domElement;
+        canvas.addEventListener("mousedown", (e) => {
+          dragging = true;
+          lastX = e.clientX;
+          lastY = e.clientY;
+        });
+        window.addEventListener("mouseup", () => { dragging = false; });
+        window.addEventListener("mousemove", (e) => {
+          if (!dragging) return;
+          theta -= (e.clientX - lastX) * 0.005;
+          phi = Math.max(0.1, Math.min(Math.PI - 0.1,
+            phi - (e.clientY - lastY) * 0.005));
+          lastX = e.clientX;
+          lastY = e.clientY;
+        });
+        canvas.addEventListener("wheel", (e) => {
+          e.preventDefault();
+          radius = Math.max(3, Math.min(80, radius + e.deltaY * 0.03));
+        }, { passive: false });
+
+        let grassDirty = false;
+        const growRate = 0.0375;
+        sim.addEntity(null, null, (dt) => {
+          // World -> mower-local transform for the cut footprint check.
+          invMower.copy(mower.mesh.matrixWorld).invert();
+
+          // Cut any blades under the mower's reel, then grow the lawn back.
+          grassDirty = false;
+          for (let i = 0; i < total; i++) {
+            // Check if this blade sits under the reel (in mower local space);
+            // only cut it if it's grown above the mower's minimum height, and
+            // trim it down to exactly that minimum (a real mower leaves a
+            // uniform-height lawn, it doesn't scalp to nothing).
+            if (bladeGrowth[i] > CUT_MIN_GROWTH) {
+              localPos.copy(bladePos[i]).applyMatrix4(invMower);
+              if (Math.abs(localPos.x) < CUT_HALF_W &&
+                  Math.abs(localPos.z) < CUT_HALF_D) {
+                bladeGrowth[i] = CUT_MIN_GROWTH;
+              }
+            }
+            // Grow the lawn back over time. The blade base stays anchored at the
+            // plane, so trimmed grass remains visible as short blades that rise
+            // back up as they regrow.
+            if (bladeGrowth[i] < 1) {
+              bladeGrowth[i] = Math.min(bladeGrowth[i] + dt * growRate, 1);
+              dummy.position.copy(bladePos[i]);
+              dummy.quaternion.copy(bladeRot[i]);
+              dummy.scale.set(bladeScale[i], bladeScale[i] * bladeGrowth[i], bladeScale[i]);
+              dummy.updateMatrix();
+              grassMesh.setMatrixAt(i, dummy.matrix);
+              grassDirty = true;
+            }
+          }
+          if (grassDirty) grassMesh.instanceMatrix.needsUpdate = true;
+
+          // Orbit camera.
+          const sp = Math.sin(phi);
+          sim.camera.position.set(
+            target.x + radius * sp * Math.sin(theta),
+            target.y + radius * Math.cos(phi),
+            target.z + radius * sp * Math.cos(theta),
+          );
+          sim.camera.lookAt(target);
+        });
+      }
+
+      setup(sim);
+      sim.start();
+    </script>
+  </body>
+</html>

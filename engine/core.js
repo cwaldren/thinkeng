@@ -89,7 +89,7 @@ export class Simulation {
 
     // State Tracking
     this.entities = new Set();
-    this.clock = new THREE.Clock();
+    this.timer = new THREE.Timer();
     this.isRunning = false;
 
     // 4. Default Ambient & Directional Lighting
@@ -182,11 +182,10 @@ export class Simulation {
   start() {
     if (this.isRunning) return;
     this.isRunning = true;
-    this.clock.start();
 
     this.renderer.setAnimationLoop(() => {
-      // Clamp delta time to avoid physics explosion on tab-switch
-      const dt = Math.min(this.clock.getDelta(), 0.1);
+      this.timer.update();
+      const dt = Math.min(this.timer.getDelta(), 0.1);
 
       // Step physics world at 60Hz rate
       this.world.step(1 / 60, dt, 3);
@@ -213,6 +212,7 @@ export class Simulation {
 
   destroy() {
     this.stop();
+    this.timer.dispose();
     window.removeEventListener("resize", this._onResize);
 
     // Clean up all entities
