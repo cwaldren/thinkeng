@@ -130,11 +130,11 @@
         opacity: 0.85;
       }
 
-      .badge.primitive {
+      .badge.basic {
         color: #88cc55;
       }
 
-      .badge.component {
+      .badge.composite {
         color: #33aaff;
       }
 
@@ -224,8 +224,8 @@
       <h2>Entities</h2>
       <div id="filter">
         <a href="?" data-type="">All</a
-        ><a href="?type=primitive" data-type="primitive">Primitives</a
-        ><a href="?type=component" data-type="component">Components</a
+        ><a href="?type=basic" data-type="basic">Basics</a
+        ><a href="?type=composite" data-type="composite">Composites</a
         ><a href="?type=ux" data-type="ux">UX</a
         ><a href="?type=effect" data-type="effect">Effects</a>
       </div>
@@ -256,8 +256,8 @@
       // ------------------------------------------------------------------
 
       const CATEGORIES = {
-        primitive: "Primitives",
-        component: "Components",
+        basic: "Basics",
+        composite: "Composites",
         ux: "UX",
         effect: "Effects",
       };
@@ -265,6 +265,9 @@
       // Read ?type= from the URL; empty/unknown => combined All view.
       let filterType = new URLSearchParams(location.search).get("type") ?? "";
       if (!CATEGORIES[filterType]) filterType = "";
+
+      // Read ?e= (selected entity key) from the URL; empty/unknown => first entry.
+      const urlEntityKey = new URLSearchParams(location.search).get("e") ?? "";
 
       const sim = new Simulation({
         container: document.getElementById("viewport"),
@@ -434,6 +437,16 @@
         }
       }
 
+      // Build the current URL, preserving the active filter and an optional
+      // selected entity (?type=...&e=...).
+      function buildUrl({ type = filterType, e } = {}) {
+        const params = new URLSearchParams();
+        if (type) params.set("type", type);
+        if (e) params.set("e", e);
+        const qs = params.toString();
+        return qs ? `${location.pathname}?${qs}` : location.pathname;
+      }
+
       function setActive(entry) {
         if (active?.entry === entry) return;
         active = {
@@ -447,6 +460,7 @@
           card.classList.toggle("active", card.dataset.key === entry.key);
         }
 
+        history.replaceState(null, "", buildUrl({ e: entry.key }));
         buildControls();
         controlsPanel.classList.add("open");
         rebuild();
@@ -528,7 +542,9 @@
             : ENTRIES.filter((e) => e.category === filterType);
         for (const entry of visible)
           listEl.appendChild(buildCard(entry, filterType === ""));
-        if (visible.length) setActive(visible[0]);
+        const target =
+          visible.find((e) => e.key === urlEntityKey) ?? visible[0];
+        if (target) setActive(target);
         else clearSelection();
       }
 
@@ -537,7 +553,7 @@
       function setFilter(next) {
         if (next === filterType) return;
         filterType = next;
-        history.replaceState(null, "", next ? `?type=${next}` : location.pathname);
+        history.replaceState(null, "", buildUrl({ type: next }));
         for (const link of document.querySelectorAll("#filter a")) {
           link.classList.toggle("active", link.dataset.type === next);
         }

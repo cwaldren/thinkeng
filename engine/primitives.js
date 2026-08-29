@@ -108,13 +108,15 @@ export function createSphere(sim, opts = {}) {
   const {
     radius = 0.5,
     color = 0x33aaff,
+    opacity = 1,
+    transparent = opacity < 1,
     mass = 1,
     position = [0, 0, 0],
     friction = 0.3,
   } = opts;
 
   const geometry = new THREE.SphereGeometry(radius, 32, 16);
-  const material = new THREE.MeshStandardMaterial({ color });
+  const material = new THREE.MeshStandardMaterial({ color, opacity, transparent });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.position.set(position[0], position[1], position[2]);
   mesh.castShadow = true;
@@ -394,12 +396,12 @@ export function createHeart(sim, opts = {}) {
   return sim.addEntity(mesh, body);
 }
 
-// A swarm of flies zooming around inside a bounded sphere. Rendered as one
-// instanced mesh of tiny dark spheres; each fly steers with a small random
+// A swarm of gnats zooming around inside a bounded sphere. Rendered as one
+// instanced mesh of tiny dark spheres; each gnat steers with a small random
 // velocity and bounces off the sphere boundary, so the whole group keeps
 // darting around within a fixed radius. Purely decorative (no physics body) —
 // the updateFn drives the instanced matrices each frame.
-export function createFlySwarm(sim, opts = {}) {
+export function createGnats(sim, opts = {}) {
   const {
     count = 10,
     color = 0xffffff,
@@ -414,7 +416,7 @@ export function createFlySwarm(sim, opts = {}) {
   const instancedMesh = new THREE.InstancedMesh(geo, mat, count);
   instancedMesh.position.set(position[0], position[1], position[2]);
   instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  instancedMesh.frustumCulled = false;
+  instancedMesh.frustumCulled = false; // swarm sweeps around as the game moves it
   instancedMesh.castShadow = false; // tiny decorative insects - no shadow cost
 
   const dummy = new THREE.Object3D();
@@ -506,6 +508,6 @@ export function createFlySwarm(sim, opts = {}) {
     instancedMesh.instanceMatrix.needsUpdate = true;
   };
 
-  return sim.addEntity(instancedMesh, null, updateFn, "flyswarm");
+  return sim.addEntity(instancedMesh, null, updateFn, "gnats");
 }
 

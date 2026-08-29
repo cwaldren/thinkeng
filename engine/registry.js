@@ -19,7 +19,7 @@ import {
   createTriangle,
   createPlayer,
   createHeart,
-  createFlySwarm,
+  createGnats,
 } from "./primitives.js";
 
 import {
@@ -36,6 +36,7 @@ import {
   createDragonfly,
   createFlies,
   createDandelion,
+  createBumblebee,
 } from "./components.js";
 
 import { createPowerupsPreview } from "./powerups.js";
@@ -43,7 +44,7 @@ import { createSandBlast } from "./effects.js";
 
 export const ENTRIES = [
   {
-    category: "primitive",
+    category: "basic",
     key: "ground",
     label: "Ground",
     desc: "Static planar platform",
@@ -86,7 +87,7 @@ export const ENTRIES = [
     ],
   },
   {
-    category: "primitive",
+    category: "basic",
     key: "box",
     label: "Box",
     desc: "Interactable cube",
@@ -135,7 +136,7 @@ export const ENTRIES = [
     ],
   },
   {
-    category: "primitive",
+    category: "basic",
     key: "sphere",
     label: "Sphere",
     desc: "Rollable ball",
@@ -178,7 +179,7 @@ export const ENTRIES = [
     ],
   },
   {
-    category: "primitive",
+    category: "basic",
     key: "cylinder",
     label: "Cylinder",
     desc: "Tapered column",
@@ -254,7 +255,7 @@ export const ENTRIES = [
     ],
   },
   {
-    category: "primitive",
+    category: "basic",
     key: "rock",
     label: "Rock",
     desc: "Faceted jagged rock / boulder",
@@ -300,7 +301,7 @@ export const ENTRIES = [
     ],
   },
   {
-    category: "primitive",
+    category: "basic",
     key: "triangle",
     label: "Triangle",
     desc: "Triangular wedge / ramp (cowcatcher)",
@@ -358,7 +359,7 @@ export const ENTRIES = [
     ],
   },
   {
-    category: "primitive",
+    category: "basic",
     key: "player",
     label: "Player",
     desc: "Keyboard-controlled (WASD/Space)",
@@ -410,7 +411,7 @@ export const ENTRIES = [
     ],
   },
   {
-    category: "primitive",
+    category: "basic",
     key: "heart",
     label: "Heart",
     desc: "A smooth, sculpted 3D heart with soft rounded curves",
@@ -450,11 +451,11 @@ export const ENTRIES = [
     ],
   },
   {
-    category: "primitive",
-    key: "flyswarm",
-    label: "Fly Swarm",
-    desc: "A group of flies zooming within a bounded sphere",
-    fn: createFlySwarm,
+    category: "composite",
+    key: "gnats",
+    label: "Gnats",
+    desc: "A group of gnats zooming within a bounded sphere",
+    fn: createGnats,
     opts: [
       {
         key: "count",
@@ -502,7 +503,7 @@ export const ENTRIES = [
     ],
   },
   {
-    category: "component",
+    category: "composite",
     key: "grass",
     label: "Grass",
     desc: "A field of grass blades (component)",
@@ -554,7 +555,7 @@ export const ENTRIES = [
     ],
   },
   {
-    category: "component",
+    category: "composite",
     key: "railsegment",
     label: "Rail Segment",
     desc: "A train-track chunk (rails + ties)",
@@ -617,7 +618,7 @@ export const ENTRIES = [
     ],
   },
   {
-    category: "component",
+    category: "composite",
     key: "train",
     label: "Train",
     desc: "A steam locomotive composite (no physics)",
@@ -650,7 +651,7 @@ export const ENTRIES = [
     ],
   },
   {
-    category: "component",
+    category: "composite",
     key: "cowcatcher",
     label: "Cowcatcher",
     desc: "A fan of skinny triangular wedges (component)",
@@ -717,7 +718,7 @@ export const ENTRIES = [
     ],
   },
   {
-    category: "component",
+    category: "composite",
     key: "dynamite",
     label: "Dynamite",
     desc: "A bundle of three long red dynamite sticks (component)",
@@ -751,7 +752,7 @@ export const ENTRIES = [
     ],
   },
   {
-    category: "component",
+    category: "composite",
     key: "bunny",
     label: "Bunny",
     desc: "A cute bunny composed of spheres and ellipsoids (component)",
@@ -773,7 +774,7 @@ export const ENTRIES = [
     ],
   },
   {
-    category: "component",
+    category: "composite",
     key: "sign",
     label: "Sign",
     desc: "A cylindrical post with a rectangular signboard (component)",
@@ -839,7 +840,7 @@ export const ENTRIES = [
     ],
   },
   {
-    category: "component",
+    category: "composite",
     key: "gatlinggun",
     label: "Gatling Gun",
     desc: "5-barrel rotating gun with start/stop controls",
@@ -903,7 +904,7 @@ export const ENTRIES = [
     ],
   },
   {
-    category: "component",
+    category: "composite",
     key: "lawnmower",
     label: "Lawnmower",
     desc: "A manual push lawnmower with reel blades and a handle",
@@ -990,7 +991,7 @@ export const ENTRIES = [
     ],
   },
   {
-    category: "component",
+    category: "composite",
     key: "butterfly",
     label: "Butterfly",
     desc: "A flapping butterfly: tiny cylinder body + two triangle wings",
@@ -1016,7 +1017,7 @@ export const ENTRIES = [
     ],
   },
   {
-    category: "component",
+    category: "composite",
     key: "dragonfly",
     label: "Dragonfly",
     desc: "A fast-flapping dragonfly: slender body + two sets of rectangular wings",
@@ -1051,7 +1052,7 @@ export const ENTRIES = [
     ],
   },
   {
-    category: "component",
+    category: "composite",
     key: "flies",
     label: "Flies",
     desc: "A swarm of tiny midges that dart from spot to spot",
@@ -1066,7 +1067,7 @@ export const ENTRIES = [
         max: 100,
         step: 1,
       },
-      { key: "color", label: "Color", type: "color", default: "0x1a1a1a" },
+      { key: "color", label: "Color", type: "color", default: "0xffffff" },
       {
         key: "spread",
         label: "Spread",
@@ -1085,7 +1086,7 @@ export const ENTRIES = [
     ],
   },
   {
-    category: "component",
+    category: "composite",
     key: "dandelion",
     label: "Dandelion",
     desc: "A dandelion (2-5 by default, seed puff or yellow flower phase)",
@@ -1107,16 +1108,16 @@ export const ENTRIES = [
         key: "stemHeight",
         label: "Stem Height",
         type: "number",
-        default: 1.4,
+        default: 3,
         min: 0.5,
-        max: 3,
+        max: 5,
         step: 0.05,
       },
       {
         key: "headRadius",
         label: "Head Radius",
         type: "number",
-        default: 0.4,
+        default: 0.25,
         min: 0.1,
         max: 1.5,
         step: 0.05,
@@ -1124,6 +1125,39 @@ export const ENTRIES = [
       { key: "stemColor", label: "Stem Color", type: "color", default: "0x3f7d3a" },
       { key: "puffColor", label: "Puff Color", type: "color", default: "0xf4f3ee" },
       { key: "flowerColor", label: "Flower Color", type: "color", default: "0xffd730" },
+      {
+        key: "position",
+        label: "Position [x,y,z]",
+        type: "vector",
+        default: [0, 0, 0],
+      },
+      {
+        key: "rotation",
+        label: "Rotation [x,y,z]",
+        type: "vector",
+        default: [0, 0, 0],
+      },
+    ],
+  },
+  {
+    category: "composite",
+    key: "bumblebee",
+    label: "Bumblebee",
+    desc: "A bumblebee: black, yellow, black spheres in a row",
+    fn: createBumblebee,
+    opts: [
+      {
+        key: "radius",
+        label: "Radius",
+        type: "number",
+        default: 0.15,
+        min: 0.05,
+        max: 2,
+        step: 0.05,
+      },
+      { key: "yellow", label: "Yellow", type: "color", default: "0xffcc33" },
+      { key: "black", label: "Black", type: "color", default: "0x1a1a1a" },
+      { key: "wingColor", label: "Wing Color", type: "color", default: "0xffffff" },
       {
         key: "position",
         label: "Position [x,y,z]",

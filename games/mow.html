@@ -37,7 +37,7 @@
         Zen Mow
       </h1>
       <p style="margin: 4px 0 0; font-size: 0.85rem; opacity: 0.5">
-        W/A/S/D or arrow keys to move.
+        W/A/S/D or arrow keys to move. Hold C for a first-person view.
       </p>
       <label
         id="creatures-toggle"
@@ -54,6 +54,94 @@
         <input type="checkbox" id="creatures-checkbox" checked />
         Creatures
       </label>
+      <div
+        id="sun-control"
+        style="
+          margin-top: 12px;
+          font-size: 0.9rem;
+          pointer-events: auto;
+        "
+      >
+        <div style="opacity: 0.8; margin-bottom: 4px">
+          Sun <span id="sun-clock">12:00</span>
+        </div>
+        <input
+          type="range"
+          id="sun-slider"
+          min="0"
+          max="24"
+          step="0.05"
+          value="12"
+          style="width: 180px; vertical-align: middle"
+        />
+        <span id="sun-phase" style="opacity: 0.6; margin-left: 6px">noon</span>
+      </div>
+      <div
+        id="fov-control"
+        style="
+          display: none;
+          margin-top: 12px;
+          font-size: 0.9rem;
+          pointer-events: auto;
+        "
+      >
+        <div style="opacity: 0.8; margin-bottom: 4px">
+          Field of View <span id="fov-value" style="font-weight: bold">90°</span>
+        </div>
+        <input
+          type="range"
+          id="fov-slider"
+          min="30"
+          max="100"
+          step="1"
+          value="90"
+          style="width: 180px; vertical-align: middle"
+        />
+      </div>
+      <div
+        id="gaze-control"
+        style="
+          display: none;
+          margin-top: 12px;
+          font-size: 0.9rem;
+          pointer-events: auto;
+        "
+      >
+        <div style="opacity: 0.8; margin-bottom: 4px">
+          Gaze <span id="gaze-value">-30°</span>
+        </div>
+        <input
+          type="range"
+          id="gaze-slider"
+          min="-30"
+          max="30"
+          step="1"
+          value="-30"
+          style="width: 180px; vertical-align: middle"
+        />
+      </div>
+      <div
+        id="offset-control"
+        style="
+          display: none;
+          margin-top: 12px;
+          font-size: 0.9rem;
+          pointer-events: auto;
+        "
+      >
+        <div style="opacity: 0.8; margin-bottom: 4px">
+          Forward Offset <span id="offset-value">-0.45</span>
+        </div>
+        <input
+          type="range"
+          id="offset-slider"
+          min="-1"
+          max="2"
+          step="0.05"
+          value="-0.45"
+          style="width: 180px; vertical-align: middle"
+        />
+      </div>
     </div>
 
     <script type="module">
@@ -62,12 +150,14 @@
         createGround,
         createBox,
         createSphere,
-        createFlySwarm,
+        createGnats,
       } from "engine/primitives.js";
       import {
         createLawnmower,
         createButterfly,
         createDragonfly,
+        createDandelion,
+        createBumblebee,
         createFPSCounter,
         createGCStats,
         createEntityStats,
@@ -94,6 +184,101 @@
           sun.shadow.camera.updateProjectionMatrix();
         }
       }
+
+      // --- Realistic sun position + lighting driven by a time-of-day slider ---
+      // The slider runs 0-24 hours. The sun rises in the east, tops out at
+      // solar noon, and sets in the west along an arc; sky color, light color,
+      // and intensity follow the time so sunsets/sunrises feel warm and dim.
+      const slider = document.getElementById("sun-slider");
+      const clockEl = document.getElementById("sun-clock");
+      const phaseEl = document.getElementById("sun-phase");
+      const ambient = sim.scene.children.find((c) => c.isAmbientLight);
+      const sun = sim.scene.children.find((c) => c.isDirectionalLight);
+
+      const SUN_RISE = 6, SUN_SET = 18, TILT = 0.4;
+      function updateSun(hour) {
+        const hh = String(Math.floor(hour)).padStart(2, "0");
+        const mm = String(Math.round((hour % 1) * 60)).padStart(2, "0");
+        clockEl.textContent = `${hh}:${mm}`;
+        const phase =
+          hour < SUN_RISE || hour >= SUN_SET
+            ? "night"
+            : hour < 9
+              ? "morning"
+              : hour > 15
+                ? "evening"
+                : "noon";
+        phaseEl.textContent = phase;
+
+        // Fraction through daylight 0..1 (below 0 or >1 means it's dark).
+        const t = (hour - SUN_RISE) / (SUN_SET - SUN_RISE);
+        if (t < 0 || t > 1) {
+          // Night: sun below the horizon, dim cool light.
+          sun.position.set(0, -30, 0);
+          sun.intensity = 0.05;
+          sun.color.setHex(0x334466);
+          ambient.intensity = 0.12;
+          sim.renderer.setClearColor(0x0b1026);
+          return;
+        }
+        // Sun arc across the sky: east (t=0) -> overhead-ish (t=0.5) -> west (t=1).
+        const azimuth = Math.PI * (1 - t); // 0 at rise (east), PI at set (west)
+        const elev = Math.sin(t * Math.PI); // 0 at horizon, 1 at noon
+        const dist = 60;
+        sun.position.set(
+          Math.cos(azimuth) * Math.cos(Math.asin(elev * TILT)) * dist,
+          elev * dist,
+          Math.sin(azimuth) * Math.cos(Math.asin(elev * TILT)) * dist,
+        );
+        // Warm toward sunrise/sunset, whiter at noon; brightest mid-day.
+        const warm = Math.pow(elev, 1.6);
+        sun.intensity = 0.25 + elev * 1.0;
+        sun.color.setRGB(1, 0.55 + 0.45 * warm, 0.4 + 0.6 * warm);
+        ambient.intensity = 0.2 + 0.5 * elev;
+        // Sky color: vivid sky blue when the sun is high, warming to a soft
+        // peach as it sinks toward the horizon.
+        const sky = new THREE.Color();
+        const noonSky = new THREE.Color(0.42, 0.72, 0.95);
+        const horizonSky = new THREE.Color(1.0, 0.85, 0.65);
+        sky.copy(horizonSky).lerp(noonSky, warm);
+        sim.renderer.setClearColor(sky);
+      }
+      slider.addEventListener("input", () => updateSun(parseFloat(slider.value)));
+      updateSun(parseFloat(slider.value));
+
+      // --- Field-of-view slider: adjust the camera zoom live ---
+      const fovSlider = document.getElementById("fov-slider");
+      const fovValueEl = document.getElementById("fov-value");
+      const applyFov = () => {
+        sim.camera.fov = parseFloat(fovSlider.value);
+        sim.camera.updateProjectionMatrix();
+        fovValueEl.textContent = `${Math.round(sim.camera.fov)}°`;
+      };
+      fovSlider.addEventListener("input", applyFov);
+      applyFov();
+
+      // --- Gaze slider: first-person camera pitch (look down / look up) ---
+      const gazeSlider = document.getElementById("gaze-slider");
+      const gazeValueEl = document.getElementById("gaze-value");
+      let gazePitch = -30 * (Math.PI / 180); // default slightly down at the reel
+      const applyGaze = () => {
+        gazePitch = parseFloat(gazeSlider.value) * (Math.PI / 180);
+        gazeValueEl.textContent = `${Math.round(gazeSlider.value)}°`;
+      };
+      gazeSlider.addEventListener("input", applyGaze);
+      applyGaze();
+
+      // --- Forward-offset slider: where on the local +Z (handle/behind) axis
+      // the first-person camera floats, vs the front of the mower ---
+      const offsetSlider = document.getElementById("offset-slider");
+      const offsetValueEl = document.getElementById("offset-value");
+      let fwdOffset = -0.45;
+      const applyOffset = () => {
+        fwdOffset = parseFloat(offsetSlider.value);
+        offsetValueEl.textContent = fwdOffset.toFixed(2);
+      };
+      offsetSlider.addEventListener("input", applyOffset);
+      applyOffset();
 
       function setup(sim) {
         // Ground plane.
@@ -246,14 +431,16 @@
           return false;
         };
 
-        // Place a push lawnmower on the lawn.
+        // Place a push lawnmower on the lawn. Keep the handle geometry params
+        // here so the first-person camera can mount itself on the handle.
+        const MOWER = { wheelRadius: 0.4, handleAngle: 0.75, handleLength: 1.7 };
         const mower = createLawnmower(sim, {
-          wheelRadius: 0.4,
+          wheelRadius: MOWER.wheelRadius,
           reelWidth: 1.25,
           bladeThickness: 0.01,
           blades: 4,
-          handleAngle: 0.75,
-          handleLength: 1.7,
+          handleAngle: MOWER.handleAngle,
+          handleLength: MOWER.handleLength,
           bodyColor: 0x2a3d56,
           bladeColor: 0x014101,
           wheelColor: 0x1a1a1a,
@@ -272,6 +459,11 @@
         const _right = new THREE.Vector3();
         const _fx = new THREE.Vector3();        // cut-footprint AABB axes
         const _fz = new THREE.Vector3();
+        const _fpMount = new THREE.Vector3();   // first-person camera mount (local)
+        const _fpWorld = new THREE.Vector3();   // first-person world-space temp
+        const _fpQuat = new THREE.Quaternion(); // first-person camera orientation
+        const _fpPitch = new THREE.Quaternion(); // downward-tilt offset
+        const _fpAxis = new THREE.Vector3(1, 0, 0); // mower-local X for that tilt
         const turnDir = new THREE.Vector3(0, 1, 0);
         let mowerMoving = false;
         const keyF = () =>
@@ -542,14 +734,59 @@
           }
           if (grassDirty) grassMesh.instanceMatrix.needsUpdate = true;
 
-          // Orbit camera.
-          const sp = Math.sin(phi);
-          sim.camera.position.set(
-            target.x + radius * sp * Math.sin(theta),
-            target.y + radius * Math.cos(phi),
-            target.z + radius * sp * Math.cos(theta),
-          );
-          sim.camera.lookAt(target);
+          // Cut dandelions under the reel and regrow them after a random delay.
+          invMower.copy(mower.mesh.matrixWorld).invert();
+          for (const d of dandelions) {
+            if (d.grown) {
+              localPos.set(d.x, 0, d.z).applyMatrix4(invMower);
+              if (Math.abs(localPos.x) < CUT_HALF_W &&
+                  Math.abs(localPos.z) < CUT_HALF_D) {
+                d.ent.mesh.visible = false; // mow it down
+                d.grown = false;
+                d.regrowT = 3 + Math.random() * 7; // random 3-10s before return
+              }
+            } else if (!d.flower) {
+              // Seed-phase puffs regrow; flowers stay mowed once cut.
+              d.regrowT -= dt;
+              if (d.regrowT <= 0) {
+                d.ent.mesh.visible = true;
+                d.grown = true;
+              }
+            }
+          }
+
+          // Camera: hold C to ride the mower's handle (facing the mower's forward
+          // vector, just back from the reel), otherwise drift the orbit view.
+          if (keys.has("KeyC")) {
+            // Hand-grip point from the same geometry as the mower itself.
+            const gripY = MOWER.wheelRadius +
+              MOWER.handleLength * Math.cos(MOWER.handleAngle);
+            const gripZ = MOWER.handleLength * Math.sin(MOWER.handleAngle);
+            // Mount above the hand grip (1.5x the handle tube length up); the
+            // forward-offset slider pushes it back (behind the mower) or
+            // forward along the mower's local +Z axis.
+            _fpMount.set(0,
+              MOWER.wheelRadius + (gripY - MOWER.wheelRadius) * 1.5,
+              gripZ * 1.5 + fwdOffset);
+            mower.mesh.updateWorldMatrix(true, false);
+            _fpWorld.copy(mower.mesh.localToWorld(_fpMount));
+            sim.camera.position.copy(_fpWorld);
+            // The mower travels along local -Z (the handle leans back toward
+            // +Z), so copying its orientation aims the camera straight along
+            // the mower's forward vector. The gaze slider pitches the view
+            // down or up from level.
+            _fpQuat.copy(mower.mesh.quaternion);
+            _fpQuat.multiply(_fpPitch.setFromAxisAngle(_fpAxis.set(1, 0, 0), gazePitch));
+            sim.camera.quaternion.copy(_fpQuat);
+          } else {
+            const sp = Math.sin(phi);
+            sim.camera.position.set(
+              target.x + radius * sp * Math.sin(theta),
+              target.y + radius * Math.cos(phi),
+              target.z + radius * sp * Math.cos(theta),
+            );
+            sim.camera.lookAt(target);
+          }
         });
 
         // --- Songbirds: little flying bugs that drift around the lawn ---
@@ -670,7 +907,7 @@
         // (createButterfly) and animate the MOVEMENT here in the game: each
         // butterfly traces a gentle looping orbit around a slowly drifting
         // focus, and darts away when the mower rolls close.
-        const BFLY_COUNT = isMobile ? 5 : 12;
+        const BFLY_COUNT = isMobile ? 3 : 6;
         const pastel = new THREE.Color();
         const butterflies = [];
         for (let i = 0; i < BFLY_COUNT; i++) {
@@ -878,14 +1115,14 @@
           }
         });
 
-        // --- Fly swarms: two clouds of tiny flies that drift slowly around ---
-        // Each swarm is an instanced cloud of flies buzzing inside a small
+        // --- Gnats: two clouds of tiny flies that drift slowly around ---
+        // Each cloud is an instanced swarm buzzing inside a small
         // bounding sphere; we drag the whole mesh lazily around the lawn so the
         // spheres wander randomly from spot to spot rather than staying put.
         const SWARM_COUNT = 2;
         const flySwarms = [];
         for (let i = 0; i < SWARM_COUNT; i++) {
-          const ent = createFlySwarm(sim, {
+          const ent = createGnats(sim, {
             count: 20 + Math.floor(Math.random() * 21), // 20-40 flies
             size: 0.01,
             radius: 1.2,
@@ -931,6 +1168,250 @@
           }
         });
 
+        // --- Bumblebees: feed on the flowers, then fly along arcs ---
+        // Each bee oscillates between FEEDING (hovering near-stationary among
+        // the blooms at ~75% of full grass height) and FLYING. To fly it picks
+        // a new target location, then follows a smooth arc that rises above
+        // the grass, crosses to the target, and curves back down to feeding
+        // height there — like a bee shuttling between flowers.
+        const FEED_H = 0.7; // about 75% of full grown grass height, tucked in the blades
+        const BEE_SPEED = 3; // constant transport speed (world units / sec)
+        const BEE_COUNT = isMobile ? 3 : 6;
+        const bees = [];
+        for (let i = 0; i < BEE_COUNT; i++) {
+          const x = (Math.random() * 2 - 1) * bx * 0.8;
+          const z = (Math.random() * 2 - 1) * bz * 0.8;
+          const ent = createBumblebee(sim, {
+            radius: 0.05,
+            wings: false,
+            position: [x, FEED_H, z],
+          });
+          bees.push({
+            group: ent.mesh,
+            ent,
+            x,
+            z,
+            h: FEED_H,
+            yaw: Math.random() * Math.PI * 2,
+            pitch: 0,
+            roll: 0,
+            // Feed/fly state machine.
+            state: "feed",
+            feedT: (() => { const r = Math.random(); return r < 0.33 ? 0.5 : r < 0.66 ? 1 : 3; })(),
+            feedPhase: Math.random() * Math.PI * 2,
+            sx: x, sz: z, sh: FEED_H, // flight start
+            tx: 0, tz: 0, th: FEED_H, // flight target
+            apex: 3, // apex height of the arc
+            upT: 0.5, downT: 0.5,
+            flyT: 0,
+            flyDur: 1,
+          });
+        }
+
+        sim.addEntity(null, null, (dt) => {
+          for (const b of bees) b.group.visible = creaturesEnabled;
+          if (!creaturesEnabled) return;
+          for (const b of bees) {
+            if (b.state === "feed") {
+              // Stationary at feeding height: gentle bobbing and slow yaw drift.
+              b.feedT -= dt;
+              b.feedPhase += dt * 2;
+              b.h = FEED_H + Math.sin(b.feedPhase) * 0.06;
+              b.yaw += dt * (Math.random() - 0.5) * 0.6;
+              b.pitch = Math.sin(b.feedPhase * 0.5) * 0.08;
+              b.roll = 0;
+              b.ent.setFlapSpeed(140);
+              if (b.feedT <= 0) {
+                // Loiter's over — launch. 10% of the time the bee does an "S"
+                // (snake-like weave to a farther target); otherwise a shallow
+                // nearby seek hop.
+                b.sx = b.x;
+                b.sz = b.z;
+                b.sh = b.h;
+                const isS = Math.random() < 0.1;
+                b.mode = isS ? "S" : "seek";
+                const r = isS
+                  ? 5 + Math.random() * 10 // S goes farther
+                  : 0.05 + Math.random() * 2.5; // seek stays close
+                const ang = Math.random() * Math.PI * 2;
+                b.tx = Math.max(-bx, Math.min(bx, b.sx + Math.cos(ang) * r));
+                b.tz = Math.max(-bz, Math.min(bz, b.sz + Math.sin(ang) * r));
+                b.th = FEED_H;
+                b.apex = FEED_H + 0.6 + Math.random() * 0.5; // barely above grass
+                if (isS) {
+                  // Build the S-curve as an arc-length-sampled polyline so the
+                  // snake moves at the same constant speed along its weave.
+                  const dist = Math.max(0.01, Math.hypot(b.tx - b.sx, b.tz - b.sz));
+                  const ux = (b.tx - b.sx) / dist, uz = (b.tz - b.sz) / dist;
+                  const pxx = -uz, pzz = ux; // perpendicular (lateral) axis
+                  const A = 0.9 + Math.random() * 1.3; // lateral amplitude
+                  const waves = 2 + Math.random() * 2; // 2-4 full S-waves
+                  const N = 120;
+                  const pts = [];
+                  const cum = [0];
+                  for (let i = 0; i <= N; i++) {
+                    const t = i / N;
+                    const fwd = dist * t;
+                    // Taper the lateral sine to zero at both ends so the S
+                    // starts exactly at the launch point and ends exactly at
+                    // the target — no position snap when it settles into feed.
+                    const tap = Math.sin(t * Math.PI);
+                    const lat = A * Math.sin(t * waves * Math.PI * 2) * tap;
+                    const x = b.sx + ux * fwd + pxx * lat;
+                    const z = b.sz + uz * fwd + pzz * lat;
+                    pts.push({ x, z });
+                    if (i > 0) {
+                      const dx = pts[i].x - pts[i - 1].x;
+                      const dz = pts[i].z - pts[i - 1].z;
+                      cum.push(cum[i - 1] + Math.hypot(dx, dz));
+                    }
+                  }
+                  b.spath = { pts, cum, len: cum[N] };
+                  b.waves = waves;
+                  b.flyDur = b.spath.len / BEE_SPEED;
+                } else {
+                  const dist = Math.max(0.01, Math.hypot(b.tx - b.sx, b.tz - b.sz));
+                  // Constant flying speed regardless of distance OR apex height:
+                  // time each climb/descent leg from its 3D path length (half the
+                  // horizontal distance plus the vertical rise), so a short hop
+                  // with a big vertical rise isn't faster than a long one.
+                  const vert = Math.max(0, b.apex - b.sh);
+                  const legLen = Math.hypot(dist / 2, vert);
+                  const legT = legLen / BEE_SPEED;
+                  b.upT = legT;
+                  b.downT = legT;
+                  b.flyDur = b.upT + b.downT;
+                }
+                b.flyT = 0;
+                b.loopCx = (b.sx + b.tx) / 2;
+                b.loopCz = (b.sz + b.tz) / 2;
+                b.state = "fly";
+              }
+            } else {
+              // Seeking has two phases along the total flight time, each with
+              // its own absolute duration so the speed stays constant:
+              //   flyT in [0, upT)  ARC UP   : climb to the apex, easing
+              //                                horizontally to the midpoint.
+              //   flyT in [upT,1)   ARC DOWN : descend from the apex down to
+              //                                the target at the same speed.
+              b.flyT += dt;
+              b.ent.setFlapSpeed(140);
+              const t = Math.min(1, b.flyT / b.flyDur);
+              if (b.mode === "S") {
+                // S-mode: snake along the precomputed arc-length path at a
+                // constant speed. Find the point at arc-length fraction t.
+                const cum = b.spath.cum;
+                const target = t * b.spath.len;
+                let lo = 0, hi = cum.length - 1;
+                while (lo < hi) {
+                  const m = (lo + hi) >> 1;
+                  if (cum[m] < target) lo = m + 1;
+                  else hi = m;
+                }
+                const i = lo;
+                const seg0 = b.spath.pts[i - 1] || b.spath.pts[0];
+                const seg1 = b.spath.pts[i];
+                const span = cum[i] - cum[i - 1] || 1;
+                const f = (target - (cum[i - 1] || 0)) / span;
+                const px_ = seg0.x + (seg1.x - seg0.x) * f;
+                const pz_ = seg0.z + (seg1.z - seg0.z) * f;
+                // Face along the actual direction of travel (velocity delta),
+                // which flows smoothly — the polyline slope awkwardly snaps at
+                // the S's corners and makes the bee look like it whips around.
+                const dx = px_ - (b.px === undefined ? b.sx : b.px);
+                const dz = pz_ - (b.pz === undefined ? b.sz : b.pz);
+                b.px = px_;
+                b.pz = pz_;
+                if (dx || dz) b.yaw = Math.atan2(dx, dz) - Math.PI / 2;
+                b.x = px_;
+                b.z = pz_;
+                // Rise gently over the first half, settle on the second half.
+                b.h = b.sh + (b.apex - b.sh) * Math.sin(t * Math.PI);
+                b.pitch = Math.cos(t * Math.PI) * 0.3;
+                b.roll = Math.sin(t * b.waves * Math.PI * 2) * 0.4;
+                if (t >= 1) {
+                  // Already at the target (the S is tapered to end there), so
+                  // settle into feed without any position snap.
+                  b.spath = null;
+                  const roll = Math.random();
+                  b.feedT = roll < 0.33 ? 0.5 : roll < 0.66 ? 1 : 3;
+                  b.state = "feed";
+                  continue;
+                }
+                b.group.position.set(b.x, b.h, b.z);
+                b.group.rotation.set(b.pitch, b.yaw, b.roll, "YXZ");
+                continue;
+              }
+              if (b.flyT < b.upT) {
+                // Climb phase, 0..1 through it.
+                const lt = Math.min(1, b.flyT / b.upT);
+                const e = lt * lt * (3 - 2 * lt); // smoothstep
+                const bump = Math.sin(lt * Math.PI / 2); // 0 -> 1 (still rising)
+                b.x = b.sx + (b.loopCx - b.sx) * e;
+                b.z = b.sz + (b.loopCz - b.sz) * e;
+                b.h = b.sh + (b.apex - b.sh) * bump;
+                const dx = b.loopCx - b.sx;
+                const dz = b.loopCz - b.sz;
+                if (dx || dz) b.yaw = Math.atan2(dx, dz) - Math.PI / 2;
+                b.pitch = 0.35; // climbing
+                b.roll = Math.sin(b.flyT * 6) * 0.1;
+              } else {
+                // Descend phase, 0..1 through it.
+                const lt = Math.min(1, (b.flyT - b.upT) / b.downT);
+                const e = lt * lt * (3 - 2 * lt); // smoothstep
+                const bump = Math.cos(lt * Math.PI / 2); // 1 -> 0 (descending)
+                b.x = b.loopCx + (b.tx - b.loopCx) * e;
+                b.z = b.loopCz + (b.tz - b.loopCz) * e;
+                b.h = b.sh + (b.apex - b.sh) * bump;
+                const dx = b.tx - b.loopCx;
+                const dz = b.tz - b.loopCz;
+                if (dx || dz) b.yaw = Math.atan2(dx, dz) - Math.PI / 2;
+                b.pitch = -0.35; // diving
+                b.roll = Math.sin(b.flyT * 6) * 0.1;
+              }
+              if (t >= 1) {
+                // Arrived at the target: settle briefly, then seek again.
+                b.x = b.tx;
+                b.z = b.tz;
+                b.h = FEED_H;
+                // Loiter a random duration: ~1/3 chance each of 0.5s, 1s, 3s.
+                const roll = Math.random();
+                b.feedT = roll < 0.33 ? 0.5 : roll < 0.66 ? 1 : 3;
+                b.state = "feed";
+                continue;
+              }
+            }
+            b.group.position.set(b.x, b.h, b.z);
+            b.group.rotation.set(b.pitch, b.yaw, b.roll, "YXZ");
+          }
+        });
+
+        // --- Dandelions: ~20 decorative plants scattered across the lawn. ---
+        // A random mix of flower and seed phases; ~75% grow as a bunch (a
+        // clump of 2-5 fanned stems), the rest are single plants. They're
+        // mowed down like the grass and regrow after a random delay.
+        const DANDELION_COUNT = isMobile ? 12 : 20;
+        const dandelions = [];
+        for (let i = 0; i < DANDELION_COUNT; i++) {
+          // Pick a spot on the lawn, keeping the mower's starting patch clear.
+          let x, z;
+          do {
+            x = (Math.random() * 2 - 1) * bx;
+            z = (Math.random() * 2 - 1) * bz;
+          } while (Math.hypot(x, z) < 6);
+          const flower = Math.random() < 0.5; // half seed puff, half yellow bloom
+          const ent = createDandelion(sim, {
+            flower,
+            bunch: Math.random() < 0.75, // 75% bunches, 25% single
+            stemHeight: 1.1,
+            stemRadius: 0.02,
+            headRadius: 0.14,
+            position: [x, 0, z],
+            rotation: [0, Math.random() * Math.PI * 2, 0],
+          });
+          dandelions.push({ ent, x, z, flower, grown: true, regrowT: 0 });
+        }
+
         // Creatures checkbox: toggle all bugs (midges, butterflies, dragonflies, swarms).
         const creaturesCheckbox = document.getElementById("creatures-checkbox");
         const applyCreatures = () => {
@@ -939,6 +1420,7 @@
           for (const b of butterflies) b.group.visible = creaturesEnabled;
           for (const d of dragonflies) d.group.visible = creaturesEnabled;
           for (const s of flySwarms) s.mesh.visible = creaturesEnabled;
+          for (const b of bees) b.group.visible = creaturesEnabled;
         };
         creaturesCheckbox.addEventListener("change", applyCreatures);
 

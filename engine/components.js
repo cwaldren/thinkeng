@@ -1351,11 +1351,12 @@ export function createDragonfly(sim, opts = {}) {
 
 // A swarm of small flying midges (flies/gnats) that hover in place and dart
 // from spot to spot across the lawn. Rendered as one instanced mesh of tiny
-// bodies; they scatter as a group when frightened.
+// two-segment bodies (thorax + head) that face their direction of flight; they
+// scatter as a group when frightened.
 export function createFlies(sim, opts = {}) {
   const {
     count = 20,
-    color = 0x1a1a1a,
+    color = 0xffffff,
     size = 0.035,
     spread = 30,
     hoverHeight = [0.5, 1.3],
@@ -1365,14 +1366,24 @@ export function createFlies(sim, opts = {}) {
   } = opts;
 
   const geo = new THREE.SphereGeometry(size, 6, 4);
+  const headGeo = new THREE.SphereGeometry(size * 0.75, 6, 4);
   const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.6 });
   const instancedMesh = new THREE.InstancedMesh(geo, mat, count);
+  // Head: a second instanced body sphere in front of the thorax along the fly's
+  // facing direction, so each fly reads as a tiny two-segment body.
+  const headMesh = new THREE.InstancedMesh(headGeo, mat, count);
+  const HEAD_OFF = size * 0.8; // center-to-center gap (spheres overlap a touch)
+  instancedMesh.add(headMesh);
   instancedMesh.position.set(position[0], position[1], position[2]);
   instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  headMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   instancedMesh.frustumCulled = false;
+  headMesh.frustumCulled = false;
   instancedMesh.castShadow = false; // tiny decorative insects - no shadow cost
+  headMesh.castShadow = false;
 
   const dummy = new THREE.Object3D();
+  const headDummy = new THREE.Object3D();
   const half = spread / 2;
   const flies = [];
   for (let i = 0; i < count; i++) {
@@ -1423,13 +1434,28 @@ export function createFlies(sim, opts = {}) {
         }
       }
       const bob = Math.sin(f.phase) * 0.05;
+      // Face the dart direction while flying, otherwise drift with the phase.
+      const heading = f.moving && (f.tx !== f.x || f.tz !== f.z)
+        ? Math.atan2(f.tx - f.x, f.tz - f.z)
+        : f.phase;
       dummy.position.set(f.x, f.h + bob, f.z);
-      dummy.rotation.y = f.phase;
+      dummy.rotation.y = heading;
       dummy.scale.set(1, 1, 1);
       dummy.updateMatrix();
       instancedMesh.setMatrixAt(i, dummy.matrix);
+
+      // Head follows the thorax but leads it along the heading (local +Z after
+      // the yaw), so the fly always faces nose-first through the swarm.
+      headDummy.position.set(
+        f.x + Math.sin(heading) * HEAD_OFF,
+        f.h + bob,
+        f.z + Math.cos(heading) * HEAD_OFF,
+      );
+      headDummy.updateMatrix();
+      headMesh.setMatrixAt(i, headDummy.matrix);
     }
     instancedMesh.instanceMatrix.needsUpdate = true;
+    headMesh.instanceMatrix.needsUpdate = true;
   };
 
   const entity = sim.addEntity(instancedMesh, null, updateFn, "flies");
@@ -1460,11 +1486,12 @@ export function createFlies(sim, opts = {}) {
 // primitives, plus plain cone meshes for the bracts, all under one group.
 export function createDandelion(sim, opts = {}) {
   const {
-    stemHeight = 1.4,
+    stemHeight = 3,
     stemRadius = 0.035,
     stemColor = 0x3f7d3a,
-    headRadius = 0.4,
+    headRadius = 0.25,
     puffColor = 0xf4f3ee,
+    puffOpacity = 0.6,
     flowerColor = 0xffd730,
     flower = false,
     bunch = true,
@@ -1479,8 +1506,6 @@ export function createDandelion(sim, opts = {}) {
   group.position.set(position[0], position[1], position[2]);
   group.rotation.set(rotation[0], rotation[1], rotation[2]);
   const children = [];
-
-  const up = new THREE.Vector3(0, 1, 0);
 
   // Grows a single plant from the origin. Each plant lives in its own pivot
   // group anchored at the ground, so tilting the pivot leans the whole stem
@@ -1517,14 +1542,18 @@ export function createDandelion(sim, opts = {}) {
     children.push(hub);
 
     if (isFlower) {
-      // Flattened yellow bloom perched above the receptacle.
-      const bloom = createSphere(sim, {
-        radius: r,
+      // Flattened yellow bloom perched above the receptacle: a squat cylinder
+      // (small height, full radius) rather than a sphere so it reads as a flat
+      // flower head.
+      const bloom = createCylinder(sim, {
+        radiusTop: r,
+        radiusBottom: r,
+        height: r * 0.3,
         color: flowerColor,
         mass: 0,
         position: [0, h + r * 0.15, 0],
+        radialSegments: 16,
       });
-      bloom.mesh.scale.set(1, 0.75, 1);
       el.add(bloom.mesh);
       children.push(bloom);
 
@@ -1533,41 +1562,18 @@ export function createDandelion(sim, opts = {}) {
         radius: r * 0.22,
         color: 0xc88e1a,
         mass: 0,
-        position: [0, h + r * 0.62, 0],
+        position: [0, h + r * 0.42, 0],
       });
       disc.mesh.scale.set(1, 0.5, 1);
       el.add(disc.mesh);
       children.push(disc);
-
-      // Green bracts ringing the bloom base, leaning outward.
-      const bractCount = 7;
-      const bractR = r * 0.17;
-      const bractH = r * 0.55;
-      const bractMat = new THREE.MeshStandardMaterial({ color: stemColor });
-      const bractGeo = new THREE.ConeGeometry(bractR, bractH, 6);
-      for (let i = 0; i < bractCount; i++) {
-        const a = (i / bractCount) * Math.PI * 2;
-        const tilt = new THREE.Vector3(
-          Math.cos(a) * 0.5,
-          0.9,
-          Math.sin(a) * 0.5,
-        ).normalize();
-        const bract = new THREE.Mesh(bractGeo, bractMat);
-        bract.position.set(
-          Math.cos(a) * r * 0.22,
-          h + bractH * 0.3,
-          Math.sin(a) * r * 0.22,
-        );
-        bract.quaternion.setFromUnitVectors(up, tilt);
-        bract.castShadow = true;
-        bract.receiveShadow = true;
-        el.add(bract);
-      }
     } else {
       // The white puffball perched just above the receptacle.
       const puff = createSphere(sim, {
         radius: r,
         color: puffColor,
+        opacity: puffOpacity,
+        transparent: puffOpacity < 1,
         mass: 0,
         position: [0, h + r * 0.15, 0],
       });
@@ -1578,11 +1584,16 @@ export function createDandelion(sim, opts = {}) {
 
   if (isBunch) {
     const count = 2 + Math.floor(Math.random() * 4); // 2-5
+    // Spread the stems' azimuths so adjacent stems stay 30-45 degrees apart,
+    // preventing their heads from overlapping while keeping them in a tuft.
+    const baseAz = Math.random() * Math.PI * 2;
+    const minGap = THREE.MathUtils.degToRad(30);
+    const maxGap = THREE.MathUtils.degToRad(45);
     for (let i = 0; i < count; i++) {
-      const az = Math.random() * Math.PI * 2;
-      const tilt = 0.06 + Math.random() * 0.22; // lean shared toward a random azimuth
+      const az = baseAz + i * (minGap + Math.random() * (maxGap - minGap));
+      const tilt = 0.06 + Math.random() * 0.22; // lean shared toward that azimuth
       grow({
-        height: 0.85 + Math.random() * 0.3,
+        height: 0.75 + Math.random() * 0.5,
         head: 0.85 + Math.random() * 0.3,
         tiltX: Math.cos(az) * tilt,
         tiltZ: Math.sin(az) * tilt,
@@ -1596,4 +1607,93 @@ export function createDandelion(sim, opts = {}) {
   entity.children = children;
   return entity;
 }
+
+  // A bumblebee: three spheres in a row — black, yellow, black — forming the
+  // striped body, like a cartoon bee flying through the air. Two tiny, thin
+  // cylinder wings on the sides flap up and down like a butterfly. Purely
+  // decorative (no physics). Composes createSphere + createCylinder under one
+  // group, with the body centered on the given position.
+  export function createBumblebee(sim, opts = {}) {
+    const {
+      radius = 0.15,
+      yellow = 0xffcc33,
+      black = 0x1a1a1a,
+      wingColor = 0xffffff,
+      wings = true,
+      position = [0, 0, 0],
+      rotation = [0, 0, 0],
+    } = opts;
+
+    const group = new THREE.Group();
+    group.position.set(position[0], position[1], position[2]);
+    group.rotation.set(rotation[0], rotation[1], rotation[2]);
+    const children = [];
+
+    // Three segments side by side along x: black head, yellow middle, black tail.
+    const specs = [
+      { color: black, r: radius, dx: -radius },
+      { color: yellow, r: radius * 1.15, dx: 0 },
+      { color: black, r: radius * 0.85, dx: radius },
+    ];
+    for (const s of specs) {
+      const seg = createSphere(sim, {
+        radius: s.r,
+        color: s.color,
+        mass: 0,
+        position: [s.dx, 0, 0],
+      });
+      group.add(seg.mesh);
+      children.push(seg);
+    }
+
+    // Wings: one wide, flat disc (like a dinner plate) on each side of the
+    // body, each on its own pivot so it can flap about the body's long (X)
+    // axis. Both wings are mirrored and share the same rotation, so they flap
+    // together in sync. Optional (`wings: false`) to save geometry/CPU.
+    const wingsArr = [];
+    if (wings) {
+      const wingHingeR = radius + 0.02;
+      for (const side of [-1, 1]) {
+        const pivot = new THREE.Group();
+        pivot.position.set(0, 0, side * wingHingeR);
+        const wing = createCylinder(sim, {
+          radiusTop: radius,
+          radiusBottom: radius,
+          height: 0.02,
+          color: wingColor,
+          mass: 0,
+          position: [0, 0, 0],
+        });
+        wing.mesh.castShadow = false;
+        pivot.add(wing.mesh);
+        group.add(pivot);
+        wingsArr.push(pivot);
+      }
+    }
+
+    // Animation state: only the wing-flap phase. Movement is owned by the game.
+    const flap = {
+      phase: Math.random() * Math.PI * 2,
+      speed: 140,
+    };
+
+    const updateFn = (dt) => {
+      if (!wingsArr.length) return;
+      // Wings hinge about the body's long (X) axis; opposite signs on the
+      // mirrored wings lift both outer edges up together and down together.
+      flap.phase = (flap.phase + flap.speed * dt) % (Math.PI * 2);
+      const angle = Math.sin(flap.phase) * 0.85;
+      wingsArr[0].rotation.x = angle;
+      wingsArr[1].rotation.x = -angle;
+    };
+
+    const entity = sim.addEntity(group, null, updateFn, "bumblebee");
+    entity.children = children;
+
+    // Set the flap speed (rad/s of wing beat).
+    entity.setFlapSpeed = (v) => {
+      flap.speed = v;
+    };
+    return entity;
+  }
 
