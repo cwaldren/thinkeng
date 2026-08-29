@@ -230,7 +230,7 @@
           const center = window.innerWidth / 2;
           // Map finger X to steering in [-1, 1]; a small dead zone near center.
           const half = center;
-          const raw = (x - center) / half;
+          const raw = (center - x) / half;
           touchTurn = Math.abs(raw) < 0.1 ? 0 : Math.max(-1, Math.min(1, raw));
         };
         canvas.addEventListener("touchmove", (e) => {
@@ -256,7 +256,7 @@
         // Reel cut footprint (matches the grass-cutting test below).
         const CUT_HALF_W = 1.25 / 2; // across the reel (local X)
         const CUT_HALF_D = 0.4 * 0.7; // cutting depth (local Z)
-        const CUT_MIN_GROWTH = 0.15; // only cuts/emits over grass this tall
+        const CUT_MIN_GROWTH = 0.02; // cut grass down to 2% of full height
         const localPos = new THREE.Vector3();
         const invMower = new THREE.Matrix4();
         // Active-growth set: only blades below full height are touched each
