@@ -58,6 +58,20 @@
         enableShadows: true,
       });
 
+      {
+        const sun = sim.scene.children.find((c) => c.isDirectionalLight);
+        if (sun) {
+          const d = 70;
+          sun.shadow.camera.left = -d;
+          sun.shadow.camera.right = d;
+          sun.shadow.camera.top = d;
+          sun.shadow.camera.bottom = -d;
+          sun.shadow.camera.near = 0.5;
+          sun.shadow.camera.far = 200;
+          sun.shadow.camera.updateProjectionMatrix();
+        }
+      }
+
       function setup(sim) {
         // Ground plane.
         const groundGeo = new THREE.PlaneGeometry(200, 200);
@@ -209,7 +223,7 @@
           e.preventDefault();
           const t = e.changedTouches[0];
           touchActive = true;
-          touchF = 1; // touching anywhere pushes the mower forward
+          touchF = -1; // touching anywhere moves the mower forwards (=-Z, same as W)
           updateTouchTurn(t.clientX);
         }, { passive: false });
         const updateTouchTurn = (x) => {
@@ -303,7 +317,7 @@
           const turn = keyTurn() || touchTurn;
           const v = keyF() || touchF;
           const speed = 2;
-          const turnSpeed = v === 0 ? 3.0 : 1.5; // spin on the spot when stopped
+          const turnSpeed = v === 0 ? 4.0 : 2.0; // spin on the spot when stopped
 
           mowerMoving = v !== 0;
           mower.mesh.rotateOnWorldAxis(turnDir, turn * turnSpeed * dt);
