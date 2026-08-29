@@ -69,7 +69,8 @@
         sim.scene.add(ground);
 
         // Grass: single instanced mesh, 3x3 patches tiled across 100x100.
-        const W = 3, D = 3, N = 1000;
+        const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+        const W = 3, D = 3, N = isMobile ? 250 : 1000;
         const COLS = 20, ROWS = 20;
         const total = COLS * ROWS * N;
         const bladeGeo = new THREE.ConeGeometry(0.08, 1.7, 4);
@@ -196,6 +197,48 @@
         const keyTurn = () =>
           keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : keys.has("KeyD") || keys.has("ArrowRight") ? -1 : 0;
 
+        // Touch control (mobile): any touch drives forward; steering is by the
+        // finger's position relative to screen center (drag left to turn left,
+        // right to turn right). Combined with the keyboard inputs below.
+        let touchActive = false;
+        let touchF = 0;
+        let touchTurn = 0;
+        const canvas = sim.renderer.domElement;
+        canvas.style.touchAction = "none";
+        canvas.addEventListener("touchstart", (e) => {
+          e.preventDefault();
+          const t = e.changedTouches[0];
+          touchActive = true;
+          touchF = 1; // touching anywhere pushes the mower forward
+          updateTouchTurn(t.clientX);
+        }, { passive: false });
+        const updateTouchTurn = (x) => {
+          const center = window.innerWidth / 2;
+          // Map finger X to steering in [-1, 1]; a small dead zone near center.
+          const half = center;
+          const raw = (x - center) / half;
+          touchTurn = Math.abs(raw) < 0.1 ? 0 : Math.max(-1, Math.min(1, raw));
+        };
+        canvas.addEventListener("touchmove", (e) => {
+          e.preventDefault();
+          const t = e.changedTouches[0];
+          updateTouchTurn(t.clientX);
+        }, { passive: false });
+        canvas.addEventListener("touchend", (e) => {
+          e.preventDefault();
+          if (e.touches.length === 0) {
+            touchActive = false;
+            touchF = 0;
+            touchTurn = 0;
+          }
+        }, { passive: false });
+        canvas.addEventListener("touchcancel", (e) => {
+          e.preventDefault();
+          touchActive = false;
+          touchF = 0;
+          touchTurn = 0;
+        }, { passive: false });
+
         // Reel cut footprint (matches the grass-cutting test below).
         const CUT_HALF_W = 1.25 / 2; // across the reel (local X)
         const CUT_HALF_D = 0.4 * 0.7; // cutting depth (local Z)
@@ -257,8 +300,8 @@
           // Mower local +Z (handle push direction) mapped to the horizontal
           // world direction; with no roll/pitch this is the forward heading.
           const dir = forward.clone().applyQuaternion(mower.mesh.quaternion);
-          const turn = keyTurn();
-          const v = keyF();
+          const turn = keyTurn() || touchTurn;
+          const v = keyF() || touchF;
           const speed = 2;
           const turnSpeed = v === 0 ? 3.0 : 1.5; // spin on the spot when stopped
 
@@ -340,7 +383,6 @@
         let dragging = false, lastX = 0, lastY = 0;
         const target = new THREE.Vector3(0, 0, 0);
 
-        const canvas = sim.renderer.domElement;
         canvas.addEventListener("mousedown", (e) => {
           dragging = true;
           lastX = e.clientX;
