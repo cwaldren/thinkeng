@@ -30,6 +30,8 @@ import {
   createSign,
   createGatlingGun,
   createLawnmower,
+  createButterfly,
+  createFlies,
 } from "./components.js";
 
 import { createPowerupsPreview } from "./powerups.js";
@@ -926,6 +928,66 @@ export const ENTRIES = [
       {
         key: "rotation",
         label: "Rotation [x,y,z]",
+        type: "vector",
+        default: [0, 0, 0],
+      },
+    ],
+  },
+  {
+    category: "component",
+    key: "butterfly",
+    label: "Butterfly",
+    desc: "A flapping butterfly: tiny cylinder body + two triangle wings",
+    fn: createButterfly,
+    opts: [
+      { key: "bodyColor", label: "Body Color", type: "color", default: "0x222222" },
+      { key: "wingColor", label: "Wing Color", type: "color", default: "0xffb347" },
+      {
+        key: "wingSpan",
+        label: "Wing Span",
+        type: "number",
+        default: 0.3,
+        min: 0.1,
+        max: 2,
+        step: 0.05,
+      },
+      {
+        key: "position",
+        label: "Position [x,y,z]",
+        type: "vector",
+        default: [0, 0.8, 0],
+      },
+    ],
+  },
+  {
+    category: "component",
+    key: "flies",
+    label: "Flies",
+    desc: "A swarm of tiny midges that dart from spot to spot",
+    fn: createFlies,
+    opts: [
+      {
+        key: "count",
+        label: "Count",
+        type: "number",
+        default: 20,
+        min: 1,
+        max: 100,
+        step: 1,
+      },
+      { key: "color", label: "Color", type: "color", default: "0x1a1a1a" },
+      {
+        key: "spread",
+        label: "Spread",
+        type: "number",
+        default: 30,
+        min: 1,
+        max: 100,
+        step: 1,
+      },
+      {
+        key: "position",
+        label: "Position [x,y,z]",
         type: "vector",
         default: [0, 0, 0],
       },

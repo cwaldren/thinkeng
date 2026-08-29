@@ -132,8 +132,8 @@ export class Simulation {
    * @param {Function} [updateFn] - Custom tick logic: (dt, entity, sim) => {}
    * @returns {Object} Entity handle
    */
-  addEntity(mesh, body = null, updateFn = null) {
-    const entity = { mesh, body, updateFn };
+  addEntity(mesh, body = null, updateFn = null, type = null) {
+    const entity = { mesh, body, updateFn, type };
 
     if (mesh) {
       this.scene.add(mesh);

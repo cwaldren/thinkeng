@@ -58,7 +58,7 @@ export function createGrass(sim, opts = {}) {
   instancedMesh.instanceMatrix.needsUpdate = true;
 
   if (sim) {
-    return sim.addEntity(instancedMesh, null, null);
+    return sim.addEntity(instancedMesh, null, null, "grass");
   }
   return instancedMesh;
 }
@@ -167,7 +167,7 @@ export function createRailSegment(sim, opts = {}) {
     );
   }
 
-  const seg = sim.addEntity(group, null, null);
+  const seg = sim.addEntity(group, null, null, "rail");
   seg.length = length;
   seg.radius = radius;
   seg.trackSegment = trackSegment;
@@ -278,7 +278,7 @@ export function createCowcatcher(sim, opts = {}) {
     group.add(mesh);
   }
 
-  return sim.addEntity(group, null, null);
+  return sim.addEntity(group, null, null, "cowcatcher");
 }
 
 // A bundle of three long, red dynamite sticks. Decorative (no physics).
@@ -323,7 +323,7 @@ export function createDynamite(sim, opts = {}) {
     children.push(stick);
   }
 
-  const entity = sim.addEntity(group, null, null);
+  const entity = sim.addEntity(group, null, null, "dynamite");
   entity.children = children;
 
   if (mass > 0) {
@@ -419,7 +419,7 @@ export function createSign(sim, opts = {}) {
     group.add(textMesh);
   }
 
-  const entity = sim.addEntity(group, null, null);
+  const entity = sim.addEntity(group, null, null, "sign");
   entity.children = children;
   return entity;
 }
@@ -540,7 +540,7 @@ export function createTrain(sim, opts = {}) {
     }
   }
 
-  return sim.addEntity(group, null, null);
+  return sim.addEntity(group, null, null, "train");
 }
 
 // Lightweight reusable FPS counter overlay. Displays in upper right corner.
@@ -580,6 +580,150 @@ export function createFPSCounter(sim, opts = {}) {
       frameCount = 0;
       timeAccum = 0;
     }
+  };
+
+  const entity = {
+    mesh: null,
+    body: null,
+    updateFn,
+    element: el,
+    dispose: () => {
+      if (el.parentNode) el.parentNode.removeChild(el);
+    },
+  };
+
+  if (sim) {
+    sim.entities.add(entity);
+  }
+  return entity;
+}
+
+// A heads-up overlay showing JavaScript heap / GC pressure, complementing the
+// FPS counter. Uses `performance.memory` (available in Chromium/Chrome), so on
+// other browsers it falls back to a placeholder note. Highlighting the growing
+// used-heap is the fastest way to spot a per-frame allocation leak (which shows
+// up as a sawtooth of GC drops on the FPS counter).
+export function createGCStats(sim, opts = {}) {
+  const {
+    color = "rgba(120, 220, 160, 0.75)",
+    fontSize = "0.75rem",
+    updateInterval = 0.5,
+  } = opts;
+
+  const el = document.createElement("div");
+  el.id = "gc-stats";
+  el.style.position = "absolute";
+  el.style.top = "34px";
+  el.style.right = "14px";
+  el.style.fontFamily = "monospace, sans-serif";
+  el.style.fontSize = fontSize;
+  el.style.color = color;
+  el.style.letterSpacing = "0.05em";
+  el.style.pointerEvents = "none";
+  el.style.userSelect = "none";
+  el.style.zIndex = "1000";
+  el.style.textAlign = "right";
+
+  const mem = performance.memory;
+  el.textContent = mem ? "heap -- MB" : "GC: n/a (heap API unavailable)";
+
+  const container = sim?.container || document.body;
+  container.appendChild(el);
+
+  let timeAccum = 0;
+  const mb = (n) => (n / (1024 * 1024)).toFixed(1);
+
+  const updateFn = (dt) => {
+    timeAccum += dt;
+    if (timeAccum < updateInterval || !mem) return;
+    timeAccum = 0;
+    const used = mem.usedJSHeapSize;
+    const total = mem.totalJSHeapSize;
+    const limit = mem.jsHeapSizeLimit;
+    const pct = Math.round((used / limit) * 100);
+    // Color shifts toward red as we approach the heap limit (leak warning).
+    el.style.color = pct > 80 ? "rgba(255,120,90,0.85)" : color;
+    el.textContent = `GC heap ${mb(used)} / ${mb(total)} MB (${pct}%)`;
+  };
+
+  const entity = {
+    mesh: null,
+    body: null,
+    updateFn,
+    element: el,
+    dispose: () => {
+      if (el.parentNode) el.parentNode.removeChild(el);
+    },
+  };
+
+  if (sim) {
+    sim.entities.add(entity);
+  }
+  return entity;
+}
+
+// A heads-up overlay listing the live entity count, grouped by type. Reads the
+// simulation's entity set, where each entity is typed via `sim.addEntity(..., type)`
+// (or inferred from its shape). Great for spotting leaked/duplicated entities
+// (e.g. after a hot reload) and for seeing why a scene is becoming expensive.
+export function createEntityStats(sim, opts = {}) {
+  const {
+    color = "rgba(150, 210, 255, 0.8)",
+    fontSize = "0.75rem",
+    updateInterval = 0.5,
+    showUnlabeled = true,
+  } = opts;
+
+  const el = document.createElement("div");
+  el.id = "entity-stats";
+  el.style.position = "absolute";
+  el.style.top = "56px";
+  el.style.right = "14px";
+  el.style.fontFamily = "monospace, sans-serif";
+  el.style.fontSize = fontSize;
+  el.style.color = color;
+  el.style.letterSpacing = "0.03em";
+  el.style.lineHeight = "1.35";
+  el.style.whiteSpace = "pre-line"; // render \n as line breaks
+  el.style.pointerEvents = "none";
+  el.style.userSelect = "none";
+  el.style.zIndex = "1000";
+  el.style.textAlign = "right";
+  el.textContent = "entities --";
+
+  const container = sim?.container || document.body;
+  container.appendChild(el);
+
+  // Fallback label for entities created without an explicit type.
+  const inferType = (e) => {
+    if (e.body) return "physics";
+    if (e.mesh) return "visual";
+    if (e.updateFn) return "logic";
+    return "?";
+  };
+
+  let timeAccum = 0;
+
+  const updateFn = (dt) => {
+    timeAccum += dt;
+    if (timeAccum < updateInterval) return;
+    timeAccum = 0;
+
+    const counts = new Map();
+    let total = 0;
+    for (const entity of sim.entities) {
+      const t = entity.type || inferType(entity);
+      counts.set(t, (counts.get(t) || 0) + 1);
+      total++;
+    }
+
+    const parts = [];
+    const keys = [...counts.keys()].sort();
+    for (const t of keys) {
+      if (!showUnlabeled && t === "?") continue;
+      parts.push(`${t} ${counts.get(t)}`);
+    }
+    el.textContent = `entities ${total}\n${parts.join("\n")}`;
   };
 
   const entity = {
@@ -662,7 +806,7 @@ export function createBunny(sim, opts = {}) {
   addSphere(0.18, color, [-0.35, 0.09, -0.15], [0.7, 0.5, 1.4], [0, -0.15, 0]);
   addSphere(0.18, color, [0.35, 0.09, -0.15], [0.7, 0.5, 1.4], [0, 0.15, 0]);
 
-  const entity = sim.addEntity(group, null, null);
+  const entity = sim.addEntity(group, null, null, "bunny");
   entity.children = children;
 
   if (mass > 0) {
@@ -788,7 +932,7 @@ export function createGatlingGun(sim, opts = {}) {
     }
   };
 
-  const entity = sim.addEntity(group, null, updateFn);
+  const entity = sim.addEntity(group, null, updateFn, "gatling");
   entity.children = children;
 
   entity.start = () => {
@@ -927,18 +1071,232 @@ export function createLawnmower(sim, opts = {}) {
   const updateFn = (dt) => {
     if (speed === 0) return;
     const wheelOmega = speed / wheelRadius;
-    wheelAngle += wheelOmega * dt;
-    reelAngle += reelRatio * wheelOmega * dt;
+    wheelAngle = (wheelAngle + wheelOmega * dt) % (Math.PI * 2);
+    reelAngle = (reelAngle + reelRatio * wheelOmega * dt) % (Math.PI * 2);
     for (const pivot of wheelPivots) pivot.rotation.x = wheelAngle;
     reelPivot.rotation.x = reelAngle;
   };
 
-  const entity = sim.addEntity(group, null, updateFn);
+  const entity = sim.addEntity(group, null, updateFn, "lawnmower");
   entity.children = children;
 
   // Forward speed in m/s (local +Z). 0 stops. Negative pushes backward/reverses.
   entity.setSpeed = (v) => {
     speed = v;
+  };
+
+  return entity;
+}
+
+// A flat triangular butterfly wing (a single 3-vertex plane). Pure decorative
+// mesh - no physics. Drawn lying in the XZ plane with its base along Z and the
+// apex at the far +X corner, so a pivot at x=0 lets it flare out to the side.
+// Geometry is cached per side so many butterflies share the same vertex buffers
+// instead of each uploading its own (keeps render GPU cost flat regardless of
+// how many butterflies are spawned).
+function makeButterflyWing(span, depth, side) {
+  const key = `${span}_${depth}_${side}`;
+  let geo = butterflyWingGeos.get(key);
+  if (!geo) {
+    geo = new THREE.BufferGeometry();
+    // Single vertex (apex) at the body (x=0); the wide base flares outward to
+    // ±X. The geometry is mirrored per side (side = -1 left, +1 right) so BOTH
+    // wings rotate identically and flap in sync, instead of opposing.
+    geo.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(
+        [0, 0, 0, side * span, 0, -depth, side * span, 0, depth],
+        3,
+      ),
+    );
+    geo.computeVertexNormals();
+    butterflyWingGeos.set(key, geo);
+  }
+  return geo;
+}
+const butterflyWingGeos = new Map();
+let butterflyBodyGeo = null;
+let butterflyBodyMat = null;
+
+// A single butterfly model: a tiny cylinder body with one flat triangular wing
+// on each side that flaps up and down by rotating about the body's long axis.
+// The component ONLY builds the model and animates the wing flap — it does NOT
+// move or position the butterfly. The game places it by setting entity.mesh.
+//position / .rotation and drives the flap speed via entity.flap(speed).
+export function createButterfly(sim, opts = {}) {
+  const {
+    bodyColor = 0x222222,
+    wingColor = 0xffb347,
+    wingSpan = 0.3,
+    wingDepth = 0.32,
+    bodyLength = 0.1,
+    bodyRadius = 0.02,
+    position = [0, 0, 0],
+  } = opts;
+
+  const group = new THREE.Group();
+  group.position.set(position[0], position[1], position[2]);
+  const children = [];
+
+  // Body: a tiny cylinder lying along the flight axis (+Z). Built as a plain
+  // Three mesh - the butterfly is pure decoration, so it creates NO physics
+  // body (a decorative component must not add bodies to the physics world).
+  // Geometry and material are shared across butterflies to keep GPU cost flat.
+  if (!butterflyBodyGeo) {
+    butterflyBodyGeo = new THREE.CylinderGeometry(bodyRadius, bodyRadius, bodyLength, 6);
+    butterflyBodyMat = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.6 });
+  }
+  const body = new THREE.Mesh(butterflyBodyGeo, butterflyBodyMat);
+  body.rotation.x = Math.PI / 2; // axis along +Z (flight direction)
+  body.castShadow = false; // tiny decorative insect - no shadow cost
+  group.add(body);
+  children.push(body);
+
+  // Wings: one flat triangle on each side, each on its own pivot so it can
+  // flap about the body's long (Z) axis. Both wings are mirrored in geometry
+  // and share the same rotation, so they flap together in sync.
+  const wingRoot = bodyRadius + 0.01;
+  const wings = [];
+  for (const side of [-1, 1]) {
+    const pivot = new THREE.Group();
+    pivot.position.set(side * wingRoot, 0, 0);
+    const wing = new THREE.Mesh(
+      makeButterflyWing(wingSpan, wingDepth, side),
+      new THREE.MeshStandardMaterial({
+        color: wingColor,
+        roughness: 0.8,
+        side: THREE.DoubleSide,
+      }),
+    );
+    wing.castShadow = false;
+    pivot.add(wing);
+    group.add(pivot);
+    wings.push(pivot);
+  }
+
+  // Animation state: only the wing-flap phase. Movement is owned by the game.
+  const flap = {
+    phase: Math.random() * Math.PI * 2,
+    speed: 14,
+  };
+
+  const updateFn = (dt) => {
+    // Wings hinge about the body's long (Z) axis; opposite signs on the
+    // mirrored wings lift both outer edges up together and down together.
+    flap.phase = (flap.phase + flap.speed * dt) % (Math.PI * 2);
+    const angle = Math.sin(flap.phase) * 0.85;
+    wings[0].rotation.z = -angle;
+    wings[1].rotation.z = angle;
+  };
+
+  const entity = sim.addEntity(group, null, updateFn, "butterfly");
+  entity.children = children;
+
+  // Set the flap speed (rad/s of wing beat). The game calls this to speed up
+  // the flapping (e.g. when the butterfly hurries away).
+  entity.setFlapSpeed = (v) => {
+    flap.speed = v;
+  };
+
+  return entity;
+}
+
+// A swarm of small flying midges (flies/gnats) that hover in place and dart
+// from spot to spot across the lawn. Rendered as one instanced mesh of tiny
+// bodies; they scatter as a group when frightened.
+export function createFlies(sim, opts = {}) {
+  const {
+    count = 20,
+    color = 0x1a1a1a,
+    size = 0.06,
+    spread = 30,
+    hoverHeight = [0.5, 1.3],
+    dwellTime = [2, 5],
+    flightTime = [0.6, 1.4],
+    position = [0, 0, 0],
+  } = opts;
+
+  const geo = new THREE.SphereGeometry(size, 6, 4);
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.6 });
+  const instancedMesh = new THREE.InstancedMesh(geo, mat, count);
+  instancedMesh.position.set(position[0], position[1], position[2]);
+  instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  instancedMesh.frustumCulled = false;
+  instancedMesh.castShadow = false; // tiny decorative insects - no shadow cost
+
+  const dummy = new THREE.Object3D();
+  const half = spread / 2;
+  const flies = [];
+  for (let i = 0; i < count; i++) {
+    flies.push({
+      x: Math.random() * spread - half,
+      z: Math.random() * spread - half,
+      h: hoverHeight[0] + Math.random() * (hoverHeight[1] - hoverHeight[0]),
+      phase: Math.random() * Math.PI * 2,
+      tx: 0, tz: 0, th: 0,
+      moving: false,
+      panicT: 0,
+      timer: (dwellTime[0] + Math.random() * (dwellTime[1] - dwellTime[0])) / 2,
+      dur: 0,
+    });
+  }
+
+  const updateFn = (dt) => {
+    // Each fly has its own remaining panic time; the ones near the fright
+    // point get a fresh burst, the rest just keep waiting it out.
+    for (let i = 0; i < count; i++) {
+      const f = flies[i];
+      f.phase = (f.phase + dt * (f.panicT > 0 ? 12 : 2)) % (Math.PI * 2);
+      if (f.panicT > 0) f.panicT -= dt;
+      if (f.panicT > 0) {
+        // Scatter: jitter upward and outward, then settle with a timer.
+        f.h = Math.min(2.5, f.h + dt * (Math.random() + 0.5));
+        f.timer += dt;
+      } else if (!f.moving) {
+        f.timer += dt;
+        if (f.timer > dwellTime[0] + Math.random() * (dwellTime[1] - dwellTime[0])) {
+          f.tx = Math.random() * spread - half;
+          f.tz = Math.random() * spread - half;
+          f.th = hoverHeight[0] + Math.random() * (hoverHeight[1] - hoverHeight[0]);
+          f.dur = flightTime[0] + Math.random() * (flightTime[1] - flightTime[0]);
+          f.timer = 0;
+          f.moving = true;
+        }
+      } else {
+        const t = Math.min(1, f.timer / f.dur);
+        const e = t * t * (3 - 2 * t);
+        f.x += (f.tx - f.x) * e;
+        f.z += (f.tz - f.z) * e;
+        f.h += (f.th - f.h) * e;
+        f.timer += dt;
+        if (t >= 1) {
+          f.moving = false;
+          f.timer = 0;
+        }
+      }
+      const bob = Math.sin(f.phase) * 0.05;
+      dummy.position.set(f.x, f.h + bob, f.z);
+      dummy.rotation.y = f.phase;
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      instancedMesh.setMatrixAt(i, dummy.matrix);
+    }
+    instancedMesh.instanceMatrix.needsUpdate = true;
+  };
+
+  const entity = sim.addEntity(instancedMesh, null, updateFn, "flies");
+  entity.flies = flies;
+
+  // Scatter flies near a world position (e.g. an approaching mower).
+  entity.frighten = (fx, fz, radius = 4) => {
+    const r2 = radius * radius;
+    for (const f of flies) {
+      const dx = f.x - fx;
+      const dz = f.z - fz;
+      if (dx * dx + dz * dz < r2) {
+        f.panicT = 1.5;
+      }
+    }
   };
 
   return entity;

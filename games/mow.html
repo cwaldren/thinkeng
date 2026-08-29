@@ -48,7 +48,13 @@
         createBox,
         createSphere,
       } from "engine/primitives.js";
-      import { createLawnmower, createFPSCounter } from "engine/components.js";
+      import {
+        createLawnmower,
+        createButterfly,
+        createFPSCounter,
+        createGCStats,
+        createEntityStats,
+      } from "engine/components.js";
       import {} from "engine/materials.js";
       import * as THREE from "three";
 
@@ -202,8 +208,8 @@
           const q = mower.mesh.quaternion;
           const hw = CUT_HALF_W, hd = CUT_HALF_D;
           // Orient the footprint axes into world space to bound its AABB.
-          const fx = new THREE.Vector3(hw, 0, 0).applyQuaternion(q);
-          const fz = new THREE.Vector3(0, 0, hd).applyQuaternion(q);
+          const fx = _fx.set(hw, 0, 0).applyQuaternion(q);
+          const fz = _fz.set(0, 0, hd).applyQuaternion(q);
           const minX = o.x - Math.abs(fx.x) - Math.abs(fz.x);
           const maxX = o.x + Math.abs(fx.x) + Math.abs(fz.x);
           const minZ = o.z - Math.abs(fx.z) - Math.abs(fz.z);
@@ -244,6 +250,11 @@
         window.addEventListener("keydown", (e) => keys.add(e.code));
         window.addEventListener("keyup", (e) => keys.delete(e.code));
         const forward = new THREE.Vector3(0, 0, 1);
+        const _dir = new THREE.Vector3();       // reusable per-frame temps (no alloc)
+        const _reelWorld = new THREE.Vector3();
+        const _right = new THREE.Vector3();
+        const _fx = new THREE.Vector3();        // cut-footprint AABB axes
+        const _fz = new THREE.Vector3();
         const turnDir = new THREE.Vector3(0, 1, 0);
         let mowerMoving = false;
         const keyF = () =>
@@ -353,26 +364,30 @@
         sim.addEntity(null, null, (dt) => {
           // Mower local +Z (handle push direction) mapped to the horizontal
           // world direction; with no roll/pitch this is the forward heading.
-          const dir = forward.clone().applyQuaternion(mower.mesh.quaternion);
+          const dir = _dir.copy(forward).applyQuaternion(mower.mesh.quaternion);
           const turn = keyTurn() || touchTurn;
           const v = keyF() || touchF;
           const speed = 2;
-          // Shift sharpens steering while moving (stationary spin rate already).
+          // Shift sharpens steering while moving. Scale both the turn rate and
+          // the forward speed down together, so the corner stays exactly as
+          // tight without the mower whipping around.
           const shifting = keys.has("ShiftLeft") || keys.has("ShiftRight");
-          const turnSpeed = v === 0 ? 4.0 : shifting ? 4.0 : 2.0;
+          const ease = shifting ? 0.75 : 1;
+          const move = v * speed * ease;
+          const turnSpeed = v === 0 ? 4.0 : shifting ? 4.0 * ease : 2.0;
 
           mowerMoving = v !== 0;
           mower.mesh.rotateOnWorldAxis(turnDir, turn * turnSpeed * dt);
-          mower.setSpeed(v * speed);
-          mower.mesh.position.addScaledVector(dir, v * speed * dt);
+          mower.setSpeed(move);
+          mower.mesh.position.addScaledVector(dir, move * dt);
           // Reflect the fresh transform immediately so the cut-footprint check
           // (which uses matrixWorld) matches the mower's real position this frame.
           mower.mesh.updateWorldMatrix(true, false);
 
           // Emit clippings from the reel when moving AND actually cutting grass.
           const cutting = hasGrassToCut();
-          const reelWorld = mower.mesh.localToWorld(new THREE.Vector3(0, 0.1, 0));
-          const right = new THREE.Vector3(1, 0, 0).applyQuaternion(mower.mesh.quaternion);
+          const reelWorld = mower.mesh.localToWorld(_reelWorld.set(0, 0.1, 0));
+          const right = _right.set(1, 0, 0).applyQuaternion(mower.mesh.quaternion);
           if (mowerMoving && cutting) {
             clipAccum += dt * 250;
             while (clipAccum >= 1) {
@@ -461,7 +476,7 @@
         let grassDirty = false;
         const growRate = 0.0375;
         sim.addEntity(null, null, (dt) => {
-          swayUniforms.uTime.value += dt;
+          swayUniforms.uTime.value = (swayUniforms.uTime.value + dt) % 1000;
           // Cut any blades under the mower's reel, then grow the lawn back.
           grassDirty = false;
           // Cut: only test blades in the grid cells under the reel. Trim any
@@ -520,7 +535,225 @@
           sim.camera.lookAt(target);
         });
 
+        // --- Songbirds: little flying bugs that drift around the lawn ---
+        // Each bug is a tiny dark sphere with a lighter point that gently
+        // bobs in place, then picks a new spot and flits over to it.
+        const BUG_COUNT = isMobile ? 8 : 20;
+        const bugGeo = new THREE.SphereGeometry(0.06, 6, 4);
+        const bugMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6 });
+        const bugMesh = new THREE.InstancedMesh(bugGeo, bugMat, BUG_COUNT);
+        bugMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        bugMesh.frustumCulled = false;
+        bugMesh.castShadow = false;
+        sim.scene.add(bugMesh);
+
+        const bugDummy = new THREE.Object3D();
+        const bugs = [];
+        // Spread over the lawn (inside the grass tiles) so they look at home.
+        const bx = (COLS * W) / 2 - 1, bz = (ROWS * D) / 2 - 1;
+        for (let i = 0; i < BUG_COUNT; i++) {
+          bugs.push({
+            x: (Math.random() * 2 - 1) * bx,
+            z: (Math.random() * 2 - 1) * bz,
+            h: 0.5 + Math.random() * 0.8,   // cruise height
+            phase: Math.random() * Math.PI * 2,
+            targetX: 0, targetZ: 0, targetH: 0,
+            // state: 0 = dwelling, 1 = flying to target
+            moving: false,
+            moveT: 0, moveDur: 0,
+            scared: false,
+            scareT: 0,
+          });
+          // immediate dwelling pose (no fly-in on load)
+          const b = bugs[i];
+          b.targetX = b.x; b.targetZ = b.z; b.targetH = b.h;
+        }
+
+        // Scare radius: bugs within this distance of the mower buzz off.
+        const SCARE_R = 4;
+        const mowerPos = new THREE.Vector3();
+        sim.addEntity(null, null, (dt) => {
+          mowerPos.copy(mower.mesh.position);
+          for (let i = 0; i < BUG_COUNT; i++) {
+            const b = bugs[i];
+            // A bug that is frightened jitters erratically away from the mower.
+            if (b.scared) {
+              b.scareT += dt;
+              const dx = b.x - mowerPos.x;
+              const dz = b.z - mowerPos.z;
+              const d = Math.hypot(dx, dz) || 1;
+              // Flee outward and upward with a burst of erratic hopping.
+              const push = d < SCARE_R ? (1 - d / SCARE_R) * 6 : 1;
+              b.x += (dx / d) * push * dt * 4 + (Math.random() - 0.5) * 8 * dt;
+              b.z += (dz / d) * push * dt * 4 + (Math.random() - 0.5) * 8 * dt;
+              b.h += (Math.random() - 0.3) * 6 * dt;
+              b.h = Math.max(0.8, Math.min(4, b.h));
+              // Keep them on the lawn.
+              b.x = Math.max(-bx, Math.min(bx, b.x));
+              b.z = Math.max(-bz, Math.min(bz, b.z));
+              // Once safely far and calm for a moment, go back to wandering.
+              if (d > SCARE_R + 2 && b.scareT > 1.5) {
+                b.scared = false;
+                b.moving = false;
+                b.moveT = Math.random() * 2; // short break before wandering again
+              }
+              b.phase = (b.phase + dt * 12) % (Math.PI * 2);
+            } else {
+              // Check if the mower has come close enough to frighten it.
+              const dx = b.x - mowerPos.x;
+              const dz = b.z - mowerPos.z;
+              if (dx * dx + dz * dz < SCARE_R * SCARE_R) {
+                b.scared = true;
+                b.scareT = 0;
+              }
+              if (!b.moving) {
+                // Dwelling: hover with a slow bob. Occasionally dart to a new leaf.
+                b.moveT += dt;
+                if (b.moveT > 2 + Math.random() * 3) {
+                  b.targetX = (Math.random() * 2 - 1) * bx;
+                  b.targetZ = (Math.random() * 2 - 1) * bz;
+                  b.targetH = 0.5 + Math.random() * 1.2;
+                  b.moveDur = 0.6 + Math.random() * 0.8;
+                  b.moveT = 0;
+                  b.moving = true;
+                }
+              } else {
+                // Flying: ease toward the chosen leaf, then settle back down.
+                const t = Math.min(1, b.moveT / b.moveDur);
+                const e = t * t * (3 - 2 * t); // smoothstep
+                b.x = b.x + (b.targetX - b.x) * e;
+                b.z = b.z + (b.targetZ - b.z) * e;
+                b.h = b.h + (b.targetH - b.h) * e;
+                b.moveT += dt;
+                if (t >= 1) {
+                  b.moving = false;
+                  b.moveT = 0;
+                }
+              }
+              b.phase = (b.phase + dt * 2) % (Math.PI * 2);
+            }
+            // Gentle bob while dwelling or flying lower/smoother.
+            const bob = Math.sin(b.phase) * 0.06;
+            bugDummy.position.set(b.x, b.h + bob, b.z);
+            bugDummy.scale.set(1, 1, 1);
+            bugDummy.rotation.y = b.phase;
+            bugDummy.updateMatrix();
+            bugMesh.setMatrixAt(i, bugDummy.matrix);
+          }
+          bugMesh.instanceMatrix.needsUpdate = true;
+        });
+
+        // --- Butterflies: graceful, colorful flappers ---
+        // We reuse the butterfly model/animation from the component library
+        // (createButterfly) and animate the MOVEMENT here in the game: each
+        // butterfly traces a gentle looping orbit around a slowly drifting
+        // focus, and darts away when the mower rolls close.
+        const BFLY_COUNT = isMobile ? 5 : 12;
+        const pastel = new THREE.Color();
+        const butterflies = [];
+        for (let i = 0; i < BFLY_COUNT; i++) {
+          pastel.setHSL(Math.random(), 0.75, 0.65);
+          const ent = createButterfly(sim, {
+            wingColor: "#" + pastel.getHexString(),
+            position: [
+              (Math.random() * 2 - 1) * bx,
+              0.8 + Math.random() * 0.8,
+              (Math.random() * 2 - 1) * bz,
+            ],
+          });
+          butterflies.push({
+            group: ent.mesh,
+            ent,
+            x: (Math.random() * 2 - 1) * bx,
+            z: (Math.random() * 2 - 1) * bz,
+            h: 0.8 + Math.random() * 0.8,
+            yaw: Math.random() * Math.PI * 2,
+            flapSpeed: 14 + Math.random() * 8,
+            // Loop path: drift toward a focus while a circle orbits it.
+            cx: (Math.random() * 2 - 1) * bx,
+            cz: (Math.random() * 2 - 1) * bz,
+            orbit: Math.random() * Math.PI * 2,
+            orbitR: 0.8 + Math.random() * 1.2,
+            scatterT: 0,
+            scareCooldown: 0,
+            rejoinT: 0, // > 0 while easing back into the orbit after a flight
+          });
+        }
+
+        // Butterflies move in the same update as the grass so they track the
+        // camera loop time; the component animates the wing flap, the game
+        // here owns their position and heading.
+        sim.addEntity(null, null, (dt) => {
+          mowerPos.copy(mower.mesh.position);
+          for (const b of butterflies) {
+            b.ent.setFlapSpeed(b.scatterT > 0 ? 42 : b.flapSpeed);
+
+            if (b.scatterT > 0) {
+              // Frightened: burst upward and away from the mower, then calm.
+              b.scatterT -= dt;
+              b.scareCooldown = Math.max(0, b.scareCooldown - dt);
+              const dx = b.x - mowerPos.x;
+              const dz = b.z - mowerPos.z;
+              const d = Math.hypot(dx, dz) || 1;
+              b.x += (dx / d) * dt * 3;
+              b.z += (dz / d) * dt * 3;
+              b.h += dt * 2;
+              b.yaw = Math.atan2(dx, dz);
+              if (b.scatterT <= 0) {
+                // Flight's over: start easing back into the orbit, and add a
+                // beat of calm so it isn't re-scared the instant it lands.
+                b.rejoinT = 0.6;
+                b.scareCooldown = 1.2;
+              }
+            } else {
+              // Check if the mower frightened it (only after the cooldown, so
+              // a freshly scared butterfly isn't re-triggered the instant its
+              // flight ends).
+              const dx = b.x - mowerPos.x;
+              const dz = b.z - mowerPos.z;
+              if (b.scareCooldown <= 0 && dx * dx + dz * dz < SCARE_R * SCARE_R) {
+                b.scatterT = 1.4;
+                continue;
+              }
+              // Graceful looping path: drift focus slowly, orbit around it.
+              b.orbit = (b.orbit + dt * (0.8 + Math.random() * 0.4)) % (Math.PI * 2);
+              b.cx += (Math.random() - 0.5) * dt * 0.5;
+              b.cz += (Math.random() - 0.5) * dt * 0.5;
+              let ox = b.cx + Math.cos(b.orbit) * b.orbitR;
+              let oz = b.cz + Math.sin(b.orbit) * b.orbitR;
+              b.h += Math.sin(b.orbit * 1.7 + 1) * dt * 0.3;
+              if (b.rejoinT > 0) {
+                // Ease back from where the flight left us to the orbit point
+                // (smoothstep), so there's no snap. Recenter the loop's focus
+                // on the fled position so it relaxes there.
+                b.rejoinT -= dt;
+                const tt = Math.max(0, b.rejoinT / 0.6);
+                const e = 1 - tt * tt * (3 - 2 * tt); // 0 -> 1 as we rejoin
+                const fromX = b.x, fromZ = b.z;
+                b.cx = fromX;
+                b.cz = fromZ;
+                ox = b.cx + Math.cos(b.orbit) * b.orbitR;
+                oz = b.cz + Math.sin(b.orbit) * b.orbitR;
+                ox = fromX + (ox - fromX) * e;
+                oz = fromZ + (oz - fromZ) * e;
+              }
+              b.x = ox;
+              b.z = oz;
+              // Face the direction of motion along the orbit.
+              b.yaw = -b.orbit - Math.PI / 2;
+              // Keep on the lawn.
+              b.cx = Math.max(-bx, Math.min(bx, b.cx));
+              b.cz = Math.max(-bz, Math.min(bz, b.cz));
+              b.h = Math.max(0.6, Math.min(2.2, b.h));
+            }
+            b.group.position.set(b.x, b.h, b.z);
+            b.group.rotation.y = b.yaw;
+          }
+        });
+
         createFPSCounter(sim);
+        createGCStats(sim);
+        createEntityStats(sim);
       }
 
       setup(sim);
