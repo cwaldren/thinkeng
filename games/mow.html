@@ -39,6 +39,21 @@
       <p style="margin: 4px 0 0; font-size: 0.85rem; opacity: 0.5">
         W/A/S/D or arrow keys to move.
       </p>
+      <label
+        id="creatures-toggle"
+        style="
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          margin-top: 10px;
+          font-size: 0.9rem;
+          pointer-events: auto;
+          cursor: pointer;
+        "
+      >
+        <input type="checkbox" id="creatures-checkbox" checked />
+        Creatures
+      </label>
     </div>
 
     <script type="module">
@@ -47,10 +62,12 @@
         createGround,
         createBox,
         createSphere,
+        createFlySwarm,
       } from "engine/primitives.js";
       import {
         createLawnmower,
         createButterfly,
+        createDragonfly,
         createFPSCounter,
         createGCStats,
         createEntityStats,
@@ -538,8 +555,11 @@
         // --- Songbirds: little flying bugs that drift around the lawn ---
         // Each bug is a tiny dark sphere with a lighter point that gently
         // bobs in place, then picks a new spot and flits over to it.
+        // All creatures (midges, butterflies, dragonflies) share this flag so
+        // the "Creatures" checkbox toggles them all together.
+        let creaturesEnabled = true;
         const BUG_COUNT = isMobile ? 8 : 20;
-        const bugGeo = new THREE.SphereGeometry(0.06, 6, 4);
+        const bugGeo = new THREE.SphereGeometry(0.035, 6, 4);
         const bugMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6 });
         const bugMesh = new THREE.InstancedMesh(bugGeo, bugMat, BUG_COUNT);
         bugMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -573,6 +593,8 @@
         const SCARE_R = 4;
         const mowerPos = new THREE.Vector3();
         sim.addEntity(null, null, (dt) => {
+          bugMesh.visible = creaturesEnabled;
+          if (!creaturesEnabled) return;
           mowerPos.copy(mower.mesh.position);
           for (let i = 0; i < BUG_COUNT; i++) {
             const b = bugs[i];
@@ -669,6 +691,10 @@
             h: 0.8 + Math.random() * 0.8,
             yaw: Math.random() * Math.PI * 2,
             flapSpeed: 14 + Math.random() * 8,
+            // Occasional flap bursts: picks a slight speed-up that gains a bit
+            // of altitude, then slowly drifts back down to the cruise height.
+            burstT: 1 + Math.random() * 3,
+            flapBoost: 0,
             // Loop path: drift toward a focus while a circle orbits it.
             cx: (Math.random() * 2 - 1) * bx,
             cz: (Math.random() * 2 - 1) * bz,
@@ -684,9 +710,11 @@
         // camera loop time; the component animates the wing flap, the game
         // here owns their position and heading.
         sim.addEntity(null, null, (dt) => {
+          for (const b of butterflies) b.group.visible = creaturesEnabled;
+          if (!creaturesEnabled) return;
           mowerPos.copy(mower.mesh.position);
           for (const b of butterflies) {
-            b.ent.setFlapSpeed(b.scatterT > 0 ? 42 : b.flapSpeed);
+            b.ent.setFlapSpeed(b.scatterT > 0 ? 42 : b.flapSpeed + b.flapBoost);
 
             if (b.scatterT > 0) {
               // Frightened: burst upward and away from the mower, then calm.
@@ -722,6 +750,23 @@
               let ox = b.cx + Math.cos(b.orbit) * b.orbitR;
               let oz = b.cz + Math.sin(b.orbit) * b.orbitR;
               b.h += Math.sin(b.orbit * 1.7 + 1) * dt * 0.3;
+              // Flap bursts: occasionally speed the wings up to gain a touch of
+              // altitude, then let it slowly settle back down to cruise height.
+              if (b.flapBoost > 0) {
+                // Boost active: flap harder -> rise, and start easing off.
+                b.h += dt * 0.5;
+                b.flapBoost = Math.max(0, b.flapBoost - dt * 5);
+              } else {
+                // Boost over: slowly drift back down toward cruise height.
+                const sink = b.h > 0.8 ? 0.25 : 0;
+                b.h -= dt * sink;
+                b.burstT -= dt;
+                if (b.burstT <= 0) {
+                  // Trigger a new short burst, then schedule the next one.
+                  b.flapBoost = 5 + Math.random() * 9;
+                  b.burstT = 2 + Math.random() * 4;
+                }
+              }
               if (b.rejoinT > 0) {
                 // Ease back from where the flight left us to the orbit point
                 // (smoothstep), so there's no snap. Recenter the loop's focus
@@ -750,6 +795,151 @@
             b.group.rotation.y = b.yaw;
           }
         });
+
+        // --- Dragonflies: hover, then zoom to a new spot, hover, repeat ---
+        const DRGN_COUNT = 2;
+        const dragonflies = [];
+        for (let i = 0; i < DRGN_COUNT; i++) {
+          const x = (Math.random() * 2 - 1) * bx;
+          const z = (Math.random() * 2 - 1) * bz;
+          const h = 0.8 + Math.random() * 0.8;
+          const ent = createDragonfly(sim, {
+            bodyColor: "#2a2a2a",
+            wingColor: "#78dfff",
+            wingSpan: 0.4,
+            wingTilt: -6,
+            position: [x, h, z],
+          });
+          dragonflies.push({
+            group: ent.mesh,
+            ent,
+            x,
+            z,
+            h,
+            yaw: Math.random() * Math.PI * 2,
+            // Hover / fly state machine.
+            state: "hover",
+            hoverT: 0.8 + Math.random() * 1.4,
+            hoverDur: 0,
+            fx: 0, fz: 0, fh: 0, // current flight source
+            flyT: 0,
+            flyDur: 0,
+            tx: 0, tz: 0, th: 0, // destination
+          });
+        }
+
+        sim.addEntity(null, null, (dt) => {
+          for (const d of dragonflies) d.group.visible = creaturesEnabled;
+          if (!creaturesEnabled) return;
+          for (const d of dragonflies) {
+            if (d.state === "hover") {
+              d.hoverT -= dt;
+              // Gentle hovering wiggle in place.
+              d.yaw += dt * 0.5;
+              d.h += Math.sin(performance.now() * 0.003 + d.tx) * dt * 0.05;
+              d.ent.setFlapSpeed(64); // fast flap at all times, even when hovering
+              if (d.hoverT <= 0) {
+                // Pick a new destination — anywhere on the lawn, near or far.
+                d.fx = d.x;
+                d.fz = d.z;
+                d.fh = d.h;
+                d.tx = (Math.random() * 2 - 1) * bx;
+                d.tz = (Math.random() * 2 - 1) * bz;
+                d.th = 0.8 + Math.random() * 0.8;
+                const dist = Math.max(0.01, Math.hypot(d.tx - d.fx, d.tz - d.fz));
+                d.flyDur = 0.1 + dist * 0.05;
+                d.flyT = 0;
+                d.state = "fly";
+              }
+            } else {
+              // Flying: zoom toward the destination with an ease-out, flapping
+              // fast the whole way.
+              d.flyT += dt;
+              const t = Math.min(1, d.flyT / d.flyDur);
+              const e = 1 - (1 - t) * (1 - t); // ease-out zoom
+              d.x = d.fx + (d.tx - d.fx) * e;
+              d.z = d.fz + (d.tz - d.fz) * e;
+              d.h = d.fh + (d.th - d.fh) * e;
+              // Face the direction of travel. The dragonfly's long axis (the
+              // body cylinder) is local +Z, the forward/back direction. After
+              // rotation.y = yaw, local +Z maps to world (sin(yaw), cos(yaw)),
+              // so aim it along the motion vector (dx, dz).
+              const ddx = d.tx - d.fx;
+              const ddz = d.tz - d.fz;
+              if (t < 1 && (ddx || ddz)) d.yaw = Math.atan2(ddx, ddz);
+              d.ent.setFlapSpeed(64); // fast flap while zooming
+              if (t >= 1) {
+                d.state = "hover";
+                d.hoverT = 1.2 + Math.random() * 2.0;
+              }
+            }
+            d.group.position.set(d.x, d.h, d.z);
+            d.group.rotation.y = d.yaw;
+          }
+        });
+
+        // --- Fly swarms: two clouds of tiny flies that drift slowly around ---
+        // Each swarm is an instanced cloud of flies buzzing inside a small
+        // bounding sphere; we drag the whole mesh lazily around the lawn so the
+        // spheres wander randomly from spot to spot rather than staying put.
+        const SWARM_COUNT = 2;
+        const flySwarms = [];
+        for (let i = 0; i < SWARM_COUNT; i++) {
+          const ent = createFlySwarm(sim, {
+            count: 10,
+            radius: 1.2,
+            speed: 2,
+            position: [
+              (Math.random() * 2 - 1) * bx * 0.8,
+              0.8 + Math.random() * 1.2,
+              (Math.random() * 2 - 1) * bz * 0.8,
+            ],
+          });
+          flySwarms.push({
+            mesh: ent.mesh,
+            ent,
+            x: ent.mesh.position.x,
+            z: ent.mesh.position.z,
+            h: ent.mesh.position.y,
+            // Lazy wandering: pick a target and ease toward it very slowly.
+            tx: 0, tz: 0, th: 0,
+            wanderT: 1 + Math.random() * 2,
+            wanderDur: 1,
+          });
+        }
+
+        sim.addEntity(null, null, (dt) => {
+          for (const s of flySwarms) s.mesh.visible = creaturesEnabled;
+          if (!creaturesEnabled) return;
+          for (const s of flySwarms) {
+            s.wanderT -= dt;
+            if (s.wanderT <= 0) {
+              // Pick a new slow-drifting destination on the lawn.
+              s.tx = (Math.random() * 2 - 1) * bx * 0.8;
+              s.tz = (Math.random() * 2 - 1) * bz * 0.8;
+              s.th = 0.6 + Math.random() * 1.4;
+              s.wanderDur = 30 + Math.random() * 30;
+              s.wanderT = s.wanderDur;
+            }
+            // Ease the whole swarm toward its target at a very gentle pace.
+            const e = 1 - Math.exp(-dt * 0.08);
+            s.x += (s.tx - s.x) * e;
+            s.z += (s.tz - s.z) * e;
+            s.h += (s.th - s.h) * e;
+            s.mesh.position.set(s.x, s.h, s.z);
+          }
+        });
+
+        // Creatures checkbox: toggle all bugs (midges, butterflies, dragonflies, swarms).
+        const creaturesCheckbox = document.getElementById("creatures-checkbox");
+        const applyCreatures = () => {
+          creaturesEnabled = creaturesCheckbox.checked;
+          bugMesh.visible = creaturesEnabled;
+          for (const b of butterflies) b.group.visible = creaturesEnabled;
+          for (const d of dragonflies) d.group.visible = creaturesEnabled;
+          for (const s of flySwarms) s.mesh.visible = creaturesEnabled;
+        };
+        creaturesCheckbox.addEventListener("change", applyCreatures);
 
         createFPSCounter(sim);
         createGCStats(sim);

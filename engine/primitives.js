@@ -394,3 +394,118 @@ export function createHeart(sim, opts = {}) {
   return sim.addEntity(mesh, body);
 }
 
+// A swarm of flies zooming around inside a bounded sphere. Rendered as one
+// instanced mesh of tiny dark spheres; each fly steers with a small random
+// velocity and bounces off the sphere boundary, so the whole group keeps
+// darting around within a fixed radius. Purely decorative (no physics body) —
+// the updateFn drives the instanced matrices each frame.
+export function createFlySwarm(sim, opts = {}) {
+  const {
+    count = 10,
+    color = 0x1a1a1a,
+    size = 0.035,
+    radius = 1.5,
+    speed = 3,
+    position = [0, 1.2, 0],
+  } = opts;
+
+  const geo = new THREE.SphereGeometry(size, 6, 4);
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.6 });
+  const instancedMesh = new THREE.InstancedMesh(geo, mat, count);
+  instancedMesh.position.set(position[0], position[1], position[2]);
+  instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  instancedMesh.frustumCulled = false;
+  instancedMesh.castShadow = false; // tiny decorative insects - no shadow cost
+
+  const dummy = new THREE.Object3D();
+  const flies = [];
+  for (let i = 0; i < count; i++) {
+    // Random starting point inside the sphere, with a random velocity.
+    const x = (Math.random() * 2 - 1) * radius;
+    const y = (Math.random() * 2 - 1) * radius;
+    const z = (Math.random() * 2 - 1) * radius;
+    const len = Math.hypot(x, y, z);
+    const s = len > radius ? radius / len : 1;
+    flies.push({
+      x: x * s,
+      y: y * s,
+      z: z * s,
+      // Velocity is kept roughly at a target "cruise" speed but the direction is
+      // constantly smashed around so the flight reads as chaotic buzzing.
+      vx: (Math.random() * 2 - 1) * speed,
+      vy: (Math.random() * 2 - 1) * speed,
+      vz: (Math.random() * 2 - 1) * speed,
+      flingT: Math.random() * 0.3, // time until the next big direction fling
+    });
+  }
+
+  const updateFn = (dt) => {
+    for (let i = 0; i < count; i++) {
+      const f = flies[i];
+      // Chaotic steering: a random angular swerve every frame (noise drives the
+      // direction so the motion swirls and flips).
+      f.vx += (Math.random() - 0.5) * speed * 18 * dt;
+      f.vy += (Math.random() - 0.5) * speed * 18 * dt;
+      f.vz += (Math.random() - 0.5) * speed * 18 * dt;
+
+      // Big random "fling": every so often, sharply re-aim the velocity to make
+      // the fly zoom off in a fresh random direction.
+      f.flingT -= dt;
+      if (f.flingT <= 0) {
+        const ang = Math.random() * Math.PI * 2;
+        const elev = (Math.random() - 0.5) * Math.PI * 0.7;
+        const sp = speed * (0.8 + Math.random() * 1.6);
+        f.vx = Math.cos(ang) * Math.cos(elev) * sp;
+        f.vy = Math.sin(elev) * sp;
+        f.vz = Math.sin(ang) * Math.cos(elev) * sp;
+        f.flingT = 0.15 + Math.random() * 0.4;
+      }
+
+      // Clamp speed so flies zoom rather than crawling.
+      let spd = Math.hypot(f.vx, f.vy, f.vz);
+      const maxS = speed * 2.2;
+      if (spd > maxS) {
+        f.vx *= maxS / spd;
+        f.vy *= maxS / spd;
+        f.vz *= maxS / spd;
+        spd = maxS;
+      }
+      if (spd < speed * 0.4 && spd > 0) {
+        f.vx *= (speed * 0.4) / spd;
+        f.vy *= (speed * 0.4) / spd;
+        f.vz *= (speed * 0.4) / spd;
+      }
+
+      f.x += f.vx * dt;
+      f.y += f.vy * dt;
+      f.z += f.vz * dt;
+
+      // Keep inside the sphere: if a fly strays out, softly steer it back rather
+      // than a harsh bounce, so it can swirl along the wall.
+      const d = Math.hypot(f.x, f.y, f.z);
+      if (d > radius) {
+        const inv = radius / d;
+        f.x *= inv;
+        f.y *= inv;
+        f.z *= inv;
+        // Steer the outward velocity back inward so it hugs the boundary.
+        const nx = f.x / radius, ny = f.y / radius, nz = f.z / radius;
+        const vn = f.vx * nx + f.vy * ny + f.vz * nz;
+        if (vn > 0) {
+          f.vx -= 1.6 * vn * nx;
+          f.vy -= 1.6 * vn * ny;
+          f.vz -= 1.6 * vn * nz;
+        }
+      }
+
+      dummy.position.set(f.x, f.y, f.z);
+      dummy.rotation.y = Math.atan2(f.vx, f.vz);
+      dummy.updateMatrix();
+      instancedMesh.setMatrixAt(i, dummy.matrix);
+    }
+    instancedMesh.instanceMatrix.needsUpdate = true;
+  };
+
+  return sim.addEntity(instancedMesh, null, updateFn, "flyswarm");
+}
+

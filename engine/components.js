@@ -1201,6 +1201,154 @@ export function createButterfly(sim, opts = {}) {
   return entity;
 }
 
+// A single dragonfly model: a slender cylinder body with two sets of flat,
+// rectangular wings on each side (forewings + hindwings) that flap up and down
+// by rotating about the body's long axis (much faster than a butterfly). The
+// component ONLY builds the model and animates the wing flap — it does NOT move
+// or position the dragonfly. The game places it by setting entity.mesh.position /
+// .rotation and drives the flap speed via entity.setFlapSpeed.
+const dragonflyWingGeos = new Map();
+let dragonflyBodyGeo = null;
+let dragonflyBodyMat = null;
+
+// A flat rectangular dragonfly wing lying in the XZ plane, extending span from
+// the body (x=0) out to the side. The leading edge runs along +Z (flight
+// direction). The sweep is baked INTO the geometry: a rotation about the
+// dragonfly's vertical (Y) axis swings the wing's outer edge fore/back, so the
+// fore and hind wings splay apart like >< in plan view. The mesh only ever
+// applies a clean 180° side flip — no Euler rotation mixing that would shear
+// the wing. Geometry is cached per span/depth/sweep so many dragonflies share
+// the same vertex buffers.
+function makeDragonflyWing(span, depth, sweepDeg, side) {
+  const key = `${span}_${depth}_${sweepDeg}_${side}`;
+  let geo = dragonflyWingGeos.get(key);
+  if (!geo) {
+    // A flat rectangle: full span along X (with the body at x=0), chord along Z.
+    geo = new THREE.PlaneGeometry(span, depth);
+    geo.rotateX(Math.PI / 2); // lay flat in the XZ plane
+    geo.translate(span / 2, 0, 0); // root at x=0 so it flares out from the body
+    // Sweep about the vertical (Y) axis: anchor at the root (x=0) and rotate the
+    // outer edge fore (+Z) for positive sweep, back (-Z) for negative. The sign
+    // is multiplied by side so the sweep reads the same on both wings despite
+    // the per-side 180° Y-flip of the mesh (which would otherwise invert it on
+    // the left). Baked per span/depth/sweep so many dragonflies share buffers.
+    if (sweepDeg) geo.rotateY(THREE.MathUtils.degToRad(sweepDeg * side));
+    dragonflyWingGeos.set(key, geo);
+  }
+  return geo;
+}
+
+export function createDragonfly(sim, opts = {}) {
+  const {
+    bodyColor = 0x2a2a2a,
+    wingColor = 0xcfe8ff,
+    wingSpan = 0.4,
+    wingDepth = 0.14,
+    bodyLength = 0.18,
+    bodyRadius = 0.02,
+    position = [0, 0, 0],
+    wingTilt = -6, // deg: Y-axis sweep of each wing set from parallel (fore +, hind -)
+  } = opts;
+
+  const group = new THREE.Group();
+  group.position.set(position[0], position[1], position[2]);
+  const children = [];
+
+  // Body: a slender cylinder lying along the flight axis (+Z). Decorative, so
+  // it creates NO physics body. Geometry and material shared across dragonflies.
+  if (!dragonflyBodyGeo) {
+    dragonflyBodyGeo = new THREE.CylinderGeometry(
+      bodyRadius,
+      bodyRadius,
+      bodyLength,
+      6,
+    );
+    dragonflyBodyMat = new THREE.MeshStandardMaterial({
+      color: bodyColor,
+      roughness: 0.6,
+    });
+  }
+  const body = new THREE.Mesh(dragonflyBodyGeo, dragonflyBodyMat);
+  body.rotation.x = Math.PI / 2; // axis along +Z (flight direction)
+  body.castShadow = false;
+  group.add(body);
+  children.push(body);
+
+  // Two sets of wings per side (forewing + hindwing), each on its own pivot so
+  // they can flap about the body's long (Z) axis. Both sides share identical
+  // rotation so all four wings flap together in sync.
+  const wingRoot = bodyRadius + 0.01;
+  const wings = [];
+  for (const side of [-1, 1]) {
+    // Forewing (front, leading edge deeper along +Z), swept +wingTilt forward.
+    const forePivot = new THREE.Group();
+    forePivot.position.set(side * wingRoot, 0, wingDepth * 0.6);
+    const fore = new THREE.Mesh(
+      makeDragonflyWing(wingSpan, wingDepth, wingTilt, side),
+      new THREE.MeshStandardMaterial({
+        color: wingColor,
+        roughness: 0.6,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.7,
+      }),
+    );
+    // Flip the shared wing geometry on the left side so wings extend outward
+    // (toward -X) instead of both sets pointing toward +X.
+    fore.rotation.y = side === -1 ? Math.PI : 0;
+    fore.castShadow = false;
+    forePivot.add(fore);
+    group.add(forePivot);
+    wings.push(forePivot);
+
+    // Hindwing (rear, slightly shorter, back along -Z), swept -wingTilt back so
+    // the fore/hind sets splay apart like >< in plan view (about 20° between them).
+    const hindPivot = new THREE.Group();
+    hindPivot.position.set(side * wingRoot, 0, -wingDepth * 0.6);
+    const hind = new THREE.Mesh(
+      makeDragonflyWing(wingSpan * 0.8, wingDepth, -wingTilt, side),
+      new THREE.MeshStandardMaterial({
+        color: wingColor,
+        roughness: 0.6,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.7,
+      }),
+    );
+    hind.castShadow = false;
+    hind.rotation.y = side === -1 ? Math.PI : 0;
+    hindPivot.add(hind);
+    group.add(hindPivot);
+    wings.push(hindPivot);
+  }
+
+  // Animation state: only the wing-flap phase. Movement is owned by the game.
+  const flap = {
+    phase: Math.random() * Math.PI * 2,
+    speed: 64, // much faster than a butterfly's 14 rad/s wing beat
+  };
+
+  const updateFn = (dt) => {
+    flap.phase = (flap.phase + flap.speed * dt) % (Math.PI * 2);
+    const angle = Math.sin(flap.phase) * 0.6;
+    // Front set (indices 0, 2) and hind set (1, 3) flap together, opposites on
+    // each side lift both outer edges up together and down together.
+    wings[0].rotation.z = -angle;
+    wings[1].rotation.z = -angle;
+    wings[2].rotation.z = angle;
+    wings[3].rotation.z = angle;
+  };
+
+  const entity = sim.addEntity(group, null, updateFn, "dragonfly");
+  entity.children = children;
+
+  entity.setFlapSpeed = (v) => {
+    flap.speed = v;
+  };
+
+  return entity;
+}
+
 // A swarm of small flying midges (flies/gnats) that hover in place and dart
 // from spot to spot across the lawn. Rendered as one instanced mesh of tiny
 // bodies; they scatter as a group when frightened.
@@ -1208,7 +1356,7 @@ export function createFlies(sim, opts = {}) {
   const {
     count = 20,
     color = 0x1a1a1a,
-    size = 0.06,
+    size = 0.035,
     spread = 30,
     hoverHeight = [0.5, 1.3],
     dwellTime = [2, 5],
