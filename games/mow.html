@@ -80,6 +80,9 @@
         ground.rotation.x = -Math.PI / 2;
         ground.position.y = -0.01;
         ground.receiveShadow = true;
+        // Cast too: the plane occludes blade geometry in the shadow pass, so
+        // grass sunk into the soil doesn't cast phantom full-length shadows.
+        ground.castShadow = true;
         sim.scene.add(ground);
 
         // Grass: single instanced mesh, 3x3 patches tiled across 100x100.
@@ -89,6 +92,35 @@
         const total = COLS * ROWS * N;
         const bladeGeo = new THREE.ConeGeometry(0.08, 1.7, 4);
         const bladeMat = new THREE.MeshStandardMaterial({ color: 0x44aa55, roughness: 0.8 });
+        // Gentle breeze: sway lives in the vertex shader, so it costs nothing
+        // on the CPU (only the regrowing blades touch instance matrices). It
+        // bends in local space before the instance transform, so each blade
+        // keeps its own scale/orientation and its base stays anchored.
+        const swayUniforms = { uTime: { value: 0 } };
+        bladeMat.onBeforeCompile = (shader) => {
+          shader.uniforms.uTime = swayUniforms.uTime;
+          // Declare the uniform at global scope (#include <common> is the first
+          // include); #include <begin_vertex> sits inside main().
+          shader.vertexShader = shader.vertexShader
+            .replace("#include <common>", "#include <common>\nuniform float uTime;")
+            .replace(
+            "#include <begin_vertex>",
+            `#include <begin_vertex>
+#ifdef USE_INSTANCING
+            // h: 0 at the base, 1 at the tip (cone height 1.7, centered at 0).
+            float h = clamp((transformed.y + 0.85) / 1.7, 0.0, 1.0);
+            // Blade base position = instance translation (world space).
+            vec3 _base = instanceMatrix[3].xyz;
+            // Per-blade phase so neighboring blades don't wave in lockstep.
+            float _ph = fract(sin(dot(_base.xz * 0.13, vec2(12.9898, 78.233))) * 43758.5453);
+            // A shallow wave drifting across the lawn, gentler near the base.
+            float _wave = sin(_base.x * 1.2 + uTime * 1.6 + _ph * 6.2831)
+                        + cos(_base.z * 1.4 + uTime * 1.2 + _ph * 6.2831);
+            transformed.x += _wave * h * h * 0.015;
+#endif
+`,
+          );
+        };
         const grassMesh = new THREE.InstancedMesh(bladeGeo, bladeMat, total);
         grassMesh.castShadow = true;
         grassMesh.receiveShadow = true;
@@ -97,6 +129,10 @@
         const bladeRot = [];
         const bladeScale = new Float32Array(total);
         const bladeGrowth = new Float32Array(total);
+        // Distance from the cone's center to its tip. Blades are never squashed:
+        // they stay full length and sink into the ground by the un-grown amount
+        // (see the grow loop), so the tip just peeks out of the soil when cut.
+        const BLADE_HALF = bladeGeo.parameters.height / 2;
         let idx = 0;
         for (let r = 0; r < ROWS; r++) {
           for (let c = 0; c < COLS; c++) {
@@ -119,7 +155,11 @@
                   (Math.random() - 0.5) * 0.35,
                 ),
               );
-              dummy.position.copy(bladePos[idx]);
+              dummy.position.set(
+                bladePos[idx].x,
+                BLADE_HALF * bladeScale[idx] * (bladeGrowth[idx] - 1),
+                bladePos[idx].z,
+              );
               dummy.quaternion.copy(bladeRot[idx]);
               dummy.scale.set(s, s, s);
               dummy.updateMatrix();
@@ -317,7 +357,9 @@
           const turn = keyTurn() || touchTurn;
           const v = keyF() || touchF;
           const speed = 2;
-          const turnSpeed = v === 0 ? 4.0 : 2.0; // spin on the spot when stopped
+          // Shift sharpens steering while moving (stationary spin rate already).
+          const shifting = keys.has("ShiftLeft") || keys.has("ShiftRight");
+          const turnSpeed = v === 0 ? 4.0 : shifting ? 4.0 : 2.0;
 
           mowerMoving = v !== 0;
           mower.mesh.rotateOnWorldAxis(turnDir, turn * turnSpeed * dt);
@@ -419,6 +461,7 @@
         let grassDirty = false;
         const growRate = 0.0375;
         sim.addEntity(null, null, (dt) => {
+          swayUniforms.uTime.value += dt;
           // Cut any blades under the mower's reel, then grow the lawn back.
           grassDirty = false;
           // Cut: only test blades in the grid cells under the reel. Trim any
@@ -437,14 +480,19 @@
             return false;
           });
           // Grow only the blades that are below full height (active set), not
-          // every blade. The base stays anchored at the plane, so trimmed grass
-          // is visible as short blades that rise back up as they regrow.
+          // every blade. Each blade keeps its full length; it's sunk into the
+          // soil by the un-grown amount, so the top `growth` fraction of a thin
+          // blade emerges from the ground and rises as it regrows.
           for (let k = 0; k < growList.length; ) {
             const i = growList[k];
             bladeGrowth[i] = Math.min(bladeGrowth[i] + dt * growRate, 1);
-            dummy.position.copy(bladePos[i]);
+            dummy.position.set(
+              bladePos[i].x,
+              BLADE_HALF * bladeScale[i] * (bladeGrowth[i] - 1),
+              bladePos[i].z,
+            );
             dummy.quaternion.copy(bladeRot[i]);
-            dummy.scale.set(bladeScale[i], bladeScale[i] * bladeGrowth[i], bladeScale[i]);
+            dummy.scale.set(bladeScale[i], bladeScale[i], bladeScale[i]);
             dummy.updateMatrix();
             grassMesh.setMatrixAt(i, dummy.matrix);
             grassDirty = true;
