@@ -48,7 +48,7 @@
         createBox,
         createSphere,
       } from "engine/primitives.js";
-      import { createLawnmower } from "engine/components.js";
+      import { createLawnmower, createFPSCounter } from "engine/components.js";
       import {} from "engine/materials.js";
       import * as THREE from "three";
 
@@ -69,7 +69,7 @@
         sim.scene.add(ground);
 
         // Grass: single instanced mesh, 3x3 patches tiled across 100x100.
-        const W = 3, D = 3, N = 202;
+        const W = 3, D = 3, N = 1000;
         const COLS = 20, ROWS = 20;
         const total = COLS * ROWS * N;
         const bladeGeo = new THREE.ConeGeometry(0.08, 1.7, 4);
@@ -115,6 +115,59 @@
         grassMesh.instanceMatrix.needsUpdate = true;
         sim.scene.add(grassMesh);
 
+        // Spatial grid over the lawn so cut checks only test blades near the
+        // mower instead of all of them every frame. Blade positions never move,
+        // so the buckets are built once.
+        const CELL = 1.5; // grid cell size (world units)
+        const GRID_COLS = Math.ceil((COLS * W) / CELL);
+        const GRID_ROWS = Math.ceil((ROWS * D) / CELL);
+        const lawnMinX = -(COLS * W) / 2, lawnMinZ = -(ROWS * D) / 2;
+        const gridCells = new Array(GRID_COLS * GRID_ROWS);
+        const counts = new Uint32Array(GRID_COLS * GRID_ROWS);
+        const cellIndex = (x, z) => {
+          const cx = Math.min(GRID_COLS - 1, Math.max(0, Math.floor((x - lawnMinX) / CELL)));
+          const cz = Math.min(GRID_ROWS - 1, Math.max(0, Math.floor((z - lawnMinZ) / CELL)));
+          return cz * GRID_COLS + cx;
+        };
+        for (let i = 0; i < total; i++) counts[cellIndex(bladePos[i].x, bladePos[i].z)]++;
+        // Prefix-sum so each cell's indices are a contiguous slice of one array.
+        const cellStart = new Int32Array(gridCells.length + 1);
+        for (let i = 0; i < gridCells.length; i++) cellStart[i + 1] = cellStart[i] + counts[i];
+        const cellIndices = new Uint32Array(total);
+        {
+          const cursor = new Int32Array(gridCells.length);
+          for (let i = 0; i < total; i++) {
+            const ci = cellIndex(bladePos[i].x, bladePos[i].z);
+            cellIndices[cellStart[ci] + cursor[ci]++] = i;
+          }
+        }
+        // Iterate blades inside the mower's (world-space) cut footprint.
+        const visitCutArea = (cb) => {
+          const o = mower.mesh.position;
+          const q = mower.mesh.quaternion;
+          const hw = CUT_HALF_W, hd = CUT_HALF_D;
+          // Orient the footprint axes into world space to bound its AABB.
+          const fx = new THREE.Vector3(hw, 0, 0).applyQuaternion(q);
+          const fz = new THREE.Vector3(0, 0, hd).applyQuaternion(q);
+          const minX = o.x - Math.abs(fx.x) - Math.abs(fz.x);
+          const maxX = o.x + Math.abs(fx.x) + Math.abs(fz.x);
+          const minZ = o.z - Math.abs(fx.z) - Math.abs(fz.z);
+          const maxZ = o.z + Math.abs(fx.z) + Math.abs(fz.z);
+          const c0x = Math.max(0, Math.floor((minX - lawnMinX) / CELL));
+          const c1x = Math.min(GRID_COLS - 1, Math.floor((maxX - lawnMinX) / CELL));
+          const c0z = Math.max(0, Math.floor((minZ - lawnMinZ) / CELL));
+          const c1z = Math.min(GRID_ROWS - 1, Math.floor((maxZ - lawnMinZ) / CELL));
+          for (let cz = c0z; cz <= c1z; cz++) {
+            for (let cx = c0x; cx <= c1x; cx++) {
+              const ci = cz * GRID_COLS + cx;
+              for (let k = cellStart[ci]; k < cellStart[ci + 1]; k++) {
+                if (cb(cellIndices[k])) return true;
+              }
+            }
+          }
+          return false;
+        };
+
         // Place a push lawnmower on the lawn.
         const mower = createLawnmower(sim, {
           wheelRadius: 0.4,
@@ -149,18 +202,29 @@
         const CUT_MIN_GROWTH = 0.15; // only cuts/emits over grass this tall
         const localPos = new THREE.Vector3();
         const invMower = new THREE.Matrix4();
+        // Active-growth set: only blades below full height are touched each
+        // frame, instead of scanning all of them. `growIndex[i]` gives the slot
+        // of blade i in `growList` (or -1 if not growing), enabling O(1) add.
+        const growList = [];
+        const growIndex = new Int32Array(total).fill(-1);
+        const addToGrow = (i) => {
+          if (growIndex[i] !== -1) return; // already in the list
+          growIndex[i] = growList.length;
+          growList.push(i);
+        };
         // Whether cuttable grass (strictly above the mower's minimum height)
-        // currently sits under the reel.
+        // currently sits under the reel. Only tests blades in the grid cells
+        // overlapping the cut footprint.
         const hasGrassToCut = () => {
           invMower.copy(mower.mesh.matrixWorld).invert();
-          for (let i = 0; i < total; i++) {
-            if (bladeGrowth[i] <= CUT_MIN_GROWTH) continue;
+          return visitCutArea((i) => {
+            if (bladeGrowth[i] <= CUT_MIN_GROWTH) return false;
             localPos.copy(bladePos[i]).applyMatrix4(invMower);
             if (Math.abs(localPos.x) < CUT_HALF_W && Math.abs(localPos.z) < CUT_HALF_D) {
               return true;
             }
-          }
-          return false;
+            return false;
+          });
         };
 
         // --- Grass-clipping particle effect (emitted when the mower moves) ---
@@ -299,34 +363,45 @@
         let grassDirty = false;
         const growRate = 0.0375;
         sim.addEntity(null, null, (dt) => {
-          // World -> mower-local transform for the cut footprint check.
-          invMower.copy(mower.mesh.matrixWorld).invert();
-
           // Cut any blades under the mower's reel, then grow the lawn back.
           grassDirty = false;
-          for (let i = 0; i < total; i++) {
-            // Check if this blade sits under the reel (in mower local space);
-            // only cut it if it's grown above the mower's minimum height, and
-            // trim it down to exactly that minimum (a real mower leaves a
-            // uniform-height lawn, it doesn't scalp to nothing).
+          // Cut: only test blades in the grid cells under the reel. Trim any
+          // grown above the mower's minimum height down to that minimum (a real
+          // mower leaves a uniform-height lawn, it doesn't scalp to nothing).
+          invMower.copy(mower.mesh.matrixWorld).invert();
+          visitCutArea((i) => {
             if (bladeGrowth[i] > CUT_MIN_GROWTH) {
               localPos.copy(bladePos[i]).applyMatrix4(invMower);
               if (Math.abs(localPos.x) < CUT_HALF_W &&
                   Math.abs(localPos.z) < CUT_HALF_D) {
                 bladeGrowth[i] = CUT_MIN_GROWTH;
+                addToGrow(i);
               }
             }
-            // Grow the lawn back over time. The blade base stays anchored at the
-            // plane, so trimmed grass remains visible as short blades that rise
-            // back up as they regrow.
-            if (bladeGrowth[i] < 1) {
-              bladeGrowth[i] = Math.min(bladeGrowth[i] + dt * growRate, 1);
-              dummy.position.copy(bladePos[i]);
-              dummy.quaternion.copy(bladeRot[i]);
-              dummy.scale.set(bladeScale[i], bladeScale[i] * bladeGrowth[i], bladeScale[i]);
-              dummy.updateMatrix();
-              grassMesh.setMatrixAt(i, dummy.matrix);
-              grassDirty = true;
+            return false;
+          });
+          // Grow only the blades that are below full height (active set), not
+          // every blade. The base stays anchored at the plane, so trimmed grass
+          // is visible as short blades that rise back up as they regrow.
+          for (let k = 0; k < growList.length; ) {
+            const i = growList[k];
+            bladeGrowth[i] = Math.min(bladeGrowth[i] + dt * growRate, 1);
+            dummy.position.copy(bladePos[i]);
+            dummy.quaternion.copy(bladeRot[i]);
+            dummy.scale.set(bladeScale[i], bladeScale[i] * bladeGrowth[i], bladeScale[i]);
+            dummy.updateMatrix();
+            grassMesh.setMatrixAt(i, dummy.matrix);
+            grassDirty = true;
+            if (bladeGrowth[i] >= 1) {
+              // Swap-remove: move the last growing blade into this slot.
+              const last = growList.pop();
+              if (last !== i) {
+                growList[k] = last;
+                growIndex[last] = k;
+              }
+              growIndex[i] = -1;
+            } else {
+              k++;
             }
           }
           if (grassDirty) grassMesh.instanceMatrix.needsUpdate = true;
@@ -340,6 +415,8 @@
           );
           sim.camera.lookAt(target);
         });
+
+        createFPSCounter(sim);
       }
 
       setup(sim);
