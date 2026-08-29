@@ -8,6 +8,7 @@
 //   color:  <input type=color>  (value hex, converts to int 0xRRGGBB)
 //   vector: <input type=text>   (comma-separated numbers -> array)
 //   text:   <input type=text>   (free-form string)
+//   boolean:<input type=checkbox> (true/false)
 
 import {
   createGround,
@@ -34,6 +35,7 @@ import {
   createButterfly,
   createDragonfly,
   createFlies,
+  createDandelion,
 } from "./components.js";
 
 import { createPowerupsPreview } from "./powerups.js";
@@ -463,7 +465,7 @@ export const ENTRIES = [
         max: 60,
         step: 1,
       },
-      { key: "color", label: "Color", type: "color", default: "0x1a1a1a" },
+      { key: "color", label: "Color", type: "color", default: "0xffffff" },
       {
         key: "size",
         label: "Fly Size",
@@ -1077,6 +1079,60 @@ export const ENTRIES = [
       {
         key: "position",
         label: "Position [x,y,z]",
+        type: "vector",
+        default: [0, 0, 0],
+      },
+    ],
+  },
+  {
+    category: "component",
+    key: "dandelion",
+    label: "Dandelion",
+    desc: "A dandelion (2-5 by default, seed puff or yellow flower phase)",
+    fn: createDandelion,
+    opts: [
+      {
+        key: "flower",
+        label: "Flower phase",
+        type: "boolean",
+        default: false,
+      },
+      {
+        key: "bunch",
+        label: "Bunch (2-5)",
+        type: "boolean",
+        default: true,
+      },
+      {
+        key: "stemHeight",
+        label: "Stem Height",
+        type: "number",
+        default: 1.4,
+        min: 0.5,
+        max: 3,
+        step: 0.05,
+      },
+      {
+        key: "headRadius",
+        label: "Head Radius",
+        type: "number",
+        default: 0.4,
+        min: 0.1,
+        max: 1.5,
+        step: 0.05,
+      },
+      { key: "stemColor", label: "Stem Color", type: "color", default: "0x3f7d3a" },
+      { key: "puffColor", label: "Puff Color", type: "color", default: "0xf4f3ee" },
+      { key: "flowerColor", label: "Flower Color", type: "color", default: "0xffd730" },
+      {
+        key: "position",
+        label: "Position [x,y,z]",
+        type: "vector",
+        default: [0, 0, 0],
+      },
+      {
+        key: "rotation",
+        label: "Rotation [x,y,z]",
         type: "vector",
         default: [0, 0, 0],
       },

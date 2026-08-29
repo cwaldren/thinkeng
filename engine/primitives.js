@@ -402,7 +402,7 @@ export function createHeart(sim, opts = {}) {
 export function createFlySwarm(sim, opts = {}) {
   const {
     count = 10,
-    color = 0x1a1a1a,
+    color = 0xffffff,
     size = 0.035,
     radius = 1.5,
     speed = 3,

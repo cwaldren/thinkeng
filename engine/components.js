@@ -1450,3 +1450,150 @@ export function createFlies(sim, opts = {}) {
   return entity;
 }
 
+// A dandelion: a thin green stem topped by a small receptacle. In its seed
+// phase a single white puffball sphere caps the stem; in its flower phase
+// (flower = true) a flattened yellow bloom with a darker disc center and green
+// bracts instead. By default (bunch = true) it grows a clump of 2-5 plants,
+// all rooted at the same origin with their stems angling outward — like a
+// tuft of dandelions leaning away from a common base — plus natural size
+// variation. Decorative (no physics) — composes createCylinder + createSphere
+// primitives, plus plain cone meshes for the bracts, all under one group.
+export function createDandelion(sim, opts = {}) {
+  const {
+    stemHeight = 1.4,
+    stemRadius = 0.035,
+    stemColor = 0x3f7d3a,
+    headRadius = 0.4,
+    puffColor = 0xf4f3ee,
+    flowerColor = 0xffd730,
+    flower = false,
+    bunch = true,
+    position = [0, 0, 0],
+    rotation = [0, 0, 0],
+  } = opts;
+
+  const isFlower = flower === true || String(flower).toLowerCase() === "true";
+  const isBunch = !(bunch === false || String(bunch).toLowerCase() === "false");
+
+  const group = new THREE.Group();
+  group.position.set(position[0], position[1], position[2]);
+  group.rotation.set(rotation[0], rotation[1], rotation[2]);
+  const children = [];
+
+  const up = new THREE.Vector3(0, 1, 0);
+
+  // Grows a single plant from the origin. Each plant lives in its own pivot
+  // group anchored at the ground, so tilting the pivot leans the whole stem
+  // about the shared base point (v.tiltX / v.tiltZ in radians).
+  const grow = (v = {}) => {
+    const h = stemHeight * (v.height ?? 1);
+    const r = headRadius * (v.head ?? 1);
+
+    const el = new THREE.Group(); // pivot at the shared ground origin
+    el.rotation.set(v.tiltX ?? 0, 0, v.tiltZ ?? 0);
+    group.add(el);
+
+    // Stem: a slightly tapered cylinder rising from the ground.
+    const stem = createCylinder(sim, {
+      radiusTop: stemRadius,
+      radiusBottom: stemRadius * 1.2,
+      height: h,
+      color: stemColor,
+      mass: 0,
+      position: [0, h / 2, 0],
+      radialSegments: 8,
+    });
+    el.add(stem.mesh);
+    children.push(stem);
+
+    // Small green receptacle at the top of the stem where the head sits.
+    const hub = createSphere(sim, {
+      radius: stemRadius * 2,
+      color: stemColor,
+      mass: 0,
+      position: [0, h, 0],
+    });
+    el.add(hub.mesh);
+    children.push(hub);
+
+    if (isFlower) {
+      // Flattened yellow bloom perched above the receptacle.
+      const bloom = createSphere(sim, {
+        radius: r,
+        color: flowerColor,
+        mass: 0,
+        position: [0, h + r * 0.15, 0],
+      });
+      bloom.mesh.scale.set(1, 0.75, 1);
+      el.add(bloom.mesh);
+      children.push(bloom);
+
+      // Darker disc center on top of the bloom.
+      const disc = createSphere(sim, {
+        radius: r * 0.22,
+        color: 0xc88e1a,
+        mass: 0,
+        position: [0, h + r * 0.62, 0],
+      });
+      disc.mesh.scale.set(1, 0.5, 1);
+      el.add(disc.mesh);
+      children.push(disc);
+
+      // Green bracts ringing the bloom base, leaning outward.
+      const bractCount = 7;
+      const bractR = r * 0.17;
+      const bractH = r * 0.55;
+      const bractMat = new THREE.MeshStandardMaterial({ color: stemColor });
+      const bractGeo = new THREE.ConeGeometry(bractR, bractH, 6);
+      for (let i = 0; i < bractCount; i++) {
+        const a = (i / bractCount) * Math.PI * 2;
+        const tilt = new THREE.Vector3(
+          Math.cos(a) * 0.5,
+          0.9,
+          Math.sin(a) * 0.5,
+        ).normalize();
+        const bract = new THREE.Mesh(bractGeo, bractMat);
+        bract.position.set(
+          Math.cos(a) * r * 0.22,
+          h + bractH * 0.3,
+          Math.sin(a) * r * 0.22,
+        );
+        bract.quaternion.setFromUnitVectors(up, tilt);
+        bract.castShadow = true;
+        bract.receiveShadow = true;
+        el.add(bract);
+      }
+    } else {
+      // The white puffball perched just above the receptacle.
+      const puff = createSphere(sim, {
+        radius: r,
+        color: puffColor,
+        mass: 0,
+        position: [0, h + r * 0.15, 0],
+      });
+      el.add(puff.mesh);
+      children.push(puff);
+    }
+  };
+
+  if (isBunch) {
+    const count = 2 + Math.floor(Math.random() * 4); // 2-5
+    for (let i = 0; i < count; i++) {
+      const az = Math.random() * Math.PI * 2;
+      const tilt = 0.06 + Math.random() * 0.22; // lean shared toward a random azimuth
+      grow({
+        height: 0.85 + Math.random() * 0.3,
+        head: 0.85 + Math.random() * 0.3,
+        tiltX: Math.cos(az) * tilt,
+        tiltZ: Math.sin(az) * tilt,
+      });
+    }
+  } else {
+    grow({});
+  }
+
+  const entity = sim.addEntity(group, null, null, "dandelion");
+  entity.children = children;
+  return entity;
+}
+

@@ -250,6 +250,7 @@
       //   color:  <input type=color>  (value hex, converts to int 0xRRGGBB)
       //   vector: <input type=text>   (comma-separated numbers -> array)
       //   text:   <input type=text>   (free-form string)
+      //   boolean:<input type=checkbox> (true/false)
       // Filter links swap the visible card list in-place (replaceState, no
       // reload), so the simulation keeps running across filter changes.
       // ------------------------------------------------------------------
@@ -358,19 +359,21 @@
             .split(",")
             .map((s) => Number(s.trim()))
             .filter((n) => Number.isFinite(n)),
+        boolean: (raw) => raw === true || String(raw).toLowerCase() === "true",
       };
       const parseValue = (spec, raw) => PARSERS[spec.type]?.(raw) ?? raw;
 
       const SERIALIZERS = {
         color: (v) => "#" + Number(v).toString(16).padStart(6, "0"),
         vector: (v) => (Array.isArray(v) ? v.join(", ") : String(v)),
+        boolean: (v) => (v ? "true" : "false"),
       };
       const serializeValue = (spec, value) => SERIALIZERS[spec.type]?.(value) ?? value;
 
       let active = null; // { entry, values }
       let liveEntity = null;
 
-      const INPUT_TYPES = { color: "color", vector: "text", text: "text" };
+      const INPUT_TYPES = { color: "color", vector: "text", text: "text", boolean: "checkbox" };
 
       function buildControls() {
         controlsForm.innerHTML = "";
@@ -386,14 +389,23 @@
           label.textContent = spec.label;
 
           const input = document.createElement("input");
-          input.type = INPUT_TYPES[spec.type] ?? "number";
-          input.value = serializeValue(spec, active.values[spec.key]);
-          if (input.type === "number")
-            Object.assign(input, { min: spec.min, max: spec.max, step: spec.step });
-          input.addEventListener("input", () => {
-            active.values[spec.key] = parseValue(spec, input.value);
-            rebuild();
-          });
+          if (spec.type === "boolean") {
+            input.type = "checkbox";
+            input.checked = !!active.values[spec.key];
+            input.addEventListener("change", () => {
+              active.values[spec.key] = input.checked;
+              rebuild();
+            });
+          } else {
+            input.type = INPUT_TYPES[spec.type] ?? "number";
+            input.value = serializeValue(spec, active.values[spec.key]);
+            if (input.type === "number")
+              Object.assign(input, { min: spec.min, max: spec.max, step: spec.step });
+            input.addEventListener("input", () => {
+              active.values[spec.key] = parseValue(spec, input.value);
+              rebuild();
+            });
+          }
 
           field.appendChild(label);
           field.appendChild(input);
