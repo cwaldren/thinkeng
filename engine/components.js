@@ -696,7 +696,10 @@ export function createGCStats(sim, opts = {}) {
   el.style.textAlign = "right";
 
   const mem = performance.memory;
-  el.textContent = mem ? "heap -- MB" : "GC: n/a (heap API unavailable)";
+  // If the GC heap API is unavailable, don't render anything (no "n/a" stub).
+  if (!mem) return null;
+
+  el.textContent = "heap -- MB";
 
   const container = sim?.container || document.body;
   container.appendChild(el);

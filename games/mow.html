@@ -36,8 +36,8 @@
       <h1 style="margin: 0; font-size: 1.2rem; opacity: 0.8">
         Zen Mow
       </h1>
-      <p style="margin: 4px 0 0; font-size: 0.85rem; opacity: 0.5">
-        W/A/S/D or arrow keys to move. Hold C for a first-person view.
+      <p id="hint" style="margin: 4px 0 0; font-size: 0.85rem; opacity: 0.5">
+        W/A/S/D or arrow keys to move. Hold C for orbit camera.
       </p>
       <label
         id="creatures-toggle"
@@ -290,7 +290,8 @@
       // fall straight down, so the moon's floor (all facing up) is fully lit
       // while the Earth's lower hemisphere — the half turned away from the sun
       // toward the moon — stays shrouded in darkness.
-      const sunLight = new THREE.PointLight(0xfff2d9, 2.6, 0, 0);
+      const SUN_INTENSITY = 2.6;
+      const sunLight = new THREE.PointLight(0xfff2d9, SUN_INTENSITY, 0, 0);
       sunLight.position.set(0, 320, 0);
       sunLight.castShadow = true;
       sunLight.shadow.mapSize.set(2048, 2048);
@@ -345,6 +346,11 @@
 
       function setup(sim) {
         // Grass: single instanced mesh, 3x3 patches tiled across 100x100.
+        const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+        if (isMobile) {
+          document.getElementById("hint").textContent =
+            "Tap screen to mow, drag left/right to turn.";
+        }
         // Density config is editable in the UI; applied values persist and are
         // consumed here on the next load (Apply triggers a reload).
         const density = {
@@ -497,10 +503,11 @@
 
         // Earth floating high in the moon's sky, off beyond the grass dome —
         // a small blue-green globe (#the reveal: we're mowing on the Moon).
-        createEarth(sim, {
+        const earth = createEarth(sim, {
           radius: 7,
           position: [0, 16, -140],
         });
+        let revealFired = false;
 
         // Star field: tiny points on a huge fixed-radius dome far beyond the Earth.
         // Star color follows the real stellar distribution (mostly white-blue
@@ -935,6 +942,19 @@
             glassMat.opacity = 0;
             glassMat.depthWrite = false;
             for (const f of skyFaces) f.visible = false;
+            // Reveal: the box is gone, so the real moon sun takes over again.
+            if (sunLight) sunLight.intensity = SUN_INTENSITY;
+            // Snap the Earth directly into the player's field of view: instantly
+            // park it far ahead along the mower's forward heading, held at a
+            // cinematic altitude. One-time at the reveal.
+            if (!revealFired) {
+              revealFired = true;
+              const fwd = _dir.copy(forward).applyQuaternion(mower.mesh.quaternion).negate();
+              earth.mesh.position
+                .copy(mower.mesh.position)
+                .addScaledVector(fwd, 300);
+              earth.mesh.position.y = 24;
+            }
           } else {
             // Opaque sky: fully hide the space outside the dome (survives the
             // whole day AND the dusk fade so the inky sunset still reads).
@@ -942,6 +962,9 @@
             glassMat.opacity = 1;
             glassMat.depthWrite = true;
             for (const f of skyFaces) f.visible = true;
+            // Box closed: the moon sun can't reach the sealed lawn, so shut it
+            // off and let only the fake in-dome day light drive the grass.
+            if (sunLight) sunLight.intensity = 0;
           }
           // Fake sun: bright warm light at noon, dimming & warming as the sky
           // darkens through dusk, fully off by night.
@@ -1148,15 +1171,26 @@
         const CLIP_COUNT = 120;
         // Each clipping is a real 3D blade mesh so it can carry a random 3D
         // rotation and tumble as it flies.
-        // The clip cone is small (0.5 tall); this factor upscales the emitted
-        // instance so a full-height cut (cutAmount=1) produces a clipping about
-        // as long as the grass blade it came from (~1.7), and keeps shorter
-        // re-cuts proportionally smaller.
+        // Each clipping is a flat triangle (a blade sliver), kept small (0.5
+        // tall); this factor upscales the emitted instance so a full-height cut
+        // (cutAmount=1) produces a clipping about as long as the grass blade it
+        // came from (~1.7), and keeps shorter re-cuts proportionally smaller.
         const CLIP_SCALE = (1.7 / 0.5) * 0.5; // full cut throws clippings half the blade height
-        const clipGeo = new THREE.ConeGeometry(0.03, 0.5, 4);
+        const clipGeo = new THREE.BufferGeometry();
+        // A single isoceles triangle in the XY plane (a thin ~0.05-wide sliver,
+        // 0.5 tall), double-sided so it reads no matter which way it tumbles.
+        clipGeo.setAttribute(
+          "position",
+          new THREE.Float32BufferAttribute(
+            [-0.025, 0, 0, 0.025, 0, 0, 0, 0.5, 0],
+            3,
+          ),
+        );
+        clipGeo.computeVertexNormals();
         const clipMat = new THREE.MeshStandardMaterial({
           color: 0x3f8f3f,
           roughness: 0.9,
+          side: THREE.DoubleSide,
         });
         const clipMesh = new THREE.InstancedMesh(clipGeo, clipMat, CLIP_COUNT);
         clipMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -1167,7 +1201,7 @@
         const clipEuler = new THREE.Euler();
         const clips = [];
         for (let i = 0; i < CLIP_COUNT; i++) {
-          clips.push({ x: 0, y: -1000, z: 0, vx: 0, vy: 0, vz: 0, rx: 0, ry: 0, rz: 0, wrx: 0, wry: 0, wrz: 0, life: 0, scale: 1, alive: false });
+          clips.push({ x: 0, y: -1000, z: 0, vx: 0, vy: 0, vz: 0, rx: 0, ry: 0, rz: 0, wrx: 0, wry: 0, wrz: 0, life: 0, scale: 1, alive: false, hidden: true });
           clipDummy.position.set(-1000, -1000, -1000);
           clipDummy.updateMatrix();
           clipMesh.setMatrixAt(i, clipDummy.matrix);
@@ -1215,6 +1249,12 @@
           const right = _right.set(1, 0, 0).applyQuaternion(mower.mesh.quaternion);
           if (mowerForward && hasCuttableGrass()) {
             clipAccum += dt * 250;
+            // The mower and grass state are fixed for the whole frame, so the
+            // cut amount is sampled ONCE here (outside the while loop) instead
+            // of redundantly re-querying the spatial grid for every emitted
+            // clipping. This avoids a blow-up of identical queries on laggy
+            // frames (large dt) that would compound into a spiral of death.
+            const amt = sampleCutAmount();
             while (clipAccum >= 1) {
               clipAccum -= 1;
               const p = clips[clipCursor];
@@ -1227,9 +1267,8 @@
               p.vx = (Math.random() - 0.5) * spread;
               p.vz = (Math.random() - 0.5) * spread;
               p.vy = 1.2 + Math.random() * 1.6;
-              // Size matches the grass at THIS spot (per-particle local sample):
-              // full-height cuts throw big clippings, re-cuts throw tiny flecks.
-              const amt = sampleCutAmount();
+              // Size matches the grass at THIS spot: full-height cuts throw big
+              // clippings, re-cuts throw tiny flecks.
               p.scale = Math.max(0.08, amt * CLIP_SCALE);
               // Random starting 3D rotation and fixed tumble rates.
               p.rx = Math.random() * Math.PI * 2;
@@ -1240,6 +1279,7 @@
               p.wrz = (Math.random() - 0.5) * 14;
               p.life = 0;
               p.alive = true;
+              p.hidden = false;
             }
           } else {
             clipAccum = 0;
@@ -1249,6 +1289,10 @@
           for (let i = 0; i < CLIP_COUNT; i++) {
             const p = clips[i];
             if (!p.alive) {
+              // Only rewrite the offscreen matrix on the exact frame a particle
+              // dies; once hidden, skip it entirely so dead slots cost nothing.
+              if (p.hidden) continue;
+              p.hidden = true;
               clipDummy.position.set(-1000, -1000, -1000);
               clipDummy.quaternion.identity();
               clipDummy.scale.set(1, 1, 1);
@@ -1439,10 +1483,11 @@ clipDummy.position.set(p.x, p.y, p.z);
             }
           }
 
-          // Camera: hold C to ride the mower's handle (facing the mower's forward
-          // vector, just back from the reel), otherwise drift the orbit view.
-          // On mobile, always ride first-person (touch steering turns the view).
-          if (keys.has("KeyC") || isMobile) {
+          // Camera: first-person by default, riding the mower's handle (facing
+          // the mower's forward vector, just back from the reel); hold C to
+          // switch to the drifting orbit view. On mobile it's always
+          // first-person (touch steering turns the view).
+          if (!keys.has("KeyC") || isMobile) {
             // Hand-grip point from the same geometry as the mower itself.
             const gripY = MOWER.wheelRadius +
               MOWER.handleLength * Math.cos(MOWER.handleAngle);
@@ -1464,6 +1509,10 @@ clipDummy.position.set(p.x, p.y, p.z);
             _fpQuat.multiply(_fpPitch.setFromAxisAngle(_fpAxis.set(1, 0, 0), gazePitch));
             sim.camera.quaternion.copy(_fpQuat);
           } else {
+            // Clamp the orbit radius to the skybox bounds each frame so that
+            // entering orbit (or any prior state) never spawns the camera
+            // outside the walls — it comes in at the furthest allowed zoom.
+            radius = Math.max(3, Math.min(MAX_ZOOM, radius));
             const sp = Math.sin(phi);
             sim.camera.position.set(
               target.x + radius * sp * Math.sin(theta),
@@ -1875,8 +1924,14 @@ clipDummy.position.set(p.x, p.y, p.z);
         });
 
         // Sync initial sleep/wake state to the current hour (so a page loaded
-        // at night starts the diurnal families already asleep).
-        dispatchDayNight(time.hour);
+        // at night starts the diurnal families already asleep). dispatch lets
+        // prevHour == hour on init, so no boundary "crosses" and sleep()/wake()
+        // would never fire; instead we set each family's state directly.
+        for (const fam of dayCycle) {
+          const w = fam.wakeHour, s = fam.sleepHour;
+          const awake = w < s ? time.hour >= w && time.hour < s : time.hour >= w || time.hour < s;
+          for (const item of fam.items) (awake ? item.wake() : item.sleep());
+        }
 
         sim.addEntity(null, null, (dt) => {
           for (const b of bees) b.group.visible = creaturesEnabled && !b.sleeping;
@@ -2096,9 +2151,44 @@ clipDummy.position.set(p.x, p.y, p.z);
         };
         creaturesCheckbox.addEventListener("change", applyCreatures);
 
-        createFPSCounter(sim);
-        createGCStats(sim);
-        createEntityStats(sim);
+        const fpsEnt = createFPSCounter(sim);
+        const gcEnt = createGCStats(sim, { color: "rgba(20,20,20,0.75)" });
+        const entityEnt = createEntityStats(sim, {
+          color: "rgba(20,20,20,0.8)",
+        });
+
+        // Toggle button tucked directly below the FPS counter; hides/shows the
+        // extended stats (GC + entity). FPS always stays visible. GC may be
+        // null when the heap API is unavailable.
+        const statEls = [gcEnt, entityEnt.element].filter(Boolean).map((e) =>
+          e.element ? e.element : e,
+        );
+        statEls.forEach((el) => (el.style.display = "none"));
+        const statsBtn = document.createElement("button");
+        statsBtn.textContent = "[stats]";
+        statsBtn.style.position = "absolute";
+        statsBtn.style.top = "32px";
+        statsBtn.style.right = "14px";
+        statsBtn.style.fontFamily = "monospace, sans-serif";
+        statsBtn.style.fontSize = "0.7rem";
+        statsBtn.style.color = "rgba(255,255,255,0.6)";
+        statsBtn.style.background = "transparent";
+        statsBtn.style.border = "none";
+        statsBtn.style.cursor = "pointer";
+        statsBtn.style.padding = "0";
+        statsBtn.style.zIndex = "1000";
+        let statsVisible = false;
+        // Each stat line has a fixed base top offset set by its component.
+        const statBaseTops = statEls.map((el) => parseInt(el.style.top) || 0);
+        statsBtn.addEventListener("click", () => {
+          statsVisible = !statsVisible;
+          statEls.forEach((el, i) => {
+            el.style.display = statsVisible ? "" : "none";
+            // Push the lines below the [stats] button only while visible.
+            el.style.top = statsVisible ? `${statBaseTops[i] + 22}px` : "";
+          });
+        });
+        document.body.appendChild(statsBtn);
       }
 
       setup(sim);
