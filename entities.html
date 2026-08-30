@@ -78,6 +78,26 @@
         color: #111;
       }
 
+      #search {
+        width: 100%;
+        box-sizing: border-box;
+        margin-bottom: 12px;
+        padding: 6px 10px;
+        background: #1a1a20;
+        border: 1px solid #2a2a33;
+        border-radius: 8px;
+        color: #fff;
+        font-size: 0.82rem;
+      }
+
+      #search::placeholder {
+        opacity: 0.5;
+      }
+
+      #search.hidden {
+        display: none;
+      }
+
       .card {
         display: block;
         width: 100%;
@@ -130,19 +150,39 @@
         opacity: 0.85;
       }
 
-      .badge.basic {
+      .badge.insect {
         color: #88cc55;
       }
 
-      .badge.composite {
+      .badge.mammal {
+        color: #caa253;
+      }
+
+      .badge.plant {
+        color: #55dd88;
+      }
+
+      .badge.shape {
+        color: #44ccbb;
+      }
+
+      .badge.transport {
         color: #33aaff;
       }
 
-      .badge.ux {
+      .badge.weapon {
+        color: #ff5555;
+      }
+
+      .badge.misc {
+        color: #9aa0a6;
+      }
+
+      .badge.ui {
         color: #ffaa33;
       }
 
-      .badge.effect {
+      .badge.vfx {
         color: #ff55aa;
       }
 
@@ -224,11 +264,22 @@
       <h2>Entities</h2>
       <div id="filter">
         <a href="?" data-type="">All</a
-        ><a href="?type=basic" data-type="basic">Basics</a
-        ><a href="?type=composite" data-type="composite">Composites</a
-        ><a href="?type=ux" data-type="ux">UX</a
-        ><a href="?type=effect" data-type="effect">Effects</a>
+        ><a href="?type=insect" data-type="insect">Insects</a
+        ><a href="?type=mammal" data-type="mammal">Mammals</a
+        ><a href="?type=plant" data-type="plant">Plants</a
+        ><a href="?type=shape" data-type="shape">Shapes</a
+        ><a href="?type=transport" data-type="transport">Transport</a
+        ><a href="?type=weapon" data-type="weapon">Weapons</a
+        ><a href="?type=misc" data-type="misc">Misc</a
+        ><a href="?type=ui" data-type="ui">UI</a
+        ><a href="?type=vfx" data-type="vfx">VFX</a>
       </div>
+      <input
+        id="search"
+        type="search"
+        placeholder="Search all entities..."
+        autocomplete="off"
+      />
     </aside>
 
     <aside id="controls">
@@ -256,10 +307,15 @@
       // ------------------------------------------------------------------
 
       const CATEGORIES = {
-        basic: "Basics",
-        composite: "Composites",
-        ux: "UX",
-        effect: "Effects",
+        insect: "Insects",
+        mammal: "Mammals",
+        plant: "Plants",
+        shape: "Shapes",
+        transport: "Transport",
+        weapon: "Weapons",
+        misc: "Misc",
+        ui: "UI",
+        vfx: "VFX",
       };
 
       // Read ?type= from the URL; empty/unknown => combined All view.
@@ -353,6 +409,8 @@
       const listEl = document.getElementById("list");
       const controlsPanel = document.getElementById("controls");
       const controlsForm = document.getElementById("controls-form");
+      const searchInput = document.getElementById("search");
+      let searchTerm = "";
 
       const PARSERS = {
         number: (raw) => Number(raw),
@@ -520,7 +578,7 @@
         if (withBadge) {
           const badge = document.createElement("span");
           badge.className = `badge ${entry.category}`;
-          badge.textContent = entry.category;
+          badge.textContent = CATEGORIES[entry.category] ?? entry.category;
           title.appendChild(badge);
         }
 
@@ -534,19 +592,50 @@
 
       // Populate the side list (tagged by category in the All view) and
       // auto-select the first entry so the view is never empty.
+      function matchesSearch(entry, q) {
+        if (!q) return false;
+        const haystack = [
+          entry.key,
+          entry.label,
+          CATEGORIES[entry.category] ?? entry.category,
+          ...(entry.tags ?? []),
+        ]
+          .join(" ")
+          .toLowerCase();
+        return q.split(/\s+/).every((term) => haystack.includes(term));
+      }
+
+      function nameMatches(entry, q) {
+        const name =
+          `${entry.key} ${entry.label}`.toLowerCase();
+        return q.split(/\s+/).every((term) => name.includes(term));
+      }
+
       function renderList() {
         for (const card of [...listEl.querySelectorAll(".card")]) card.remove();
-        const visible =
-          filterType === ""
-            ? ENTRIES
-            : ENTRIES.filter((e) => e.category === filterType);
+        const searching = filterType === "";
+        searchInput.classList.toggle("hidden", !searching);
+        const visible = searching
+          ? ENTRIES.filter((e) =>
+              matchesSearch(e, searchTerm.trim().toLowerCase()),
+            ).sort(
+              (a, b) =>
+                nameMatches(b, searchTerm.trim().toLowerCase()) -
+                nameMatches(a, searchTerm.trim().toLowerCase()),
+            )
+          : ENTRIES.filter((e) => e.category === filterType);
         for (const entry of visible)
-          listEl.appendChild(buildCard(entry, filterType === ""));
+          listEl.appendChild(buildCard(entry, searching));
         const target =
           visible.find((e) => e.key === urlEntityKey) ?? visible[0];
         if (target) setActive(target);
         else clearSelection();
       }
+
+      searchInput.addEventListener("input", () => {
+        searchTerm = searchInput.value;
+        renderList();
+      });
 
       // Update the URL in-place (replaceState) so the browser back button
       // returns to index.html instead of cycling through every filter.
