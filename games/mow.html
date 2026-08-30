@@ -384,10 +384,16 @@
         // Grass: single instanced mesh, 3x3 patches tiled across 100x100.
         const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
         if (isMobile) {
-          document.getElementById("hint").textContent =
-            "Tap screen to mow, drag left/right to turn.";
+          // Show just the mow hint on mobile (hide the title + control panels,
+          // which stay display:none anyway); it fades out on the first tap.
+          const hint = document.getElementById("hint");
+          hint.style.display = "block";
+          hint.style.opacity = "0.5";
+          hint.style.fontSize = "0.85rem";
+          hint.textContent = "Tap and drag to mow.";
           const ui = document.getElementById("ui");
-          ui.style.display = "none";
+          ui.style.display = "block";
+          ui.querySelector("h1").style.display = "none";
         } else {
           // Desktop: show the control panel. It stays hidden by default so it
           // never flashes for a frame on mobile before being suppressed.
@@ -1189,6 +1195,21 @@
           const ndy = (cy - backLine) / STICK_R;
           touchF = Math.abs(ndy) < 0.22 ? 0 : Math.max(-1, Math.min(1, ndy));
         };
+        // Fade out the mobile mow hint on the first tap, then never again.
+        let mobileHintHidden = false;
+        const dismissMobileHint = () => {
+          if (mobileHintHidden) return;
+          mobileHintHidden = true;
+          const hint = document.getElementById("hint");
+          if (!hint) return;
+          hint.style.transition = "opacity 0.4s ease";
+          requestAnimationFrame(() => {
+            hint.style.opacity = "0";
+          });
+          setTimeout(() => {
+            hint.style.display = "none";
+          }, 400);
+        };
         canvas.addEventListener("touchstart", (e) => {
           e.preventDefault();
           if (e.touches.length > 0) {
@@ -1197,6 +1218,7 @@
             touchOX = t.clientX;
             touchOY = t.clientY;
             updateTouch(t.clientX, t.clientY);
+            if (isMobile) dismissMobileHint();
           }
         }, { passive: false });
         canvas.addEventListener("touchmove", (e) => {
