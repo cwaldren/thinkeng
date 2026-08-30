@@ -822,7 +822,7 @@
           );
         };
         const grassMesh = new THREE.InstancedMesh(bladeGeo, bladeMat, total);
-        grassMesh.castShadow = true;
+        grassMesh.castShadow = false;
         grassMesh.receiveShadow = true;
         const dummy = new THREE.Object3D();
         const bladePos = [];
@@ -1259,6 +1259,12 @@
           // day, dims through dusk, and goes dark at the reveal.
           domeAmbient.intensity = 1.2 * dayFactor;
           if (isNight) domeAmbient.intensity = 0;
+          // Nastic: petals close as daylight fades — fully open at noon (0),
+          // fully closed by dusk. Runs only once the dandelion family exists.
+          if (dandelionsReady) {
+            const nastic = Math.max(0, Math.min(1, Math.min(p, 1)));
+            for (const d of dandelions) d.ent.setNastic?.(nastic);
+          }
         };
         // Day/night lifecycle: families register here (with wake/sleep hours),
         // and dispatchDayNight sleeps/wakes them as the hour crosses their
@@ -1267,6 +1273,9 @@
         // Set true once the firefly family exists so applySky can safely toggle
         // their visibility during the reveal/restore (it runs earlier at setup).
         let firefliesReady = false;
+        // Set true once the dandelion family exists so applySky can drive
+        // petal nastic closure (it runs earlier at setup too).
+        let dandelionsReady = false;
         // Cross a sleep/wake boundary when the current hour straddles the
         // threshold and the previous hour was on the opposite side, handling
         // slider jumps that leap across midnight (wrap backward or forward).
@@ -2041,13 +2050,27 @@ clipDummy.position.set(p.x, p.y, p.z);
           invMower.copy(mower.mesh.matrixWorld).invert();
           if (mowerForward) {
             for (const d of dandelions) {
-              if (d.grown) {
+              if (d.grown && !d.folding) {
                 localPos.set(d.x, 0, d.z).applyMatrix4(invMower);
                 if (Math.abs(localPos.x) < CUT_HALF_W &&
                     Math.abs(localPos.z) < CUT_HALF_D) {
-                  d.ent.mesh.visible = false; // mow it down
-                  d.grown = false;
-                  d.regrowT = 3 + Math.random() * 7; // random 3-10s before return
+                  // Seed-phase dandelions release their seeds partway through
+                  // the fold (see the fold loop below) so the head + stalks
+                  // visibly fold down first — not an instant despawn.
+                  if (!d.flower) d.shouldPuff = true;
+                  // Fold over away from the mower: rotate flat about the axis
+                  // perpendicular to the mower's travel, then despawn (handled
+                  // in the fold animation below).
+                  d.folding = true;
+                  d.foldT = 0;
+                  // Mower forward is local -Z (per engine convention); fold the
+                  // flower over in the direction of travel, "away" from the mower.
+                  _foldFwd.set(0, 0, -1).applyQuaternion(mower.mesh.quaternion);
+                  _foldFwd.y = 0;
+                  if (_foldFwd.lengthSq() < 1e-6) _foldFwd.set(0, 0, -1);
+                  _foldFwd.normalize();
+                  _foldAxis.set(0, 1, 0).cross(_foldFwd).normalize();
+                  d.foldAxis.copy(_foldAxis);
                 }
               }
             }
@@ -2058,8 +2081,12 @@ clipDummy.position.set(p.x, p.y, p.z);
               // Seed-phase puffs regrow; flowers stay mowed once cut.
               d.regrowT -= dt;
               if (d.regrowT <= 0) {
+                d.ent.mesh.quaternion.setFromEuler(d.baseEuler); // stand upright again
                 d.ent.mesh.visible = true;
                 d.grown = true;
+                d.puffed = false; // re-armed: can puff again next time it's mowed
+                d.shouldPuff = false;
+                d.ent.restore?.(); // regrow a fresh seed puff
               }
             }
           }
@@ -2070,7 +2097,7 @@ clipDummy.position.set(p.x, p.y, p.z);
           if (swaying) {
             const t = swayUniforms.uTime.value;
             for (const d of dandelions) {
-              if (!d.grown) continue;
+              if (!d.grown || d.folding) continue;
               for (let i = 0; i < d.waves.length; i++) {
                 const w = d.waves[i];
                 const stalk = d.ent.mesh.children[i];
@@ -2078,6 +2105,35 @@ clipDummy.position.set(p.x, p.y, p.z);
                 stalk.rotation.x = w.baseX + w.ax * wave;
                 stalk.rotation.z = w.baseZ + w.az * wave;
               }
+            }
+          }
+
+          // Fold-over: a mowed dandelion rotates flat about its fold axis over
+          // FOLD_S seconds, then despawns and starts its regrow timer.
+          for (const d of dandelions) {
+            if (!d.folding) continue;
+            d.foldT = Math.min(1, d.foldT + dt / FOLD_S);
+            // easeOutQuad so it snaps flat quickly, a natural "flip".
+            const e = 1 - (1 - d.foldT) * (1 - d.foldT);
+            const ang = FOLD_ANGLE * e;
+            // Seed-phase dandelion: once the stalk has folded most of the way
+            // down, release the seeds so the head visibly tips over first.
+            if (d.shouldPuff && !d.puffed && e >= 0.6) {
+              d.puffed = true;
+              d.ent.puff();
+            }
+            _foldBaseQ.setFromEuler(d.baseEuler);
+            _foldQ.setFromAxisAngle(
+              _tmpCross.copy(d.foldAxis).normalize(),
+              ang,
+            );
+            d.ent.mesh.quaternion.copy(_foldQ).multiply(_foldBaseQ);
+            if (d.foldT >= 1) {
+              d.ent.mesh.visible = false;
+              d.folding = false;
+              d.foldT = 0;
+              d.grown = false;
+              d.regrowT = 3 + Math.random() * 7; // random 3-10s before return
             }
           }
 
@@ -2790,8 +2846,20 @@ clipDummy.position.set(p.x, p.y, p.z);
               baseZ: stalk.rotation.z,
             });
           }
-          dandelions.push({ ent, x, z, flower, grown: true, regrowT: 0, waves });
+          dandelions.push({ ent, x, z, flower, grown: true, regrowT: 0, waves,
+            folding: false, foldT: 0, foldAngle: 0, foldAxis: new THREE.Vector3(),
+            puffed: false, shouldPuff: false,
+            baseEuler: ent.mesh.rotation.clone() });
         }
+        dandelionsReady = true; // now applySky can drive petal nastic closure
+        // Fold-over animation: temps reused each frame so mowing doesn't allocate.
+        const _foldBaseQ = new THREE.Quaternion();
+        const _foldQ = new THREE.Quaternion();
+        const _foldFwd = new THREE.Vector3();
+        const _foldAxis = new THREE.Vector3();
+        const _tmpCross = new THREE.Vector3();
+        const FOLD_S = 0.35;      // seconds to fold flat then despawn
+        const FOLD_ANGLE = Math.PI / 2;
 
         // Creatures checkbox: toggle all bugs (midges, butterflies, dragonflies, swarms).
         const creaturesCheckbox = document.getElementById("creatures-checkbox");

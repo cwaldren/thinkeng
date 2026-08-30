@@ -15,6 +15,42 @@ import {
 
 export { TrackSegment, Track, InfiniteTrack, TrackFollower, getLocalSpinePose };
 
+// Merges several BufferGeometries into one by concatenating their index/position
+// buffers (offsetting indices). Used to compose multi-part shapes (e.g. a
+// dandelion seed's crossed-cone "X") into a single instanceable geometry.
+function mergeGeo(geos) {
+  const positions = [];
+  const normals = [];
+  const uvs = [];
+  const indices = [];
+  let vert = 0;
+  for (const g of geos) {
+    const p = g.attributes.position;
+    if (!p) continue;
+    for (let i = 0; i < p.count; i++) {
+      positions.push(p.getX(i), p.getY(i), p.getZ(i));
+      const n = g.attributes.normal;
+      if (n) normals.push(n.getX(i), n.getY(i), n.getZ(i));
+      const uv = g.attributes.uv;
+      if (uv) uvs.push(uv.getX(i), uv.getY(i));
+    }
+    const idx = g.index;
+    if (idx) {
+      for (let i = 0; i < idx.count; i++) indices.push(idx.getX(i) + vert);
+    } else {
+      for (let i = 0; i < p.count; i++) indices.push(i + vert);
+    }
+    vert += p.count;
+  }
+  const merged = new THREE.BufferGeometry();
+  merged.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  if (normals.length) merged.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+  if (uvs.length) merged.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+  merged.setIndex(indices);
+  merged.computeVertexNormals();
+  return merged;
+}
+
 export function createGrass(sim, opts = {}) {
   const {
     width = 10,
@@ -1569,6 +1605,9 @@ export function createDandelion(sim, opts = {}) {
     flowerColor = 0xffd730,
     flower = false,
     bunch = true,
+    nastic = 0,        // 0 = petals open flat, 1 = petals closed up (nastic)
+    seedsPerPod = 40,   // seed particles emitted per puff per seed sphere
+    seedLifetime = 2.5, // base particle lifetime (seconds; each seed randomizes ±
     position = [0, 0, 0],
     rotation = [0, 0, 0],
   } = opts;
@@ -1580,6 +1619,21 @@ export function createDandelion(sim, opts = {}) {
   group.position.set(position[0], position[1], position[2]);
   group.rotation.set(rotation[0], rotation[1], rotation[2]);
   const children = [];
+  // Seed-puff spheres (only present on the seed phase). puff() hides them.
+  const seedMeshes = [];
+
+  // Petal nastic state, shared across every plant in a bunch so setNastic can
+  // close ALL stems' petals at once (hoisted here: grow fills it).
+  const petals = []; // { petal, tilt } petal group + its base tilt
+  const applyNastic = (v) => {
+    const vv = Math.max(0, Math.min(1, v));
+    for (const p of petals) {
+      const closing = vv * (Math.PI / 2 - p.tilt);
+      let base = (p.tilt + closing) % (Math.PI * 2);
+      base = Math.min(Math.max(base, -Math.PI), Math.PI);
+      p.petal.rotation.z = base;
+    }
+  };
 
   // Grows a single plant from the origin. Each plant lives in its own pivot
   // group anchored at the ground, so tilting the pivot leans the whole stem
@@ -1616,31 +1670,86 @@ export function createDandelion(sim, opts = {}) {
     children.push(hub);
 
     if (isFlower) {
-      // Flattened yellow bloom perched above the receptacle: a squat cylinder
-      // (small height, full radius) rather than a sphere so it reads as a flat
-      // flower head.
-      const bloom = createCylinder(sim, {
-        radiusTop: r,
-        radiusBottom: r,
-        height: r * 0.3,
+      // Six individual yellow petals arranged radially at the top of the stem,
+      // each a flattened disc (squashed sphere) that radiates outward, plus a
+      // small darker center. Reads as a real dandelion-style bloom.
+      // Six triangular petals radiating from the center of the bloom. Each is a
+      // flat (planar) triangle pointing outward along local +X, held in its own
+      // body-less pivot so the radial rotation isn't reset by physics sync.
+      const petalGeo = new THREE.BufferGeometry();
+      // A flat rectangle lying in the horizontal (XZ) plane so its face points
+      // straight up: base at the center, extending outward to +X, full width.
+      petalGeo.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(
+          [
+            0, 0.02, -r * 0.28,   // base left
+            0, 0.02, r * 0.28,    // base right
+            r * 1.4, 0.02, r * 0.28, // tip right
+            r * 1.4, 0.02, -r * 0.28, // tip left
+          ],
+          3,
+        ),
+      );
+      petalGeo.setIndex([0, 1, 2, 0, 2, 3]);
+      petalGeo.computeVertexNormals();
+      const petalMat = new THREE.MeshStandardMaterial({
         color: flowerColor,
-        mass: 0,
-        position: [0, h + r * 0.15, 0],
-        radialSegments: 16,
+        roughness: 0.7,
+        metalness: 0,
+        side: THREE.DoubleSide, // petals read from above and below
       });
-      el.add(bloom.mesh);
-      children.push(bloom);
-
-      // Darker disc center on top of the bloom.
+      // Build one radial ring of `count` petals around the bloom center using
+      // the given geometry. `tilt` is the petal's base rotation about its Z axis
+      // (the axis perpendicular to the petal's +X direction, so it tips the tip
+      // up/down). `nastic` (0..1) closes the petal up: at 1 every petal stands
+      // perpendicular (rotation.z = π/2), regardless of its normal tilt.
+      const addPetalSet = (geo, count, tilt) => {
+        for (let i = 0; i < count; i++) {
+          const ang = (i / count) * Math.PI * 2;
+          const pivot = new THREE.Group();
+          pivot.position.set(0, h + r * 0.14, 0); // at the bloom center
+          pivot.rotation.y = ang; // radial rotation (persists: body-less)
+          const petal = new THREE.Group();
+          const mesh = new THREE.Mesh(geo, petalMat);
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          petal.add(mesh);
+          pivot.add(petal);
+          el.add(pivot);
+          children.push(mesh);
+          petals.push({ petal, tilt }); // base tilt, recomputed with nastic
+        }
+      };
+      // Bottom ring: flat petals (tilt 0).
+      addPetalSet(petalGeo, 9, 0);
+      // Second ring: a smaller layer angled upward, sitting on the bottom ring.
+      const upGeo = petalGeo.clone();
+      {
+        const pos = upGeo.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+          pos.setX(i, pos.getX(i) * 0.6); // shorter
+          pos.setZ(i, pos.getZ(i) * 0.6); // narrower
+          pos.setY(i, pos.getY(i) - 0.02); // sit right at the bottom layer level
+        }
+        pos.needsUpdate = true;
+        upGeo.computeVertexNormals();
+      }
+      addPetalSet(upGeo, 9, 0.5); // tilted up
+      // Third ring: a full-size duplicate tilted downward (opposite the top ring).
+      addPetalSet(petalGeo, 9, -0.5); // tilted down
+      // Small darker center at the middle of the bloom.
       const disc = createSphere(sim, {
         radius: r * 0.22,
         color: 0xc88e1a,
         mass: 0,
-        position: [0, h + r * 0.42, 0],
+        position: [0, h + r * 0.16, 0],
       });
       disc.mesh.scale.set(1, 0.5, 1);
       el.add(disc.mesh);
       children.push(disc);
+      // Apply the configured nastic after all rings are built.
+      applyNastic(nastic);
     } else {
       // The white puffball perched just above the receptacle.
       const puff = createSphere(sim, {
@@ -1653,6 +1762,7 @@ export function createDandelion(sim, opts = {}) {
       });
       el.add(puff.mesh);
       children.push(puff);
+      seedMeshes.push(puff.mesh);
     }
   };
 
@@ -1679,6 +1789,166 @@ export function createDandelion(sim, opts = {}) {
 
   const entity = sim.addEntity(group, null, null, "dandelion");
   entity.children = children;
+
+  // --- Seed-puff particle emitter -----------------------------------------
+  // A pooled instanced mesh of tiny white seed shapes that drift and spin away
+  // from the head when it's puffed, like real dandelion seeds blowing in the
+  // wind. Reuses the InstancedMesh + per-frame update pattern used elsewhere.
+  // Its own sim entity so it's torn down with the dandelion (pushed into
+  // `children`, which sim.removeEntity cleans up recursively).
+  const SEED_POOL = 600;
+  // A single seed is an "X" of two crossed cones (like a dandelion seed's fluff
+  // umbrella): one cone upright, the second rotated 90° about Z, merged into one
+  // geometry so the whole seed is instanced + tumbled as a unit.
+  const _cone = new THREE.ConeGeometry(0.005, 0.03, 3);
+  const SEED_GEO = mergeGeo([
+    _cone,
+    (() => {
+      const c2 = _cone.clone();
+      c2.rotateZ(Math.PI / 2);
+      return c2;
+    })(),
+  ]);
+  const SEED_MAT = new THREE.MeshStandardMaterial({
+    color: 0xfdfbf4,
+    roughness: 0.9,
+    metalness: 0,
+    side: THREE.DoubleSide,
+  });
+  const SEED_MESH = new THREE.InstancedMesh(SEED_GEO, SEED_MAT, SEED_POOL);
+  SEED_MESH.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  SEED_MESH.frustumCulled = false;
+  sim.scene.add(SEED_MESH);
+  const seedDummy = new THREE.Object3D();
+  const _seedPos = new THREE.Vector3();
+  const _seedAxis = new THREE.Vector3();
+  const _seedScale = new THREE.Vector3();
+  const SEED_RADIUS = 0.25; // fallback head radius if geometry param is missing
+  const seedQuat = new THREE.Quaternion();
+  // A gentle, persistent breeze (world space) that carries the released seeds.
+  const SEED_WIND = new THREE.Vector3(0.5, 0.1, -0.35);
+  const seeds = [];
+  for (let i = 0; i < SEED_POOL; i++) {
+    seeds.push({
+      alive: false, hidden: true,
+      x: 0, y: 0, z: 0,
+      vx: 0, vy: 0, vz: 0,
+      life: 0, max: 1,
+      spin: 0, ax: 0, ay: 1, az: 0,
+    });
+    seedDummy.position.set(0, -10000, 0);
+    seedDummy.updateMatrix();
+    SEED_MESH.setMatrixAt(i, seedDummy.matrix);
+  }
+  SEED_MESH.instanceMatrix.needsUpdate = true;
+  let seedCursor = 0;
+
+  const seedUpdate = (dt) => {
+    let dirty = false;
+    for (let i = 0; i < SEED_POOL; i++) {
+      const s = seeds[i];
+      if (s.hidden) continue;
+      if (!s.alive) {
+        // Park dead seeds offscreen once, then skip them entirely.
+        s.hidden = true;
+        seedDummy.position.set(0, -10000, 0);
+        seedDummy.scale.set(1, 1, 1);
+        seedDummy.quaternion.identity();
+        seedDummy.updateMatrix();
+        SEED_MESH.setMatrixAt(i, seedDummy.matrix);
+        dirty = true;
+        continue;
+      }
+      s.life += dt;
+      if (s.life >= s.max) {
+        s.alive = false;
+        continue;
+      }
+      // Drift with the wind, settling slowly toward the ground.
+      const f = s.life / s.max;
+      s.vx += SEED_WIND.x * dt * 0.25;
+      s.vz += SEED_WIND.z * dt * 0.25;
+      s.vy -= dt * 0.18 * (0.4 + f); // gentle, gradual sink
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      s.z += s.vz * dt;
+      // Slow tumble about the seed's random axis so each catches the wind.
+      seedQuat.setFromAxisAngle(_seedAxis.set(s.ax, s.ay, s.az), s.life * s.spin);
+      // Shrink toward a tiny scale as it fades far from the head.
+      const sc = 1 - f * 0.7;
+      seedDummy.position.set(s.x, s.y, s.z);
+      seedDummy.quaternion.copy(seedQuat);
+      seedDummy.scale.set(sc, sc, sc);
+      seedDummy.updateMatrix();
+      SEED_MESH.setMatrixAt(i, seedDummy.matrix);
+      dirty = true;
+    }
+    if (dirty) SEED_MESH.instanceMatrix.needsUpdate = true;
+  };
+  const seedEntity = sim.addEntity(SEED_MESH, null, seedUpdate, "dandelion-seeds");
+  children.push(seedEntity);
+
+  // Emit a burst of seeds from the (world-space) puff head positions.
+  const emitSeeds = (count) => {
+    if (seedMeshes.length === 0) return;
+    for (const pud of seedMeshes) {
+      pud.getWorldPosition(_seedPos);
+      // Seed's world-space radius (scaled puff sphere) so seeds launch from
+      // across the spherical head's surface, not a single point.
+      const rr = pud.getWorldScale(_seedScale).x * (pud.geometry?.parameters?.radius ?? SEED_RADIUS);
+      for (let n = 0; n < count; n++) {
+        const s = seeds[seedCursor];
+        seedCursor = (seedCursor + 1) % SEED_POOL;
+        // Random point on the sphere's surface.
+        const u = Math.random() * 2 - 1;
+        const v = Math.random() * 2 - 1;
+        const w = Math.random() * 2 - 1;
+        const len = Math.hypot(u, v, w) || 1;
+        const nx = u / len, ny = v / len, nz = w / len;
+        const a = Math.random() * Math.PI * 2;
+        const rad = Math.random();
+        s.alive = true;
+        s.hidden = false;
+        s.x = _seedPos.x + nx * rr;
+        s.y = _seedPos.y + ny * rr;
+        s.z = _seedPos.z + nz * rr;
+        // Start near the head with only a tiny nudge; seeds detach and float
+        // off with the wind rather than bursting outward or shooting up.
+        s.vx = SEED_WIND.x * 0.25 + Math.cos(a) * 0.05 + nx * 0.02;
+        s.vy = -0.02 - Math.random() * 0.05;
+        s.vz = SEED_WIND.z * 0.25 + Math.sin(a) * 0.05 + nz * 0.02;
+        s.max = seedLifetime + Math.random() * seedLifetime;
+        s.life = 0;
+        s.spin = 2 + Math.random() * 4;
+        s.ax = Math.random() * 2 - 1;
+        s.ay = Math.random() * 2 - 1;
+        s.az = Math.random() * 2 - 1;
+        const al = Math.hypot(s.ax, s.ay, s.az) || 1;
+        s.ax /= al; s.ay /= al; s.az /= al;
+      }
+    }
+  };
+
+  // puff(): release the seeds — hide the puff spheres and puff a stream of
+  // seed particles out into the wind.
+  entity.puff = () => {
+    for (const s of seedMeshes) s.visible = false;
+    emitSeeds(seedsPerPod);
+  };
+
+  // restore(): bring the seed spheres back (e.g. when a puffed dandelion
+  // regrows a fresh puff). No-op for flower-phase dandelions (no seeds).
+  entity.restore = () => {
+    for (const s of seedMeshes) s.visible = true;
+  };
+
+  // setNastic(v): drive petal nastic closure live (0 open .. 1 closed). Only
+  // affects flower-phase dandelions; no-op otherwise. Defined even before the
+  // flower block runs so guards below are safe across all phases.
+  entity.setNastic = (v) => {
+    if (isFlower && applyNastic) applyNastic(v);
+  };
+
   return entity;
 }
 
@@ -1698,10 +1968,10 @@ export function createDandelion(sim, opts = {}) {
       rotation = [0, 0, 0],
     } = opts;
 
-    const group = new THREE.Group();
-    group.position.set(position[0], position[1], position[2]);
-    group.rotation.set(rotation[0], rotation[1], rotation[2]);
-    const children = [];
+  const group = new THREE.Group();
+  group.position.set(position[0], position[1], position[2]);
+  group.rotation.set(rotation[0], rotation[1], rotation[2]);
+  const children = [];
 
     // Three segments side by side along x: black head, yellow middle, black tail.
     const specs = [
