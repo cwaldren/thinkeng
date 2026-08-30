@@ -1827,16 +1827,15 @@ export function createTree(sim, opts = {}) {
   return entity;
 }
 
-// Earth: a rotating globe (sphere) with a painted ocean/continent canvas
-// texture (~75% ocean, 25% land). Spins lazily about the vertical (Y) axis via
-// the update function. Decorative (no physics) — the globe is tracked for
-// cleanup.
+// Earth: a rotating globe (sphere) textured from the bundled earth_tex.jpg /
+// earth_clouds.jpg images. Spins lazily about the vertical (Y) axis via the
+// update function; a slightly larger cloud sphere floats over the surface and
+// rotates a touch faster for a layered drift. Decorative (no physics) — the
+// globe is tracked for cleanup.
 export function createEarth(sim, opts = {}) {
   const {
     radius = 1.5,
-    oceanColor = 0x2a6fb5,
-    landColor = 0x4c9f4f,
-    spinSpeed = 0.1,
+    spinSpeed = 0.05,
     position = [0, 0, 0],
     rotation = [0, 0, 0],
   } = opts;
@@ -1847,39 +1846,10 @@ export function createEarth(sim, opts = {}) {
   const children = [];
 
   // --- Globe texture ---
-  // Ocean-dominant base (~75% water) with a few drawn-land wanderers covering
-  // the remaining ~25%, wrapping around its longitude seam (U repeats so the
-  // globe can spin without showing an edge).
-  const S = 512;
-  const hex = (n) => "#" + n.toString(16).padStart(6, "0");
-  const cv = document.createElement("canvas");
-  cv.width = cv.height = S;
-  const g = cv.getContext("2d");
-  g.fillStyle = hex(oceanColor);
-  g.fillRect(0, 0, S, S);
-  g.fillStyle = hex(landColor);
-  // Sized to land near 25% land. Each blob drifts its brush to make an
-  // irregular landmass.
-  for (const blob of [
-    [0.28, 0.32, 13, 19],
-    [0.62, 0.28, 11, 17],
-    [0.22, 0.68, 11, 16],
-    [0.74, 0.6, 11, 16],
-    [0.45, 0.84, 11, 16],
-  ]) {
-    const [cx, cy, n, r] = blob;
-    const bx = cx * S, by = cy * S;
-    let px = bx, py = by;
-    for (let i = 0; i < n; i++) {
-      g.beginPath();
-      g.arc(px, py, r, 0, Math.PI * 2);
-      g.fill();
-      px += (Math.random() - 0.5) * r * 2;
-      py += (Math.random() - 0.5) * r * 2;
-    }
-  }
-
-  const globeTex = new THREE.CanvasTexture(cv);
+  // earth_tex.jpg maps 1:1 onto the sphere's UVs. Repeat in U so the longitude
+  // seam closes and the globe can spin without showing an edge.
+  const loader = new THREE.TextureLoader();
+  const globeTex = loader.load("/games/earth_tex.jpg");
   globeTex.wrapS = THREE.RepeatWrapping;
   globeTex.colorSpace = THREE.SRGBColorSpace;
 
@@ -1897,13 +1867,136 @@ export function createEarth(sim, opts = {}) {
   group.add(globe);
   children.push(globe);
 
+  // --- Cloud layer ---
+  // earth_clouds.jpg is a grayscale (1-component) map; use it as an alphaMap so
+  // the white wisps show where it's bright and stay transparent elsewhere.
+  const cloudTex = loader.load("/games/earth_clouds.jpg");
+  const clouds = new THREE.Mesh(
+    new THREE.SphereGeometry(radius * 1.03, 48, 32),
+    new THREE.MeshStandardMaterial({
+      alphaMap: cloudTex,
+      color: 0xffffff,
+      transparent: true,
+      depthWrite: false,
+      roughness: 1,
+    }),
+  );
+  group.add(clouds);
+  children.push(clouds);
+
   const updateFn = (dt) => {
     globe.rotation.y += spinSpeed * dt;
+    clouds.rotation.y += spinSpeed * 1.3 * dt;
   };
 
   const entity = sim.addEntity(group, null, updateFn, "earth");
   entity.children = children;
   entity.globe = globe;
+  return entity;
+}
+
+// A firefly: a tiny black sphere (same size as the flies) that sits dim until,
+// every 5-10 seconds, it "blinks" a warm yellow — fading in and out quickly
+// over a short blink window before returning to black. Decorative (no physics);
+// composes a single createSphere under one group, driving a warm emissive glow
+// and an additive billboard halo that swell + fade with each blink.
+export function createFirefly(sim, opts = {}) {
+  const {
+    size = 0.035,
+    glowColor = 0xffd97d,
+    blinkEveryMin = 5,
+    blinkEveryMax = 10,
+    blinkDuration = 0.5,
+    position = [0, 0, 0],
+  } = opts;
+
+  const group = new THREE.Group();
+  group.position.set(position[0], position[1], position[2]);
+  const children = [];
+
+  const part = createSphere(sim, {
+    radius: size,
+    color: 0x000000,
+    mass: 0,
+    position: [0, 0, 0],
+  });
+  const mat = part.mesh.material;
+  mat.emissive = new THREE.Color(glowColor);
+  mat.emissiveIntensity = 0;
+  part.mesh.castShadow = false;
+  group.add(part.mesh);
+  children.push(part);
+
+  // Warm glow halo: a billboarding flare that swells + fades with each blink, so
+  // the blink is clearly visible even though the body is a tiny black sphere.
+  // A radial-gradient canvas texture + additive blending gives a soft light
+  // bloom against the scene. Geometry is static; scale + opacity drive it.
+  const haloCanvas = document.createElement("canvas");
+  haloCanvas.width = haloCanvas.height = 64;
+  const hctx = haloCanvas.getContext("2d");
+  const hg = hctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  hg.addColorStop(0, "rgba(255,240,190,1)");
+  hg.addColorStop(0.35, "rgba(255,200,110,0.55)");
+  hg.addColorStop(1, "rgba(255,180,80,0)");
+  hctx.fillStyle = hg;
+  hctx.fillRect(0, 0, 64, 64);
+  const haloTex = new THREE.CanvasTexture(haloCanvas);
+
+  const haloMat = new THREE.SpriteMaterial({
+    map: haloTex,
+    color: new THREE.Color(glowColor),
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const halo = new THREE.Sprite(haloMat);
+  halo.scale.set(size * 6, size * 6, 1);
+  group.add(halo);
+
+  // Blink state: a countdown to the next blink, then a short fade-in/fade-out
+  // over blinkDuration seconds. The interval is randomized per firefly in
+  // [blinkEveryMin, blinkEveryMax].
+  const state = {
+    timer: blinkEveryMin + Math.random() * (blinkEveryMax - blinkEveryMin),
+    blinking: false,
+    t: 0,
+  };
+
+  const updateFn = (dt) => {
+    if (!state.blinking) {
+      state.timer -= dt;
+      if (state.timer <= 0) {
+        state.blinking = true;
+        state.t = 0;
+      }
+      return;
+    }
+    state.t += dt;
+    const p = Math.min(1, state.t / blinkDuration);
+    // Sine over the blink window: fades quickly in (first half) then out (last
+    // half), peaking at the middle.
+    const intensity = Math.sin(Math.PI * p);
+    mat.emissiveIntensity = intensity * 4;
+    // A subtle pulse of the body itself so the blink reads like a glow swelling
+    // from the firefly.
+    const s = size * (1 + intensity * 0.35);
+    part.mesh.scale.set(s, s, s);
+    // The halo blooms and fades with the blink, making it readable from afar.
+    haloMat.opacity = intensity;
+    const hs = size * (2.5 + intensity * 5);
+    halo.scale.set(hs, hs, 1);
+    if (p >= 1) {
+      mat.emissiveIntensity = 0;
+      part.mesh.scale.set(size, size, size);
+      haloMat.opacity = 0;
+      state.blinking = false;
+      state.timer = blinkEveryMin + Math.random() * (blinkEveryMax - blinkEveryMin);
+    }
+  };
+
+  const entity = sim.addEntity(group, null, updateFn, "firefly");
+  entity.children = children;
   return entity;
 }
 

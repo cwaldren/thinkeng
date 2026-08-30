@@ -1396,7 +1396,8 @@ clipDummy.position.set(p.x, p.y, p.z);
 
           // Camera: hold C to ride the mower's handle (facing the mower's forward
           // vector, just back from the reel), otherwise drift the orbit view.
-          if (keys.has("KeyC")) {
+          // On mobile, always ride first-person (touch steering turns the view).
+          if (keys.has("KeyC") || isMobile) {
             // Hand-grip point from the same geometry as the mower itself.
             const gripY = MOWER.wheelRadius +
               MOWER.handleLength * Math.cos(MOWER.handleAngle);
