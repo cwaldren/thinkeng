@@ -410,7 +410,10 @@
       const controlsPanel = document.getElementById("controls");
       const controlsForm = document.getElementById("controls-form");
       const searchInput = document.getElementById("search");
-      let searchTerm = "";
+      // Restore the search term from the URL so a search view survives reload.
+      let searchTerm =
+        new URLSearchParams(location.search).get("search") ?? "";
+      searchInput.value = searchTerm;
 
       const PARSERS = {
         number: (raw) => Number(raw),
@@ -495,11 +498,10 @@
         }
       }
 
-      // Build the current URL, preserving the active filter and an optional
-      // selected entity (?type=...&e=...).
-      function buildUrl({ type = filterType, e } = {}) {
+      function buildUrl({ type = filterType, e, search = searchTerm } = {}) {
         const params = new URLSearchParams();
         if (type) params.set("type", type);
+        if (search) params.set("search", search);
         if (e) params.set("e", e);
         const qs = params.toString();
         return qs ? `${location.pathname}?${qs}` : location.pathname;
@@ -634,6 +636,7 @@
 
       searchInput.addEventListener("input", () => {
         searchTerm = searchInput.value;
+        history.replaceState(null, "", buildUrl());
         renderList();
       });
 

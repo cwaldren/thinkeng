@@ -63,6 +63,77 @@ export function createGrass(sim, opts = {}) {
   return instancedMesh;
 }
 
+// A simple wooden fence: vertical posts on each side with two boards spanning
+// between adjacent posts and crossing each other like an "X". `repeat` controls
+// how many X sections extend horizontally. Decorative (no physics) — composed
+// of createBox primitives under one group.
+export function createFence(sim, opts = {}) {
+  const {
+    postHeight = 0.9,
+    sectionWidth = 1.5,
+    repeat = 4,
+    postWidth = 0.1,
+    postThickness = 0.1,
+    boardWidth = 0.12,
+    boardThickness = 0.06,
+    edgeInset = 0.12,
+    postColor = 0x922b2c,
+    boardColor = 0xba9a59,
+    position = [0, 0, 0],
+    rotation = [0, 0, 0],
+  } = opts;
+
+  const sections = Math.max(1, Math.round(repeat));
+  const totalLen = sections * sectionWidth;
+  const halfLen = totalLen / 2;
+
+  const group = new THREE.Group();
+  group.position.set(position[0], position[1], position[2]);
+  group.rotation.set(rotation[0], rotation[1], rotation[2]);
+  const children = [];
+
+  // Vertical posts at each section boundary: one more than the number of X
+  // sections.
+  for (let i = 0; i <= sections; i++) {
+    const x = -halfLen + i * sectionWidth;
+    const post = createBox(sim, {
+      size: [postWidth, postHeight, postThickness],
+      color: postColor,
+      mass: 0,
+      position: [x, postHeight / 2, 0],
+    });
+    group.add(post.mesh);
+    children.push(post);
+  }
+
+  // The two crossing boards per section, forming an X in the XY plane (the
+  // fence's broad face). Each diagonal spans the section rectangle but is inset
+  // from the very tips of the posts (edgeInset), so the X hugs the posts rather
+  // than reaching their absolute top/bottom ends.
+  const spanHeight = postHeight - edgeInset * 2;
+  const len = Math.hypot(sectionWidth, spanHeight);
+  const a = Math.atan2(spanHeight, sectionWidth);
+  for (let i = 0; i < sections; i++) {
+    const cx = -halfLen + (i + 0.5) * sectionWidth;
+    const cy = postHeight / 2;
+    for (const sign of [-1, 1]) {
+      const board = createBox(sim, {
+        size: [len, boardWidth, boardThickness],
+        color: boardColor,
+        mass: 0,
+        position: [cx, cy, 0],
+        rotation: [0, 0, a * sign],
+      });
+      group.add(board.mesh);
+      children.push(board);
+    }
+  }
+
+  const entity = sim.addEntity(group, null, null, "fence");
+  entity.children = children;
+  return entity;
+}
+
 // A single train-track chunk: a pair of rails + ties laid out along a spine of
 // arc-length `length`. `radius` controls the bend (0 => straight, huge => nearly
 // straight, sign flips the turn direction). Built from plain Three meshes (no
@@ -1696,4 +1767,63 @@ export function createDandelion(sim, opts = {}) {
     };
     return entity;
   }
+
+// A simple pine tree: a tapered trunk with two stacked cone tiers of foliage.
+// Decorative (no physics). Composes createCylinder + createCone primitives
+// under one group. The foliage hue is chosen from a few natural palettes so
+// scattered trees vary. Refactored from the train games' addPineTree.
+export function createTree(sim, opts = {}) {
+  const {
+    scale = 1,
+    trunkRadiusBottom = 0.45,
+    trunkRadiusTop = 0.3,
+    trunkHeight = 3,
+    trunkColor = 0x5c4033,
+    foliage1Color = 0x245a30,
+    foliage2Color = 0x367e47,
+    radialSegments = 5,
+    position = [0, 0, 0],
+    rotation = [0, 0, 0],
+  } = opts;
+
+  const group = new THREE.Group();
+  group.position.set(position[0], position[1], position[2]);
+  group.rotation.set(rotation[0], rotation[1], rotation[2]);
+  group.scale.set(scale, scale, scale);
+  const children = [];
+
+  // Trunk rises from the ground; its base sits at the group origin (y=0).
+  const trunk = createCylinder(sim, {
+    radiusTop: trunkRadiusTop,
+    radiusBottom: trunkRadiusBottom,
+    height: trunkHeight,
+    color: trunkColor,
+    mass: 0,
+    position: [0, trunkHeight / 2, 0],
+    radialSegments,
+  });
+  group.add(trunk.mesh);
+  children.push(trunk);
+
+  // Two stacked cone tiers of foliage on top of the trunk.
+  const tiers = [
+    { radius: 1.8, height: 4, color: foliage1Color, y: trunkHeight + 0.25 },
+    { radius: 1.35, height: 3, color: foliage2Color, y: trunkHeight + 1.85 },
+  ];
+  for (const tier of tiers) {
+    const cone = new THREE.Mesh(
+      new THREE.ConeGeometry(tier.radius, tier.height, radialSegments),
+      new THREE.MeshStandardMaterial({ color: tier.color, roughness: 0.9 }),
+    );
+    cone.position.y = tier.y;
+    cone.castShadow = true;
+    cone.receiveShadow = true;
+    group.add(cone);
+    children.push(cone);
+  }
+
+  const entity = sim.addEntity(group, null, null, "tree");
+  entity.children = children;
+  return entity;
+}
 

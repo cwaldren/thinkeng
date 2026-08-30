@@ -268,6 +268,9 @@
         createFlies,
         createDandelion,
         createBumblebee,
+        createFence,
+        createGrass,
+        createTree,
         createFPSCounter,
         createGCStats,
         createEntityStats,
@@ -280,6 +283,9 @@
         clearColor: 0x87ceeb,
         enableShadows: true,
       });
+      // Horizon fog fading the ground plane into the sky so the meadow's edge
+      // is softly swallowed rather than a hard ring.
+      sim.scene.fog = new THREE.Fog(0x9db6c9, 25, 80);
 
       {
         const sun = sim.scene.children.find((c) => c.isDirectionalLight);
@@ -328,9 +334,11 @@
           sun.intensity = 0.05;
           sun.color.setHex(0x334466);
           ambient.intensity = 0.12;
-          sim.renderer.setClearColor(0x0b1026);
-          return;
-        }
+sim.renderer.setClearColor(0x0b1026);
+        // Match the fog to the night sky so it stays dark rather than glowing.
+        sim.scene.fog.color.setHex(0x0b1026);
+        return;
+      }
         // Sun arc across the sky: east (t=0) -> overhead-ish (t=0.5) -> west (t=1).
         const azimuth = Math.PI * (1 - t); // 0 at rise (east), PI at set (west)
         const elev = Math.sin(t * Math.PI); // 0 at horizon, 1 at noon
@@ -352,6 +360,9 @@
         const horizonSky = new THREE.Color(1.0, 0.85, 0.65);
         sky.copy(horizonSky).lerp(noonSky, warm);
         sim.renderer.setClearColor(sky);
+        // Keep the horizon fog tinted to match the sky so it fades seamlessly
+        // into the horizon at any time of day (and stays dark at night).
+        sim.scene.fog.color.copy(sky);
       }
       slider.addEventListener("input", () => updateSun(parseFloat(slider.value)));
       updateSun(parseFloat(slider.value));
@@ -391,9 +402,10 @@
       applyOffset();
 
       function setup(sim) {
-        // Ground plane.
-        const groundGeo = new THREE.PlaneGeometry(200, 200);
-        const groundMat = new THREE.MeshStandardMaterial({ color: 0x2b180c });
+        // Ground plane (outer meadow): a yellowy, desaturated green field that
+        // surrounds the lawn, in contrast to the dark dirt of the patch itself.
+        const groundGeo = new THREE.CircleGeometry(100, 48);
+        const groundMat = new THREE.MeshStandardMaterial({ color: 0x8fd07a });
         const ground = new THREE.Mesh(groundGeo, groundMat);
         ground.rotation.x = -Math.PI / 2;
         ground.position.y = -0.01;
@@ -419,6 +431,19 @@
         const { COLS, ROWS, N } = density;
         const W = 3, D = 3;
         const total = COLS * ROWS * N;
+
+        // Dirt patch beneath the lawn (inside the fence): a dirt-brown rectangular
+        // plane sitting just above the meadow ground, so the mowable patch reads
+        // as fresh turned soil against the surrounding field.
+        const dirtGeo = new THREE.PlaneGeometry(COLS * W + 0.4, ROWS * D + 0.4);
+        const dirtMat = new THREE.MeshStandardMaterial({ color: 0x2b180c });
+        const dirt = new THREE.Mesh(dirtGeo, dirtMat);
+        dirt.rotation.x = -Math.PI / 2;
+        dirt.position.y = -0.005;
+        dirt.receiveShadow = true;
+        dirt.castShadow = true;
+        sim.scene.add(dirt);
+
         const bladeGeo = new THREE.ConeGeometry(0.08, 1.7, 4);
         const bladeMat = new THREE.MeshStandardMaterial({ color: 0x44aa55, roughness: 0.8 });
         // Gentle breeze: sway lives in the vertex shader, so it costs nothing
@@ -572,6 +597,33 @@
           position: [0, 0, 0],
           rotation: [0, 0, 0],
         });
+
+        // Surround the grass lawn with a wooden fence. The lawn spans
+        // COLS*W (x) by ROWS*D (z), centered on the origin; each side gets its
+        // own fence segment sized (repeat) to span that edge, meeting at corners.
+        const FENCE = {
+          postHeight: 1.35,
+          sectionWidth: 1.5,
+          postColor: 0x922b2c,
+          boardColor: 0xba9a59,
+        };
+        const lawnHalfW = (COLS * W) / 2;
+        const lawnHalfD = (ROWS * D) / 2;
+        const gap = 0.05;
+        // How far in from the lawn bounds the mower is kept (mower half-width),
+        // so it visually stops just short of the fence.
+        const margin = 0.7;
+        const sideFence = ({ length, position, rotation }) =>
+          createFence(sim, {
+            ...FENCE,
+            repeat: Math.round(length / FENCE.sectionWidth),
+            position,
+            rotation,
+          });
+        sideFence({ length: COLS * W, position: [0, 0, lawnHalfD + gap], rotation: [0, 0, 0] });
+        sideFence({ length: COLS * W, position: [0, 0, -lawnHalfD - gap], rotation: [0, Math.PI, 0] });
+        sideFence({ length: ROWS * D, position: [lawnHalfW + gap, 0, 0], rotation: [0, Math.PI / 2, 0] });
+        sideFence({ length: ROWS * D, position: [-lawnHalfW - gap, 0, 0], rotation: [0, -Math.PI / 2, 0] });
 
         // Drive the mower: W/S (or up/down arrows) move, A/D (or left/right)
         // turn. Reel spins 2x.
@@ -768,6 +820,17 @@
           mower.mesh.rotateOnWorldAxis(turnDir, turn * turnSpeed * dt);
           mower.setSpeed(move);
           mower.mesh.position.addScaledVector(dir, move * dt);
+          // Keep the mower inside the lawn so it can't cross the surrounding
+          // fence. Clamp to the grass patch bounds (minus a small margin so we
+          // never ride up over the fence boards).
+          mower.mesh.position.x = Math.max(
+            -lawnHalfW + margin,
+            Math.min(lawnHalfW - margin, mower.mesh.position.x),
+          );
+          mower.mesh.position.z = Math.max(
+            -lawnHalfD + margin,
+            Math.min(lawnHalfD - margin, mower.mesh.position.z),
+          );
           // Reflect the fresh transform immediately so the cut-footprint check
           // (which uses matrixWorld) matches the mower's real position this frame.
           mower.mesh.updateWorldMatrix(true, false);
@@ -1555,6 +1618,81 @@ clipDummy.position.set(p.x, p.y, p.z);
             rotation: [0, Math.random() * Math.PI * 2, 0],
           });
           dandelions.push({ ent, x, z, flower, grown: true, regrowT: 0 });
+        }
+
+        // --- Boundary Zone: a ring of decorative grass patches + dandelions ---
+        // Scenery around the lawn (not mowed). Named "Boundary Zone": it's a
+        // circular annulus spanning from the smallest circle that fully encloses
+        // the rectangular patch outward to an outer-ring radius. It starts just
+        // beyond the patch's corners and is densest right at the fence.
+        const BOUNDARY_OUTER_RADIUS = 18; // greatest distance of the zone
+        const meadowPatchCount = isMobile ? 20 : 45;
+        for (let i = 0; i < meadowPatchCount; i++) {
+          // The zone's inner edge is the circumradius of the patch rectangle: the
+          // smallest circle enclosing it entirely, so the ring hugs all corners.
+          const rInner = Math.hypot(lawnHalfW, lawnHalfD);
+          // Non-linear radius: bias strongly toward the fence (dense ring right
+          // outside it), thinning out with distance — the zone gets patchier
+          // the farther from the lawn.
+          const t = Math.pow(Math.random(), 2.2);
+          const ang = Math.random() * Math.PI * 2;
+          const r = rInner + t * (BOUNDARY_OUTER_RADIUS - rInner);
+          const mx = Math.cos(ang) * r;
+          const mz = Math.sin(ang) * r;
+          // Larger patches closer in, shrinking with distance.
+          const scale = 1 - t;
+          if (Math.random() < 0.6) {
+            // A loose grass patch.
+            createGrass(sim, {
+              width: (2.5 + Math.random() * 2.5) * scale + 0.6,
+              depth: (2.5 + Math.random() * 2.5) * scale + 0.6,
+              count: Math.round((40 + Math.floor(Math.random() * 40)) * (0.4 + 0.6 * scale)),
+              height: 0.9,
+              radiusBottom: 0.045,
+              color: 0x44aa55,
+              position: [mx, 0, mz],
+            });
+          } else {
+            // A dandelion (flower or seed).
+            createDandelion(sim, {
+              flower: Math.random() < 0.5,
+              bunch: Math.random() < 0.6,
+              stemHeight: 0.9,
+              stemRadius: 0.02,
+              headRadius: 0.13,
+              position: [mx, 0, mz],
+              rotation: [0, Math.random() * Math.PI * 2, 0],
+            });
+          }
+        }
+
+        // --- Trees in the Boundary Zone ---
+        // Pine trees scattered around the meadow ring, leaning toward the outer
+        // half so they frame the lawn without crowding the fence.
+        const TREE_COUNT = isMobile ? 8 : 18;
+        const treePalettes = [
+          { f1: 0x1a4524, f2: 0x245a30 },
+          { f1: 0x286337, f2: 0x367e47 },
+          { f1: 0x3d7e32, f2: 0x519e42 },
+          { f1: 0x4f8c3e, f2: 0x65ab50 },
+          { f1: 0x3b5930, f2: 0x4c703e },
+        ];
+        for (let i = 0; i < TREE_COUNT; i++) {
+          const t = 0.35 + Math.random() * 0.65; // outer half of the ring
+          const ang = Math.random() * Math.PI * 2;
+          const rInner = Math.hypot(lawnHalfW, lawnHalfD);
+          const r = rInner + t * (BOUNDARY_OUTER_RADIUS - rInner);
+          const tx = Math.cos(ang) * r;
+          const tz = Math.sin(ang) * r;
+          const pal = treePalettes[Math.floor(Math.random() * treePalettes.length)];
+          createTree(sim, {
+            scale: 0.7 + Math.random() * 0.8,
+            foliage1Color: pal.f1,
+            foliage2Color: pal.f2,
+            radialSegments: 6,
+            position: [tx, 0, tz],
+            rotation: [0, Math.random() * Math.PI * 2, 0],
+          });
         }
 
         // Creatures checkbox: toggle all bugs (midges, butterflies, dragonflies, swarms).
