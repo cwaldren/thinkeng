@@ -1453,21 +1453,33 @@ if (!revealFired) {
         let touchTurn = 0;
         let touchOX = 0, touchOY = 0;
         const STICK_R = Math.min(window.innerWidth, window.innerHeight) * 0.35; // dead-zone + max throw
+        // Forward throttle maps over a smaller vertical stroke than the full stick
+        // throw: max forward velocity is reached after dragging up only partway,
+        // so the ratio of screen travel to speed is tighter going forward.
+        const FWD_STROKE = STICK_R * 0.5;
         const canvas = sim.renderer.domElement;
         canvas.style.touchAction = "none";
         const updateTouch = (cx, cy) => {
           const dx = cx - touchOX;
           const ndx = dx / STICK_R;
           // Steering: mirrored so right = -1 (turn right), dead-zone center.
-          touchTurn = Math.abs(ndx) < 0.1 ? 0 : Math.max(-1, Math.min(1, -ndx));
+          // A high exponent keeps turn near 0 for most of the throw, then ramps
+          // up sharply as the finger nears the screen edge — late, decisive turn.
+          const sa = Math.abs(ndx);
+          const dir = Math.sign(ndx);
+          // Reversing swaps the steering so drag-left pivots the same way as
+          // dragging forward: touchF is negative (backing up) when the finger
+          // is below backLine.
+          const back = touchF > 0 ? 1 : -1;
+          touchTurn = sa < 0.1 ? 0 : back * dir * Math.pow(Math.min(1, sa), 3);
           // Throttle: anchored to a fixed horizontal line low on the screen
           // (33% from the bottom) rather than the finger's grab point. Above
           // that line moves forward, below moves back — so the forward zone
           // covers most of the display and the "back" target is small.
-          const backLine = window.innerHeight * 0.66;
+          const backLine = window.innerHeight * 0.75;
           // Above the line = forward, below = back. (Finger higher on screen
           // yields negative touchF, which drives the mower forward along -Z.)
-          const ndy = (cy - backLine) / STICK_R;
+          const ndy = (cy - backLine) / FWD_STROKE;
           touchF = Math.abs(ndy) < 0.22 ? 0 : Math.max(-1, Math.min(1, ndy));
         };
         // Fade out the mobile mow hint on the first tap, then never again.
