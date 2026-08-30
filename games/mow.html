@@ -1477,7 +1477,7 @@ if (!revealFired) {
           // up sharply as the finger nears the screen edge — late, decisive turn.
           const sa = Math.abs(ndx);
           const dir = Math.sign(ndx);
-          touchTurn = sa < 0.1 ? 0 : dir * Math.pow(Math.min(1, sa), 3);
+          touchTurn = sa < 0.1 ? 0 : -dir * Math.pow(Math.min(1, sa), 3);
         };
         // Fade out the mobile mow hint on the first tap, then never again.
         let mobileHintHidden = false;
