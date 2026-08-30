@@ -54,6 +54,21 @@
         <input type="checkbox" id="creatures-checkbox" checked />
         Creatures
       </label>
+      <label
+        id="sampler-toggle"
+        style="
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-top: 10px;
+          font-size: 0.9rem;
+          pointer-events: auto;
+          cursor: pointer;
+        "
+      >
+        <input type="checkbox" id="sampler-checkbox" />
+        Sampler box
+      </label>
       <div
         id="sun-control"
         style="
@@ -75,6 +90,39 @@
           style="width: 180px; vertical-align: middle"
         />
         <span id="sun-phase" style="opacity: 0.6; margin-left: 6px">noon</span>
+      </div>
+      <div
+        id="grass-control"
+        style="
+          margin-top: 12px;
+          font-size: 0.9rem;
+          pointer-events: auto;
+        "
+      >
+        <div style="opacity: 0.8; margin-bottom: 4px">
+          Cut Height <span id="cut-height-value" style="font-weight: bold">0.20m</span>
+        </div>
+        <input
+          type="range"
+          id="cut-height-slider"
+          min="0.01"
+          max="0.5"
+          step="0.01"
+          value="0.2"
+          style="width: 180px; vertical-align: middle"
+        />
+        <div style="opacity: 0.8; margin-bottom: 4px; margin-top: 8px">
+          Grow Rate <span id="grow-rate-value" style="font-weight: bold">0.005</span>
+        </div>
+        <input
+          type="range"
+          id="grow-rate-slider"
+          min="0.001"
+          max="0.1"
+          step="0.001"
+          value="0.005"
+          style="width: 180px; vertical-align: middle"
+        />
       </div>
       <div
         id="fov-control"
@@ -156,6 +204,7 @@
         createLawnmower,
         createButterfly,
         createDragonfly,
+        createFlies,
         createDandelion,
         createBumblebee,
         createFPSCounter,
@@ -404,18 +453,22 @@
             cellIndices[cellStart[ci] + cursor[ci]++] = i;
           }
         }
-        // Iterate blades inside the mower's (world-space) cut footprint.
-        const visitCutArea = (cb) => {
+        // Iterate blades inside a footprint defined as a box in mower-local
+        // space: half-width `hw` across the reel (local X), half-depth `hd`
+        // along the mower (local Z), and `offZ` shifting the box forward/back
+        // along the mower's local Z in front of its origin.
+        const visitCutArea = (hw, hd, offZ, cb) => {
           const o = mower.mesh.position;
           const q = mower.mesh.quaternion;
-          const hw = CUT_HALF_W, hd = CUT_HALF_D;
+          // Box center = mower origin pushed along its local Z by offZ.
+          const center = _boxCenter.set(0, 0, offZ).applyQuaternion(q).add(o);
           // Orient the footprint axes into world space to bound its AABB.
           const fx = _fx.set(hw, 0, 0).applyQuaternion(q);
           const fz = _fz.set(0, 0, hd).applyQuaternion(q);
-          const minX = o.x - Math.abs(fx.x) - Math.abs(fz.x);
-          const maxX = o.x + Math.abs(fx.x) + Math.abs(fz.x);
-          const minZ = o.z - Math.abs(fx.z) - Math.abs(fz.z);
-          const maxZ = o.z + Math.abs(fx.z) + Math.abs(fz.z);
+          const minX = center.x - Math.abs(fx.x) - Math.abs(fz.x);
+          const maxX = center.x + Math.abs(fx.x) + Math.abs(fz.x);
+          const minZ = center.z - Math.abs(fx.z) - Math.abs(fz.z);
+          const maxZ = center.z + Math.abs(fx.z) + Math.abs(fz.z);
           const c0x = Math.max(0, Math.floor((minX - lawnMinX) / CELL));
           const c1x = Math.min(GRID_COLS - 1, Math.floor((maxX - lawnMinX) / CELL));
           const c0z = Math.max(0, Math.floor((minZ - lawnMinZ) / CELL));
@@ -459,6 +512,7 @@
         const _right = new THREE.Vector3();
         const _fx = new THREE.Vector3();        // cut-footprint AABB axes
         const _fz = new THREE.Vector3();
+        const _boxCenter = new THREE.Vector3(); // footprint box center in world
         const _fpMount = new THREE.Vector3();   // first-person camera mount (local)
         const _fpWorld = new THREE.Vector3();   // first-person world-space temp
         const _fpQuat = new THREE.Quaternion(); // first-person camera orientation
@@ -466,6 +520,7 @@
         const _fpAxis = new THREE.Vector3(1, 0, 0); // mower-local X for that tilt
         const turnDir = new THREE.Vector3(0, 1, 0);
         let mowerMoving = false;
+        let mowerForward = false; // true only while cutting forward (blades turn)
         const keyF = () =>
           keys.has("KeyS") || keys.has("ArrowDown") ? 1 : keys.has("KeyW") || keys.has("ArrowUp") ? -1 : 0;
         const keyTurn = () =>
@@ -516,7 +571,18 @@
         // Reel cut footprint (matches the grass-cutting test below).
         const CUT_HALF_W = 1.25 / 2; // across the reel (local X)
         const CUT_HALF_D = 0.4 * 0.7; // cutting depth (local Z)
-        const CUT_MIN_GROWTH = 0.02; // cut grass down to 2% of full height
+        // The single control for how much grass sticks up after a cut, in
+        // world units (meters). A blade's tip height = BLADE_HALF * scale *
+        // growth, so the minimum growth per blade is derived from its own
+        // random scale to always leave exactly CUT_HEIGHT sticking out.
+        let CUT_HEIGHT = 0.2;
+        const bladeMinGrowth = new Float32Array(total);
+        const recomputeMinGrowth = () => {
+          for (let i = 0; i < total; i++) {
+            bladeMinGrowth[i] = Math.min(1, CUT_HEIGHT / (BLADE_HALF * bladeScale[i]));
+          }
+        };
+        recomputeMinGrowth();
         const localPos = new THREE.Vector3();
         const invMower = new THREE.Matrix4();
         // Active-growth set: only blades below full height are touched each
@@ -529,13 +595,12 @@
           growIndex[i] = growList.length;
           growList.push(i);
         };
-        // Whether cuttable grass (strictly above the mower's minimum height)
-        // currently sits under the reel. Only tests blades in the grid cells
-        // overlapping the cut footprint.
-        const hasGrassToCut = () => {
+        // Whether any cuttable grass currently sits under the reel. Returns true if
+        // there's at least one blade above its minimum height in the footprint.
+        const hasCuttableGrass = () => {
           invMower.copy(mower.mesh.matrixWorld).invert();
-          return visitCutArea((i) => {
-            if (bladeGrowth[i] <= CUT_MIN_GROWTH) return false;
+          return visitCutArea(CUT_HALF_W, CUT_HALF_D, 0, (i) => {
+            if (bladeGrowth[i] <= bladeMinGrowth[i]) return false;
             localPos.copy(bladePos[i]).applyMatrix4(invMower);
             if (Math.abs(localPos.x) < CUT_HALF_W && Math.abs(localPos.z) < CUT_HALF_D) {
               return true;
@@ -544,10 +609,51 @@
           });
         };
 
+        // Particle-size sampler: a thin rectangular box just ahead of the reel,
+        // spanning the mower's full width (matching CUT_HALF_W) with a very small
+        // forward length. We average the growth of the blades in that box; that
+        // average fraction (0..1 of full height) maps onto the emitted clipping
+        // size, so the particles reflect the grass the mower is about to reach
+        // instead of a single blade catching the sample. Forward is local -Z.
+        const SAMPLE_HALF_W = CUT_HALF_W; // same width as the reel
+        const SAMPLE_HALF_D = 0.12; // thin strip ahead of the reel
+        const SAMPLE_OFF_Z = -(CUT_HALF_D + SAMPLE_HALF_D); // just ahead of the cut
+        // Debug wireframe: draws the sampling box so we can see exactly where
+        // the particle sizes are being read from. Toggle with the checkbox.
+        const samplerBox = new THREE.LineSegments(
+          new THREE.EdgesGeometry(new THREE.BoxGeometry(SAMPLE_HALF_W * 2, CUT_HEIGHT, SAMPLE_HALF_D * 2)),
+          new THREE.LineBasicMaterial({ color: 0xff5555 }),
+        );
+        samplerBox.position.set(0, CUT_HEIGHT / 2, SAMPLE_OFF_Z);
+        samplerBox.visible = false;
+        mower.mesh.add(samplerBox);
+        document.getElementById("sampler-checkbox").addEventListener("change", (e) => {
+          samplerBox.visible = e.target.checked;
+        });
+        const sampleCutAmount = () => {
+          invMower.copy(mower.mesh.matrixWorld).invert();
+          let sum = 0, count = 0;
+          visitCutArea(SAMPLE_HALF_W, SAMPLE_HALF_D, SAMPLE_OFF_Z, (i) => {
+            if (bladeGrowth[i] <= bladeMinGrowth[i]) return false;
+            localPos.copy(bladePos[i]).applyMatrix4(invMower);
+            if (Math.abs(localPos.x) < SAMPLE_HALF_W && Math.abs(localPos.z - SAMPLE_OFF_Z) < SAMPLE_HALF_D) {
+              sum += bladeGrowth[i] - bladeMinGrowth[i];
+              count++;
+            }
+            return false;
+          });
+          return count ? sum / count : 0;
+        };
+
         // --- Grass-clipping particle effect (emitted when the mower moves) ---
         const CLIP_COUNT = 120;
         // Each clipping is a real 3D blade mesh so it can carry a random 3D
         // rotation and tumble as it flies.
+        // The clip cone is small (0.5 tall); this factor upscales the emitted
+        // instance so a full-height cut (cutAmount=1) produces a clipping about
+        // as long as the grass blade it came from (~1.7), and keeps shorter
+        // re-cuts proportionally smaller.
+        const CLIP_SCALE = (1.7 / 0.5) * 0.5; // full cut throws clippings half the blade height
         const clipGeo = new THREE.ConeGeometry(0.03, 0.5, 4);
         const clipMat = new THREE.MeshStandardMaterial({
           color: 0x3f8f3f,
@@ -562,7 +668,7 @@
         const clipEuler = new THREE.Euler();
         const clips = [];
         for (let i = 0; i < CLIP_COUNT; i++) {
-          clips.push({ x: 0, y: -1000, z: 0, vx: 0, vy: 0, vz: 0, rx: 0, ry: 0, rz: 0, wrx: 0, wry: 0, wrz: 0, life: 0, alive: false });
+          clips.push({ x: 0, y: -1000, z: 0, vx: 0, vy: 0, vz: 0, rx: 0, ry: 0, rz: 0, wrx: 0, wry: 0, wrz: 0, life: 0, scale: 1, alive: false });
           clipDummy.position.set(-1000, -1000, -1000);
           clipDummy.updateMatrix();
           clipMesh.setMatrixAt(i, clipDummy.matrix);
@@ -577,15 +683,16 @@
           const turn = keyTurn() || touchTurn;
           const v = keyF() || touchF;
           const speed = 2;
-          // Shift sharpens steering while moving. Scale both the turn rate and
-          // the forward speed down together, so the corner stays exactly as
-          // tight without the mower whipping around.
+          // Shift slows the mower but tightens the turn proportionally: ratio of
+          // move to turnSpeed gives a shift radius (1.5/1.5 = 1) half of the
+          // normal radius (2/1 = 2).
           const shifting = keys.has("ShiftLeft") || keys.has("ShiftRight");
           const ease = shifting ? 0.75 : 1;
           const move = v * speed * ease;
-          const turnSpeed = v === 0 ? 4.0 : shifting ? 4.0 * ease : 2.0;
+          const turnSpeed = v === 0 ? 4.0 : (shifting ? 1.5 : 1.0);
 
           mowerMoving = v !== 0;
+          mowerForward = move < 0; // forward is along the mower's -Z (toward the reel)
           mower.mesh.rotateOnWorldAxis(turnDir, turn * turnSpeed * dt);
           mower.setSpeed(move);
           mower.mesh.position.addScaledVector(dir, move * dt);
@@ -594,10 +701,9 @@
           mower.mesh.updateWorldMatrix(true, false);
 
           // Emit clippings from the reel when moving AND actually cutting grass.
-          const cutting = hasGrassToCut();
           const reelWorld = mower.mesh.localToWorld(_reelWorld.set(0, 0.1, 0));
           const right = _right.set(1, 0, 0).applyQuaternion(mower.mesh.quaternion);
-          if (mowerMoving && cutting) {
+          if (mowerForward && hasCuttableGrass()) {
             clipAccum += dt * 250;
             while (clipAccum >= 1) {
               clipAccum -= 1;
@@ -611,6 +717,10 @@
               p.vx = (Math.random() - 0.5) * spread;
               p.vz = (Math.random() - 0.5) * spread;
               p.vy = 1.2 + Math.random() * 1.6;
+              // Size matches the grass at THIS spot (per-particle local sample):
+              // full-height cuts throw big clippings, re-cuts throw tiny flecks.
+              const amt = sampleCutAmount();
+              p.scale = Math.max(0.08, amt * CLIP_SCALE);
               // Random starting 3D rotation and fixed tumble rates.
               p.rx = Math.random() * Math.PI * 2;
               p.ry = Math.random() * Math.PI * 2;
@@ -648,10 +758,11 @@
               p.alive = false;
               p.y = -1000;
             }
-            clipDummy.position.set(p.x, p.y, p.z);
+clipDummy.position.set(p.x, p.y, p.z);
             clipEuler.set(p.rx, p.ry, p.rz);
             clipQuat.setFromEuler(clipEuler);
             clipDummy.quaternion.copy(clipQuat);
+            clipDummy.scale.set(p.scale, p.scale, p.scale);
             clipDummy.updateMatrix();
             clipMesh.setMatrixAt(i, clipDummy.matrix);
           }
@@ -683,7 +794,28 @@
         }, { passive: false });
 
         let grassDirty = false;
-        const growRate = 0.0375;
+        let growRate = 0.005;
+        // Grass tweak sliders. Wrap in one block so it's easy to hide the whole
+        // control group in the UI later (set #grass-control to display:none).
+        {
+          const cutSlider = document.getElementById("cut-height-slider");
+          const cutValueEl = document.getElementById("cut-height-value");
+          const growSlider = document.getElementById("grow-rate-slider");
+          const growValueEl = document.getElementById("grow-rate-value");
+          const applyCutHeight = () => {
+            CUT_HEIGHT = parseFloat(cutSlider.value);
+            recomputeMinGrowth();
+            cutValueEl.textContent = CUT_HEIGHT.toFixed(2) + "m";
+          };
+          const applyGrowRate = () => {
+            growRate = parseFloat(growSlider.value);
+            growValueEl.textContent = growRate.toFixed(3);
+          };
+          cutSlider.addEventListener("input", applyCutHeight);
+          growSlider.addEventListener("input", applyGrowRate);
+          applyCutHeight();
+          applyGrowRate();
+        }
         sim.addEntity(null, null, (dt) => {
           swayUniforms.uTime.value = (swayUniforms.uTime.value + dt) % 1000;
           // Cut any blades under the mower's reel, then grow the lawn back.
@@ -692,17 +824,19 @@
           // grown above the mower's minimum height down to that minimum (a real
           // mower leaves a uniform-height lawn, it doesn't scalp to nothing).
           invMower.copy(mower.mesh.matrixWorld).invert();
-          visitCutArea((i) => {
-            if (bladeGrowth[i] > CUT_MIN_GROWTH) {
-              localPos.copy(bladePos[i]).applyMatrix4(invMower);
-              if (Math.abs(localPos.x) < CUT_HALF_W &&
-                  Math.abs(localPos.z) < CUT_HALF_D) {
-                bladeGrowth[i] = CUT_MIN_GROWTH;
-                addToGrow(i);
+          if (mowerForward) {
+            visitCutArea(CUT_HALF_W, CUT_HALF_D, 0, (i) => {
+              if (bladeGrowth[i] > bladeMinGrowth[i]) {
+                localPos.copy(bladePos[i]).applyMatrix4(invMower);
+                if (Math.abs(localPos.x) < CUT_HALF_W &&
+                    Math.abs(localPos.z) < CUT_HALF_D) {
+                  bladeGrowth[i] = bladeMinGrowth[i];
+                  addToGrow(i);
+                }
               }
-            }
-            return false;
-          });
+              return false;
+            });
+          }
           // Grow only the blades that are below full height (active set), not
           // every blade. Each blade keeps its full length; it's sunk into the
           // soil by the un-grown amount, so the top `growth` fraction of a thin
@@ -736,16 +870,22 @@
 
           // Cut dandelions under the reel and regrow them after a random delay.
           invMower.copy(mower.mesh.matrixWorld).invert();
-          for (const d of dandelions) {
-            if (d.grown) {
-              localPos.set(d.x, 0, d.z).applyMatrix4(invMower);
-              if (Math.abs(localPos.x) < CUT_HALF_W &&
-                  Math.abs(localPos.z) < CUT_HALF_D) {
-                d.ent.mesh.visible = false; // mow it down
-                d.grown = false;
-                d.regrowT = 3 + Math.random() * 7; // random 3-10s before return
+          if (mowerForward) {
+            for (const d of dandelions) {
+              if (d.grown) {
+                localPos.set(d.x, 0, d.z).applyMatrix4(invMower);
+                if (Math.abs(localPos.x) < CUT_HALF_W &&
+                    Math.abs(localPos.z) < CUT_HALF_D) {
+                  d.ent.mesh.visible = false; // mow it down
+                  d.grown = false;
+                  d.regrowT = 3 + Math.random() * 7; // random 3-10s before return
+                }
               }
-            } else if (!d.flower) {
+            }
+          }
+          for (const d of dandelions) {
+            if (d.grown) continue;
+            if (!d.flower) {
               // Seed-phase puffs regrow; flowers stay mowed once cut.
               d.regrowT -= dt;
               if (d.regrowT <= 0) {
@@ -789,117 +929,23 @@
           }
         });
 
-        // --- Songbirds: little flying bugs that drift around the lawn ---
-        // Each bug is a tiny dark sphere with a lighter point that gently
-        // bobs in place, then picks a new spot and flits over to it.
-        // All creatures (midges, butterflies, dragonflies) share this flag so
-        // the "Creatures" checkbox toggles them all together.
-        let creaturesEnabled = true;
-        const BUG_COUNT = isMobile ? 8 : 20;
-        const bugGeo = new THREE.SphereGeometry(0.035, 6, 4);
-        const bugMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6 });
-        const bugMesh = new THREE.InstancedMesh(bugGeo, bugMat, BUG_COUNT);
-        bugMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-        bugMesh.frustumCulled = false;
-        bugMesh.castShadow = false;
-        sim.scene.add(bugMesh);
-
-        const bugDummy = new THREE.Object3D();
-        const bugs = [];
-        // Spread over the lawn (inside the grass tiles) so they look at home.
+        // Lawn bounds used by all creatures.
         const bx = (COLS * W) / 2 - 1, bz = (ROWS * D) / 2 - 1;
-        for (let i = 0; i < BUG_COUNT; i++) {
-          bugs.push({
-            x: (Math.random() * 2 - 1) * bx,
-            z: (Math.random() * 2 - 1) * bz,
-            h: 0.5 + Math.random() * 0.8,   // cruise height
-            phase: Math.random() * Math.PI * 2,
-            targetX: 0, targetZ: 0, targetH: 0,
-            // state: 0 = dwelling, 1 = flying to target
-            moving: false,
-            moveT: 0, moveDur: 0,
-            scared: false,
-            scareT: 0,
-          });
-          // immediate dwelling pose (no fly-in on load)
-          const b = bugs[i];
-          b.targetX = b.x; b.targetZ = b.z; b.targetH = b.h;
-        }
-
-        // Scare radius: bugs within this distance of the mower buzz off.
-        const SCARE_R = 4;
         const mowerPos = new THREE.Vector3();
-        sim.addEntity(null, null, (dt) => {
-          bugMesh.visible = creaturesEnabled;
-          if (!creaturesEnabled) return;
-          mowerPos.copy(mower.mesh.position);
-          for (let i = 0; i < BUG_COUNT; i++) {
-            const b = bugs[i];
-            // A bug that is frightened jitters erratically away from the mower.
-            if (b.scared) {
-              b.scareT += dt;
-              const dx = b.x - mowerPos.x;
-              const dz = b.z - mowerPos.z;
-              const d = Math.hypot(dx, dz) || 1;
-              // Flee outward and upward with a burst of erratic hopping.
-              const push = d < SCARE_R ? (1 - d / SCARE_R) * 6 : 1;
-              b.x += (dx / d) * push * dt * 4 + (Math.random() - 0.5) * 8 * dt;
-              b.z += (dz / d) * push * dt * 4 + (Math.random() - 0.5) * 8 * dt;
-              b.h += (Math.random() - 0.3) * 6 * dt;
-              b.h = Math.max(0.8, Math.min(4, b.h));
-              // Keep them on the lawn.
-              b.x = Math.max(-bx, Math.min(bx, b.x));
-              b.z = Math.max(-bz, Math.min(bz, b.z));
-              // Once safely far and calm for a moment, go back to wandering.
-              if (d > SCARE_R + 2 && b.scareT > 1.5) {
-                b.scared = false;
-                b.moving = false;
-                b.moveT = Math.random() * 2; // short break before wandering again
-              }
-              b.phase = (b.phase + dt * 12) % (Math.PI * 2);
-            } else {
-              // Check if the mower has come close enough to frighten it.
-              const dx = b.x - mowerPos.x;
-              const dz = b.z - mowerPos.z;
-              if (dx * dx + dz * dz < SCARE_R * SCARE_R) {
-                b.scared = true;
-                b.scareT = 0;
-              }
-              if (!b.moving) {
-                // Dwelling: hover with a slow bob. Occasionally dart to a new leaf.
-                b.moveT += dt;
-                if (b.moveT > 2 + Math.random() * 3) {
-                  b.targetX = (Math.random() * 2 - 1) * bx;
-                  b.targetZ = (Math.random() * 2 - 1) * bz;
-                  b.targetH = 0.5 + Math.random() * 1.2;
-                  b.moveDur = 0.6 + Math.random() * 0.8;
-                  b.moveT = 0;
-                  b.moving = true;
-                }
-              } else {
-                // Flying: ease toward the chosen leaf, then settle back down.
-                const t = Math.min(1, b.moveT / b.moveDur);
-                const e = t * t * (3 - 2 * t); // smoothstep
-                b.x = b.x + (b.targetX - b.x) * e;
-                b.z = b.z + (b.targetZ - b.z) * e;
-                b.h = b.h + (b.targetH - b.h) * e;
-                b.moveT += dt;
-                if (t >= 1) {
-                  b.moving = false;
-                  b.moveT = 0;
-                }
-              }
-              b.phase = (b.phase + dt * 2) % (Math.PI * 2);
-            }
-            // Gentle bob while dwelling or flying lower/smoother.
-            const bob = Math.sin(b.phase) * 0.06;
-            bugDummy.position.set(b.x, b.h + bob, b.z);
-            bugDummy.scale.set(1, 1, 1);
-            bugDummy.rotation.y = b.phase;
-            bugDummy.updateMatrix();
-            bugMesh.setMatrixAt(i, bugDummy.matrix);
-          }
-          bugMesh.instanceMatrix.needsUpdate = true;
+        let creaturesEnabled = true;
+
+        // --- Flying bugs: midges that hover and flit around the lawn ---
+        const BUG_COUNT = isMobile ? 8 : 20;
+        const SCARE_R = 4;
+        const flies = createFlies(sim, {
+          count: BUG_COUNT,
+          color: 0x1a1a1a,
+          size: 0.035,
+          spread: bx * 2,
+        });
+
+        sim.addEntity(null, null, () => {
+          flies.mesh.visible = creaturesEnabled;
         });
 
         // --- Butterflies: graceful, colorful flappers ---
@@ -1119,7 +1165,7 @@
         // Each cloud is an instanced swarm buzzing inside a small
         // bounding sphere; we drag the whole mesh lazily around the lawn so the
         // spheres wander randomly from spot to spot rather than staying put.
-        const SWARM_COUNT = 2;
+        const SWARM_COUNT = 4;
         const flySwarms = [];
         for (let i = 0; i < SWARM_COUNT; i++) {
           const ent = createGnats(sim, {
@@ -1390,7 +1436,7 @@
         // A random mix of flower and seed phases; ~75% grow as a bunch (a
         // clump of 2-5 fanned stems), the rest are single plants. They're
         // mowed down like the grass and regrow after a random delay.
-        const DANDELION_COUNT = isMobile ? 12 : 20;
+        const DANDELION_COUNT = isMobile ? 12 : 40;
         const dandelions = [];
         for (let i = 0; i < DANDELION_COUNT; i++) {
           // Pick a spot on the lawn, keeping the mower's starting patch clear.
@@ -1416,7 +1462,7 @@
         const creaturesCheckbox = document.getElementById("creatures-checkbox");
         const applyCreatures = () => {
           creaturesEnabled = creaturesCheckbox.checked;
-          bugMesh.visible = creaturesEnabled;
+          flies.mesh.visible = creaturesEnabled;
           for (const b of butterflies) b.group.visible = creaturesEnabled;
           for (const d of dragonflies) d.group.visible = creaturesEnabled;
           for (const s of flySwarms) s.mesh.visible = creaturesEnabled;
