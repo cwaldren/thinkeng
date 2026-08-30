@@ -270,7 +270,7 @@
         createBumblebee,
         createFence,
         createGrass,
-        createTree,
+        createEarth,
         createFPSCounter,
         createGCStats,
         createEntityStats,
@@ -280,92 +280,33 @@
 
       const sim = new Simulation({
         gravity: [0, -9.81, 0],
-        clearColor: 0x87ceeb,
+        clearColor: 0x000000,
         enableShadows: true,
       });
-      // Horizon fog fading the ground plane into the sky so the meadow's edge
-      // is softly swallowed rather than a hard ring.
-      sim.scene.fog = new THREE.Fog(0x9db6c9, 25, 80);
 
-      {
-        const sun = sim.scene.children.find((c) => c.isDirectionalLight);
-        if (sun) {
-          const d = 70;
-          sun.shadow.camera.left = -d;
-          sun.shadow.camera.right = d;
-          sun.shadow.camera.top = d;
-          sun.shadow.camera.bottom = -d;
-          sun.shadow.camera.near = 0.5;
-          sun.shadow.camera.far = 200;
-          sun.shadow.camera.updateProjectionMatrix();
-        }
-      }
+      // --- Global sun: a single point source hovering directly overhead, far
+      // above the scene, lighting BOTH the moon surface and the Earth. Rays
+      // fall straight down, so the moon's floor (all facing up) is fully lit
+      // while the Earth's lower hemisphere — the half turned away from the sun
+      // toward the moon — stays shrouded in darkness.
+      const sunLight = new THREE.PointLight(0xfff2d9, 2.6, 0, 0);
+      sunLight.position.set(0, 320, 0);
+      sunLight.castShadow = true;
+      sunLight.shadow.mapSize.set(2048, 2048);
+      sunLight.shadow.camera.near = 1;
+      sunLight.shadow.camera.far = 700;
+      sunLight.shadow.bias = -0.0005;
+      sim.scene.add(sunLight);
 
-      // --- Realistic sun position + lighting driven by a time-of-day slider ---
-      // The slider runs 0-24 hours. The sun rises in the east, tops out at
-      // solar noon, and sets in the west along an arc; sky color, light color,
-      // and intensity follow the time so sunsets/sunrises feel warm and dim.
-      const slider = document.getElementById("sun-slider");
-      const clockEl = document.getElementById("sun-clock");
-      const phaseEl = document.getElementById("sun-phase");
+      // Drop the engine's default directional light so it isn't fighting the
+      // point sun.
+      const engineSun = sim.scene.children.find((c) => c.isDirectionalLight);
+      if (engineSun) sim.scene.remove(engineSun);
+
+      // Low ambient so surfaces facing away from the sun (the Earth's far
+      // side) genuinely fall to shadow rather than being washed out.
       const ambient = sim.scene.children.find((c) => c.isAmbientLight);
-      const sun = sim.scene.children.find((c) => c.isDirectionalLight);
-
-      const SUN_RISE = 6, SUN_SET = 18, TILT = 0.4;
-      function updateSun(hour) {
-        const hh = String(Math.floor(hour)).padStart(2, "0");
-        const mm = String(Math.round((hour % 1) * 60)).padStart(2, "0");
-        clockEl.textContent = `${hh}:${mm}`;
-        const phase =
-          hour < SUN_RISE || hour >= SUN_SET
-            ? "night"
-            : hour < 9
-              ? "morning"
-              : hour > 15
-                ? "evening"
-                : "noon";
-        phaseEl.textContent = phase;
-
-        // Fraction through daylight 0..1 (below 0 or >1 means it's dark).
-        const t = (hour - SUN_RISE) / (SUN_SET - SUN_RISE);
-        if (t < 0 || t > 1) {
-          // Night: sun below the horizon, dim cool light.
-          sun.position.set(0, -30, 0);
-          sun.intensity = 0.05;
-          sun.color.setHex(0x334466);
-          ambient.intensity = 0.12;
-sim.renderer.setClearColor(0x0b1026);
-        // Match the fog to the night sky so it stays dark rather than glowing.
-        sim.scene.fog.color.setHex(0x0b1026);
-        return;
-      }
-        // Sun arc across the sky: east (t=0) -> overhead-ish (t=0.5) -> west (t=1).
-        const azimuth = Math.PI * (1 - t); // 0 at rise (east), PI at set (west)
-        const elev = Math.sin(t * Math.PI); // 0 at horizon, 1 at noon
-        const dist = 60;
-        sun.position.set(
-          Math.cos(azimuth) * Math.cos(Math.asin(elev * TILT)) * dist,
-          elev * dist,
-          Math.sin(azimuth) * Math.cos(Math.asin(elev * TILT)) * dist,
-        );
-        // Warm toward sunrise/sunset, whiter at noon; brightest mid-day.
-        const warm = Math.pow(elev, 1.6);
-        sun.intensity = 0.25 + elev * 1.0;
-        sun.color.setRGB(1, 0.55 + 0.45 * warm, 0.4 + 0.6 * warm);
-        ambient.intensity = 0.2 + 0.5 * elev;
-        // Sky color: vivid sky blue when the sun is high, warming to a soft
-        // peach as it sinks toward the horizon.
-        const sky = new THREE.Color();
-        const noonSky = new THREE.Color(0.42, 0.72, 0.95);
-        const horizonSky = new THREE.Color(1.0, 0.85, 0.65);
-        sky.copy(horizonSky).lerp(noonSky, warm);
-        sim.renderer.setClearColor(sky);
-        // Keep the horizon fog tinted to match the sky so it fades seamlessly
-        // into the horizon at any time of day (and stays dark at night).
-        sim.scene.fog.color.copy(sky);
-      }
-      slider.addEventListener("input", () => updateSun(parseFloat(slider.value)));
-      updateSun(parseFloat(slider.value));
+      ambient.intensity = 0;
 
       // --- Field-of-view slider: adjust the camera zoom live ---
       const fovSlider = document.getElementById("fov-slider");
@@ -402,19 +343,6 @@ sim.renderer.setClearColor(0x0b1026);
       applyOffset();
 
       function setup(sim) {
-        // Ground plane (outer meadow): a yellowy, desaturated green field that
-        // surrounds the lawn, in contrast to the dark dirt of the patch itself.
-        const groundGeo = new THREE.CircleGeometry(100, 48);
-        const groundMat = new THREE.MeshStandardMaterial({ color: 0x8fd07a });
-        const ground = new THREE.Mesh(groundGeo, groundMat);
-        ground.rotation.x = -Math.PI / 2;
-        ground.position.y = -0.01;
-        ground.receiveShadow = true;
-        // Cast too: the plane occludes blade geometry in the shadow pass, so
-        // grass sunk into the soil doesn't cast phantom full-length shadows.
-        ground.castShadow = true;
-        sim.scene.add(ground);
-
         // Grass: single instanced mesh, 3x3 patches tiled across 100x100.
         const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
         // Density config is editable in the UI; applied values persist and are
@@ -443,6 +371,242 @@ sim.renderer.setClearColor(0x0b1026);
         dirt.receiveShadow = true;
         dirt.castShadow = true;
         sim.scene.add(dirt);
+
+        // RADIAL BAND of crater centers outside the glass territory.
+        // Radial band on the moon's surface where craters live, clear of the
+        // grass cube. The cube's walls sit 0.6 past the lawn edges.
+        const cubeR = Math.hypot(
+          (COLS * W) / 2 + 0.6,
+          (ROWS * D) / 2 + 0.6,
+        ) + 4; // just outside the nearest wall, plus breathing room
+        const GROUND_R = 48; // stay off the ground disc's very edge
+        const craterCenters = [];
+        for (let i = 0; i < 26; i++) {
+          const ang = Math.random() * Math.PI * 2;
+          const rr = cubeR + Math.random() * (GROUND_R - cubeR);
+          // Sieve for radius: bias toward the big impact basins but sprinkle
+          // in plenty of small ones (a power-skewed spread).
+          const r = 7 * Math.pow(Math.random(), 2.6) + 0.5;
+          craterCenters.push({
+            x: Math.cos(ang) * rr,
+            z: Math.sin(ang) * rr,
+            r,
+            depth: r * 0.18,
+            rim: r * 0.02 + 0.03,
+          });
+        }
+        // A few enormous basin craters far from the lawn for scale.
+        for (let i = 0; i < 4; i++) {
+          const ang = Math.random() * Math.PI * 2;
+          const rr = cubeR + 10 + Math.random() * (GROUND_R - cubeR - 10);
+          const r = 12 + Math.random() * 16;
+          craterCenters.push({
+            x: Math.cos(ang) * rr,
+            z: Math.sin(ang) * rr,
+            r,
+            depth: r * 0.18,
+            rim: r * 0.02 + 0.03,
+          });
+        }
+
+        // MOON's surface: a displaceable heightfield (real geometry) so the
+        // sinks read as actual craters — the sun casts real shadows into the
+        // bowls and one basin can occlude another. Each crater is a sunken
+        // floor that rises through the walls to a slightly raised rim, then
+        // falls back to the ground. A canvas albedo map paints the darker
+        // basin floors so the crater identity survives even in flat light.
+        const groundMat = new THREE.MeshStandardMaterial({
+          color: 0xffffff, // modulated by the albedo map below
+          roughness: 1,
+          metalness: 0,
+        });
+        // Radial-gradient crater albedo drawn into the ground's UV space.
+        const ALB = 1024;
+        const albedo = (() => {
+          const cv = document.createElement("canvas");
+          cv.width = cv.height = ALB;
+          const g = cv.getContext("2d");
+          // Baseline lunar gray (#94908D).
+          g.fillStyle = "rgb(148,144,141)";
+          g.fillRect(0, 0, ALB, ALB);
+          const toU = (x) => ((x + GROUND_R) / (GROUND_R * 2)) * ALB;
+          const toV = (z) => ((z + GROUND_R) / (GROUND_R * 2)) * ALB;
+          for (const c of craterCenters) {
+            // Cosmetic darkening of the bowl that fades into the surrounding
+            // ground; the geometry supplies the real bump shape.
+            const U = toU(c.x), V = toV(c.z);
+            const px = c.r * (ALB / (GROUND_R * 2));
+            const grad = g.createRadialGradient(U, V, 0, U, V, px * 0.62);
+            grad.addColorStop(0.0, "rgba(58,55,52,0.9)");
+            grad.addColorStop(1.0, "rgba(148,144,141,0)");
+            g.fillStyle = grad;
+            g.fillRect(U - px, V - px, px * 2, px * 2);
+          }
+          return new THREE.CanvasTexture(cv);
+        })();
+        groundMat.map = albedo;
+
+        // Heightfield: shared bowl profile per crater.
+        const craterHeight = (x, z) => {
+          let y = 0;
+          for (const c of craterCenters) {
+            const dx = x - c.x, dz = z - c.z;
+            const d = Math.sqrt(dx * dx + dz * dz);
+            const t = d / c.r;
+            const RIM_EDGE = 1.22; // outer falloff just past the crest
+            if (t >= RIM_EDGE) continue;
+            // Interior: flat-ish floor then walls rising to ground at t=1.
+            const FLOOR_FRAC = 0.4;
+            if (t < FLOOR_FRAC) {
+              y += -c.depth;
+            } else if (t < 1) {
+              const u = (t - FLOOR_FRAC) / (1 - FLOOR_FRAC);
+              y += -c.depth * (1 - u * u * (3 - 2 * u)); // smoothstep up
+            }
+            // Raised rim cresting just outside the radius, fading past RIM_EDGE.
+            const rimPhase = (t - 1) / (RIM_EDGE - 1);
+            y += c.rim * Math.sin(rimPhase * Math.PI);
+          }
+          return y;
+        };
+
+        // Dense ground disc; resolution scales with crater density so the rims
+        // stay readable. Displaced in place, then normals recomputed.
+        const groundGeo = new THREE.CircleGeometry(GROUND_R, 240, 200);
+        groundGeo.rotateX(-Math.PI / 2);
+        {
+          const pos = groundGeo.attributes.position;
+          const uv = groundGeo.attributes.uv;
+          for (let i = 0; i < pos.count; i++) {
+            const x = pos.getX(i), z = pos.getZ(i);
+            pos.setY(i, craterHeight(x, z));
+            // Remap UV to the albedo canvas (disc -> square texture space).
+            uv.setXY(i, (x + GROUND_R) / (GROUND_R * 2), (z + GROUND_R) / (GROUND_R * 2));
+          }
+        }
+        groundGeo.computeVertexNormals();
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.receiveShadow = true;
+        // Cast too: the raised crater rims (and the plane generally) occlude
+        // geometry in the shadow pass, so nothing casts through the moon.
+        ground.castShadow = true;
+        // Sink the whole lunar surface well below the dirt patch/grass so the
+        // crater rims and undulations can't poke up through the lawn.
+        ground.position.y = -2;
+        sim.scene.add(ground);
+
+        // Earth floating high in the moon's sky, off beyond the grass dome —
+        // a small blue-green globe (#the reveal: we're mowing on the Moon).
+        createEarth(sim, {
+          radius: 7,
+          position: [0, 16, -140],
+        });
+
+        // Star field: tiny points on a huge fixed-radius dome far beyond the Earth.
+        // Star color follows the real stellar distribution (mostly white-blue
+        // through white to yellow-orange, a few cool reds) via blackbody
+        // temperature, and sizes vary (brighter/nearer stars read larger).
+        const SKY_R = 260; // beyond everything in the scene
+        const STAR_COUNT = 900;
+        // Soft round star sprite (a bright core fading to transparent).
+        const starSprite = (() => {
+          const cv = document.createElement("canvas");
+          const size = 64;
+          cv.width = cv.height = size;
+          const g = cv.getContext("2d");
+          const grad = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+          grad.addColorStop(0, "rgba(255,255,255,1)");
+          grad.addColorStop(0.35, "rgba(255,255,255,0.7)");
+          grad.addColorStop(1, "rgba(255,255,255,0)");
+          g.fillStyle = grad;
+          g.fillRect(0, 0, size, size);
+          const tex = new THREE.CanvasTexture(cv);
+          tex.colorSpace = THREE.SRGBColorSpace;
+          return tex;
+        })();
+
+        // Blackbody temperature -> soft star tint. Hot stars are blue-white,
+        // cool stars red-orange; the white ones get only a faint cast so the
+        // sky leans whitish overall.
+        const starColorAt = (kelvin) => {
+          const t = kelvin / 100;
+          let r, g, b;
+          if (t <= 66) {
+            r = 255;
+            g = 99.47 * Math.log(t) - 161.12;
+            b = t <= 19 ? 0 : 138.52 * Math.log(t - 10) - 305.04;
+          } else {
+            r = 329.70 * Math.pow(t - 60, -0.1332);
+            g = 288.12 * Math.pow(t - 60, -0.0755);
+            b = 255;
+          }
+          // Clamp and soften toward white so the full sky isn't oversaturated.
+          return new THREE.Color(
+            Math.max(0, Math.min(1, (r / 255) * 0.5 + 0.5)),
+            Math.max(0, Math.min(1, (g / 255) * 0.5 + 0.5)),
+            Math.max(0, Math.min(1, (b / 255) * 0.5 + 0.5)),
+          );
+        };
+
+        // Assign each star a temperature (a bimodal-ish real spread, mostly
+        // mid/k-hot with a tail of cool reds) and a size bucket 0..3.
+        const buckets = [[], [], [], []];
+        for (let i = 0; i < STAR_COUNT; i++) {
+          // Random direction on the upper sky dome.
+          let dx, dy, dz;
+          do {
+            dx = Math.random() * 2 - 1;
+            dy = Math.random() * 2 - 1;
+            dz = Math.random() * 2 - 1;
+          } while (dx * dx + dy * dy + dz * dz > 1 || dy < 0.02);
+          const len = Math.hypot(dx, dy, dz);
+          // Slight pinch toward the zenith so the band near the horizon stays
+          // sparse, like a real moon-sky.
+          const elev = Math.pow(Math.abs(dy / len), 1.3);
+          const c = starColorAt(2500 + Math.pow(Math.random(), 2) * 7800);
+          const size = (Math.random() < 0.15) | 0; // most are small, some larger
+          const star = {
+            x: (dx / len) * SKY_R,
+            y: elev * SKY_R * 0.9,
+            z: (dz / len) * SKY_R,
+            r: Math.round(c.r * 255),
+            g: Math.round(c.g * 255),
+            b: Math.round(c.b * 255),
+          };
+          buckets[size].push(star);
+        }
+
+        // One Points per size bucket (PointsMaterial has a single size uniform).
+        const starPeel = new THREE.Group();
+        const starBucketSizes = [0.9, 1.6, 2.4, 3.4];
+        buckets.forEach((stars, bi) => {
+          if (stars.length === 0) return;
+          const pos = new Float32Array(stars.length * 3);
+          const col = new Float32Array(stars.length * 3);
+          stars.forEach((s, i) => {
+            pos[i * 3] = s.x;
+            pos[i * 3 + 1] = s.y;
+            pos[i * 3 + 2] = s.z;
+            col[i * 3] = s.r / 255;
+            col[i * 3 + 1] = s.g / 255;
+            col[i * 3 + 2] = s.b / 255;
+          });
+          const geo = new THREE.BufferGeometry();
+          geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+          geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+          const mat = new THREE.PointsMaterial({
+            size: starBucketSizes[bi],
+            map: starSprite,
+            vertexColors: true,
+            transparent: true,
+            depthWrite: false,
+            sizeAttenuation: false,
+          });
+          const pts = new THREE.Points(geo, mat);
+          pts.frustumCulled = false;
+          starPeel.add(pts);
+        });
+        sim.scene.add(starPeel);
 
         const bladeGeo = new THREE.ConeGeometry(0.08, 1.7, 4);
         const bladeMat = new THREE.MeshStandardMaterial({ color: 0x44aa55, roughness: 0.8 });
@@ -624,6 +788,172 @@ sim.renderer.setClearColor(0x0b1026);
         sideFence({ length: COLS * W, position: [0, 0, -lawnHalfD - gap], rotation: [0, Math.PI, 0] });
         sideFence({ length: ROWS * D, position: [lawnHalfW + gap, 0, 0], rotation: [0, Math.PI / 2, 0] });
         sideFence({ length: ROWS * D, position: [-lawnHalfW - gap, 0, 0], rotation: [0, -Math.PI / 2, 0] });
+
+        // Glass cube around the patch: four walls + a lid rising 20m from the
+        // ground, encasing the lawn (and the mower with it). Translucent, so
+        // the scene shows through, and double-sided so it reads from inside
+        // and out. depthWrite stays off so the walls' inner faces don't
+        // occlude the grass/creatures behind them.
+        const WALL_INSET = 0.6; // a bit beyond the fence so the boards don't poke through
+        const CUBE_H = 20;
+        // Fake "Earth day" sky painted on the cube's surfaces. The inside of the
+        // dome reads as blue sky at noon, deepening to a red/purple sunset as
+        // the sun slider drops, then turns fully transparent AT sunset so the
+        // player suddenly sees out and realizes they're on the Moon.
+        const skyCanvas = document.createElement("canvas");
+        const skyCvS = 64;
+        skyCanvas.width = 64;
+        skyCanvas.height = skyCvS;
+        const skyCtx = skyCanvas.getContext("2d");
+        const skyTex = new THREE.CanvasTexture(skyCanvas);
+        skyTex.colorSpace = THREE.SRGBColorSpace;
+        const lerpC = (a, b, t) => {
+          const c = new THREE.Color(a).lerp(new THREE.Color(b), t);
+          return c.getStyle();
+        };
+        const DAY_TOP = "#3399ff", DAY_HOR = "#cfe8ff";
+        const SET_TOP = "#5b3a6e", SET_HOR = "#ff7a3d";
+        const DUSK_TOP = "#07070f", DUSK_HOR = "#140a1e"; // deep inky blue-black
+        // p spans 0..~2 across the day: 0 at noon (deep blue), 1 at sunrise/
+        // sunset (deep red), then fading through dusk toward a deep inky
+        // black-blue as it approaches night. NIGHT_P is where it goes fully
+        // transparent (the reveal).
+        const NIGHT_P = 1.75;
+        const paintSky = (p) => {
+          // Pick the top and horizon colors for this phase.
+          let top, hor;
+          if (p <= 1) {
+            // Blue -> red as the sun approaches the horizon.
+            top = lerpC(DAY_TOP, SET_TOP, p);
+            hor = lerpC(DAY_HOR, SET_HOR, p);
+          } else {
+            // Red -> inky black-blue through dusk.
+            const d = (p - 1) / (NIGHT_P - 1);
+            top = lerpC(SET_TOP, DUSK_TOP, d);
+            hor = lerpC(SET_HOR, DUSK_HOR, d);
+          }
+          // The mower's eye only sees the low band of the 20m walls, so the
+          // gradient is compressed toward the wall's bottom quarter: the upper
+          // wall stays solid sky color and the red->purple transition happens
+          // down where it's actually in view.
+          skyCtx.fillStyle = top;
+          skyCtx.fillRect(0, 0, 64, skyCvS);
+          // Overlay the horizon->top transition only across the bottom 25%
+          // (canvas row 0 = wall top, row 64 = wall base) so the warm/dark
+          // color hangs low near the ground where it reads.
+          const startRow = skyCvS * 0.75;
+          const g = skyCtx.createLinearGradient(0, startRow, 0, skyCvS);
+          g.addColorStop(0, top);
+          g.addColorStop(1, hor);
+          skyCtx.fillStyle = g;
+          skyCtx.fillRect(0, startRow, 64, skyCvS);
+          skyTex.needsUpdate = true;
+        };
+        const glassMat = new THREE.MeshPhysicalMaterial({
+          map: skyTex,
+          color: 0xffffff,
+          emissive: 0xffffff, // sky walls glow from the texture, not lighting
+          emissiveMap: skyTex,
+          emissiveIntensity: 1.0,
+          transparent: true,
+          opacity: 0.85,
+          roughness: 0.1,
+          metalness: 0,
+          // BackSide: the sky only renders on the INSIDE faces of the box.
+          // Looking outward from within the lawn reads as Earth day sky;
+          // from the outside the walls stay clear glass (back faces culled).
+          side: THREE.BackSide,
+          depthWrite: false,
+        });
+        // Glass sky dome: a bottomless cube (four walls + a ceiling, NO floor) so the
+        // sky gradient renders on the interior faces above the lawn — there is
+        // no sky plane underneath the ground for it to bleed through. Each
+        // plane is a unit plane whose visible back face reads the sky from
+        // inside the lawn.
+        const domeW = lawnHalfW * 2 + WALL_INSET;
+        const domeD = lawnHalfD * 2 + WALL_INSET;
+        const glassCube = new THREE.Group();
+        const skyFaces = [];
+        // PlaneGeometry lies in the XY plane (normal +Z, width along X, height
+        // along Y). With a BackSide sky material we see the plane's BACK face,
+        // so each wall's normal points OUTWARD (away from the lawn) and its
+        // back face reads the sky from inside. Rotation is about Y to swing
+        // the walls into place, never Z (which would lay them flat).
+        const addFace = (width, height, ry, x, y, z) => {
+          const p = new THREE.Mesh(new THREE.PlaneGeometry(width, height), glassMat);
+          p.rotation.set(0, ry, 0);
+          p.position.set(x, y, z);
+          glassCube.add(p);
+          skyFaces.push(p);
+        };
+        addFace(domeW, CUBE_H, 0, 0, CUBE_H / 2, domeD / 2);            // north
+        addFace(domeW, CUBE_H, Math.PI, 0, CUBE_H / 2, -domeD / 2);     // south
+        addFace(domeD, CUBE_H, Math.PI / 2, domeW / 2, CUBE_H / 2, 0);  // east
+        addFace(domeD, CUBE_H, -Math.PI / 2, -domeW / 2, CUBE_H / 2, 0); // west
+        // Ceiling: rotate about X by -90° to lie flat with its +Y normal up.
+        {
+          const ceil = new THREE.Mesh(new THREE.PlaneGeometry(domeW, domeD), glassMat);
+          ceil.rotation.set(-Math.PI / 2, 0, 0);
+          ceil.position.set(0, CUBE_H, 0);
+          glassCube.add(ceil);
+          skyFaces.push(ceil);
+        }
+        sim.scene.add(glassCube);
+
+        // Fake "sun" light inside the Earth dome: a warm point/he directional
+        // light tracking the fake-sky time so the grass reads as lit by day
+        // sky (bright warm stream at noon, dimming red toward sunset, off at
+        // night). It's inside the cube so it lights only the lawn + mower.
+        const domeSun = new THREE.DirectionalLight(0xfff6e8, 2.0);
+        domeSun.position.set(0, CUBE_H, 0);
+        domeSun.castShadow = false; // shadows already come from the moon sun
+        sim.scene.add(domeSun);
+        // Bright fill so the sealed dome reads as a beautiful day: a sky-blue
+        // ambient + a downward hemisphere bounce that keeps the up-facing
+        // grass/floor well-lit, only active while the dome is closed.
+        const domeAmbient = new THREE.HemisphereLight(0xbfe3ff, 0x7fb04a, 1.2);
+        sim.scene.add(domeAmbient);
+
+        // Sun slider drives the fake-sky palette and the cube's opacity. Soaring at
+        // noon => a solid blue sky hides everything outside (opaque, writes
+        // depth so the stars/Earth behind can't bleed through). Once the sun
+        // sets it becomes transparent: the reveal.
+        const sunSlider = document.getElementById("sun-slider");
+        const applySky = (hour) => {
+          // Phase: 0 at noon, 1 at sunrise/sunset (deep red), through dusk to
+          // ~2 at midnight (ink black-blue), then the reveal.
+          const p = Math.abs(hour - 12) / 6;
+          paintSky(p);
+          const isNight = p >= NIGHT_P;
+          if (isNight) {
+            // Transparent + fully hidden: remove the skybox from rendering so
+            // it can't possibly occlude the Earth, moon, or stars behind it.
+            glassMat.transparent = true;
+            glassMat.opacity = 0;
+            glassMat.depthWrite = false;
+            for (const f of skyFaces) f.visible = false;
+          } else {
+            // Opaque sky: fully hide the space outside the dome (survives the
+            // whole day AND the dusk fade so the inky sunset still reads).
+            glassMat.transparent = false;
+            glassMat.opacity = 1;
+            glassMat.depthWrite = true;
+            for (const f of skyFaces) f.visible = true;
+          }
+          // Fake sun: bright warm light at noon, dimming & warming as the sky
+          // darkens through dusk, fully off by night.
+          const dayFactor = Math.max(0, 1 - p / NIGHT_P);
+          domeSun.intensity = 2.0 * dayFactor;
+          const heat = Math.min(1, p); // toward sunset, redden the light
+          domeSun.color.setRGB(1, 0.82 + 0.18 * (1 - heat), 0.7 + 0.3 * (1 - heat));
+          if (isNight) domeSun.intensity = 0;
+          // Interior fill follows the same curve so the dome stays bright by
+          // day, dims through dusk, and goes dark at the reveal.
+          domeAmbient.intensity = 1.2 * dayFactor;
+          if (isNight) domeAmbient.intensity = 0;
+        };
+        sunSlider.addEventListener("input", () => applySky(parseFloat(sunSlider.value)));
+        applySky(parseFloat(sunSlider.value));
 
         // Drive the mower: W/S (or up/down arrows) move, A/D (or left/right)
         // turn. Reel spins 2x.
@@ -918,7 +1248,10 @@ clipDummy.position.set(p.x, p.y, p.z);
         window.addEventListener("mousemove", (e) => {
           if (!dragging) return;
           theta -= (e.clientX - lastX) * 0.005;
-          phi = Math.max(0.1, Math.min(Math.PI - 0.1,
+          // Clamp the camera so it can never dip below 5° above the horizon
+          // (elevation = 90° - phi; keep elevation >= 5° => phi <= 85°).
+          const MAX_PHI = Math.PI / 2 - THREE.MathUtils.degToRad(5);
+          phi = Math.max(0.05, Math.min(MAX_PHI,
             phi - (e.clientY - lastY) * 0.005));
           lastX = e.clientX;
           lastY = e.clientY;
@@ -1618,81 +1951,6 @@ clipDummy.position.set(p.x, p.y, p.z);
             rotation: [0, Math.random() * Math.PI * 2, 0],
           });
           dandelions.push({ ent, x, z, flower, grown: true, regrowT: 0 });
-        }
-
-        // --- Boundary Zone: a ring of decorative grass patches + dandelions ---
-        // Scenery around the lawn (not mowed). Named "Boundary Zone": it's a
-        // circular annulus spanning from the smallest circle that fully encloses
-        // the rectangular patch outward to an outer-ring radius. It starts just
-        // beyond the patch's corners and is densest right at the fence.
-        const BOUNDARY_OUTER_RADIUS = 18; // greatest distance of the zone
-        const meadowPatchCount = isMobile ? 20 : 45;
-        for (let i = 0; i < meadowPatchCount; i++) {
-          // The zone's inner edge is the circumradius of the patch rectangle: the
-          // smallest circle enclosing it entirely, so the ring hugs all corners.
-          const rInner = Math.hypot(lawnHalfW, lawnHalfD);
-          // Non-linear radius: bias strongly toward the fence (dense ring right
-          // outside it), thinning out with distance — the zone gets patchier
-          // the farther from the lawn.
-          const t = Math.pow(Math.random(), 2.2);
-          const ang = Math.random() * Math.PI * 2;
-          const r = rInner + t * (BOUNDARY_OUTER_RADIUS - rInner);
-          const mx = Math.cos(ang) * r;
-          const mz = Math.sin(ang) * r;
-          // Larger patches closer in, shrinking with distance.
-          const scale = 1 - t;
-          if (Math.random() < 0.6) {
-            // A loose grass patch.
-            createGrass(sim, {
-              width: (2.5 + Math.random() * 2.5) * scale + 0.6,
-              depth: (2.5 + Math.random() * 2.5) * scale + 0.6,
-              count: Math.round((40 + Math.floor(Math.random() * 40)) * (0.4 + 0.6 * scale)),
-              height: 0.9,
-              radiusBottom: 0.045,
-              color: 0x44aa55,
-              position: [mx, 0, mz],
-            });
-          } else {
-            // A dandelion (flower or seed).
-            createDandelion(sim, {
-              flower: Math.random() < 0.5,
-              bunch: Math.random() < 0.6,
-              stemHeight: 0.9,
-              stemRadius: 0.02,
-              headRadius: 0.13,
-              position: [mx, 0, mz],
-              rotation: [0, Math.random() * Math.PI * 2, 0],
-            });
-          }
-        }
-
-        // --- Trees in the Boundary Zone ---
-        // Pine trees scattered around the meadow ring, leaning toward the outer
-        // half so they frame the lawn without crowding the fence.
-        const TREE_COUNT = isMobile ? 8 : 18;
-        const treePalettes = [
-          { f1: 0x1a4524, f2: 0x245a30 },
-          { f1: 0x286337, f2: 0x367e47 },
-          { f1: 0x3d7e32, f2: 0x519e42 },
-          { f1: 0x4f8c3e, f2: 0x65ab50 },
-          { f1: 0x3b5930, f2: 0x4c703e },
-        ];
-        for (let i = 0; i < TREE_COUNT; i++) {
-          const t = 0.35 + Math.random() * 0.65; // outer half of the ring
-          const ang = Math.random() * Math.PI * 2;
-          const rInner = Math.hypot(lawnHalfW, lawnHalfD);
-          const r = rInner + t * (BOUNDARY_OUTER_RADIUS - rInner);
-          const tx = Math.cos(ang) * r;
-          const tz = Math.sin(ang) * r;
-          const pal = treePalettes[Math.floor(Math.random() * treePalettes.length)];
-          createTree(sim, {
-            scale: 0.7 + Math.random() * 0.8,
-            foliage1Color: pal.f1,
-            foliage2Color: pal.f2,
-            radialSegments: 6,
-            position: [tx, 0, tz],
-            rotation: [0, Math.random() * Math.PI * 2, 0],
-          });
         }
 
         // Creatures checkbox: toggle all bugs (midges, butterflies, dragonflies, swarms).

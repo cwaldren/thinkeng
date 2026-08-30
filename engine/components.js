@@ -1827,3 +1827,83 @@ export function createTree(sim, opts = {}) {
   return entity;
 }
 
+// Earth: a rotating globe (sphere) with a painted ocean/continent canvas
+// texture (~75% ocean, 25% land). Spins lazily about the vertical (Y) axis via
+// the update function. Decorative (no physics) — the globe is tracked for
+// cleanup.
+export function createEarth(sim, opts = {}) {
+  const {
+    radius = 1.5,
+    oceanColor = 0x2a6fb5,
+    landColor = 0x4c9f4f,
+    spinSpeed = 0.1,
+    position = [0, 0, 0],
+    rotation = [0, 0, 0],
+  } = opts;
+
+  const group = new THREE.Group();
+  group.position.set(position[0], position[1], position[2]);
+  group.rotation.set(rotation[0], rotation[1], rotation[2]);
+  const children = [];
+
+  // --- Globe texture ---
+  // Ocean-dominant base (~75% water) with a few drawn-land wanderers covering
+  // the remaining ~25%, wrapping around its longitude seam (U repeats so the
+  // globe can spin without showing an edge).
+  const S = 512;
+  const hex = (n) => "#" + n.toString(16).padStart(6, "0");
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = S;
+  const g = cv.getContext("2d");
+  g.fillStyle = hex(oceanColor);
+  g.fillRect(0, 0, S, S);
+  g.fillStyle = hex(landColor);
+  // Sized to land near 25% land. Each blob drifts its brush to make an
+  // irregular landmass.
+  for (const blob of [
+    [0.28, 0.32, 13, 19],
+    [0.62, 0.28, 11, 17],
+    [0.22, 0.68, 11, 16],
+    [0.74, 0.6, 11, 16],
+    [0.45, 0.84, 11, 16],
+  ]) {
+    const [cx, cy, n, r] = blob;
+    const bx = cx * S, by = cy * S;
+    let px = bx, py = by;
+    for (let i = 0; i < n; i++) {
+      g.beginPath();
+      g.arc(px, py, r, 0, Math.PI * 2);
+      g.fill();
+      px += (Math.random() - 0.5) * r * 2;
+      py += (Math.random() - 0.5) * r * 2;
+    }
+  }
+
+  const globeTex = new THREE.CanvasTexture(cv);
+  globeTex.wrapS = THREE.RepeatWrapping;
+  globeTex.colorSpace = THREE.SRGBColorSpace;
+
+  const globe = new THREE.Mesh(
+    new THREE.SphereGeometry(radius, 48, 32),
+    new THREE.MeshStandardMaterial({
+      map: globeTex,
+      color: 0xffffff,
+      roughness: 0.55,
+      metalness: 0.1,
+    }),
+  );
+  globe.castShadow = true;
+  globe.receiveShadow = true;
+  group.add(globe);
+  children.push(globe);
+
+  const updateFn = (dt) => {
+    globe.rotation.y += spinSpeed * dt;
+  };
+
+  const entity = sim.addEntity(group, null, updateFn, "earth");
+  entity.children = children;
+  entity.globe = globe;
+  return entity;
+}
+

@@ -39,6 +39,7 @@ import {
   createBumblebee,
   createFence,
   createTree,
+  createEarth,
 } from "./components.js";
 
 import { createPowerupsPreview } from "./powerups.js";
@@ -1262,6 +1263,48 @@ export const ENTRIES = [
       { key: "trunkColor", label: "Trunk Color", type: "color", default: "0x5c4033" },
       { key: "foliage1Color", label: "Foliage 1 Color", type: "color", default: "0x245a30" },
       { key: "foliage2Color", label: "Foliage 2 Color", type: "color", default: "0x367e47" },
+      {
+        key: "position",
+        label: "Position [x,y,z]",
+        type: "vector",
+        default: [0, 0, 0],
+      },
+      {
+        key: "rotation",
+        label: "Rotation [x,y,z]",
+        type: "vector",
+        default: [0, 0, 0],
+      },
+    ],
+  },
+  {
+    category: "planet",
+    key: "earth",
+    tags: ["planet"],
+    label: "Earth",
+    desc: "A rotating blue-green globe with an atmosphere glow (component)",
+    fn: createEarth,
+    opts: [
+      {
+        key: "radius",
+        label: "Radius",
+        type: "number",
+        default: 1.5,
+        min: 0.5,
+        max: 8,
+        step: 0.1,
+      },
+      { key: "oceanColor", label: "Ocean Color", type: "color", default: "0x2a6fb5" },
+      { key: "landColor", label: "Land Color", type: "color", default: "0x4c9f4f" },
+      {
+        key: "spinSpeed",
+        label: "Spin Speed",
+        type: "number",
+        default: 0.1,
+        min: 0,
+        max: 2,
+        step: 0.05,
+      },
       {
         key: "position",
         label: "Position [x,y,z]",
