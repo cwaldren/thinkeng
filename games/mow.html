@@ -2151,11 +2151,12 @@ clipDummy.position.set(p.x, p.y, p.z);
         const dandelions = [];
         for (let i = 0; i < DANDELION_COUNT; i++) {
           // Pick a spot on the lawn, keeping the mower's starting patch clear.
+          // (clear radius scales with the lawn so small grids stay full.)
           let x, z;
           do {
             x = (Math.random() * 2 - 1) * bx;
             z = (Math.random() * 2 - 1) * bz;
-          } while (Math.hypot(x, z) < 6);
+          } while (Math.hypot(x, z) < Math.min(bx, bz) * 0.35);
           const flower = Math.random() < 0.5; // half seed puff, half yellow bloom
           const ent = createDandelion(sim, {
             flower,
