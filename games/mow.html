@@ -1462,25 +1462,22 @@ if (!revealFired) {
         const updateTouch = (cx, cy) => {
           const dx = cx - touchOX;
           const ndx = dx / STICK_R;
-          // Steering: mirrored so right = -1 (turn right), dead-zone center.
-          // A high exponent keeps turn near 0 for most of the throw, then ramps
-          // up sharply as the finger nears the screen edge — late, decisive turn.
-          const sa = Math.abs(ndx);
-          const dir = Math.sign(ndx);
-          // Reversing swaps the steering so drag-left pivots the same way as
-          // dragging forward: touchF is negative (backing up) when the finger
-          // is below backLine.
-          const back = touchF > 0 ? 1 : -1;
-          touchTurn = sa < 0.1 ? 0 : back * dir * Math.pow(Math.min(1, sa), 3);
-          // Throttle: anchored to a fixed horizontal line low on the screen
-          // (33% from the bottom) rather than the finger's grab point. Above
-          // that line moves forward, below moves back — so the forward zone
-          // covers most of the display and the "back" target is small.
+          // Throttle first (so the reverse flag below reads the CURRENT frame's
+          // direction): anchored to a fixed horizontal line low on the screen
+          // (75% from the top) rather than the finger's grab point. Above that
+          // line moves forward, below moves back — so the forward zone covers
+          // most of the display and the "back" target is small.
           const backLine = window.innerHeight * 0.75;
           // Above the line = forward, below = back. (Finger higher on screen
           // yields negative touchF, which drives the mower forward along -Z.)
           const ndy = (cy - backLine) / FWD_STROKE;
           touchF = Math.abs(ndy) < 0.22 ? 0 : Math.max(-1, Math.min(1, ndy));
+          // Steering: mirrored so right = -1 (turn right), dead-zone center.
+          // A high exponent keeps turn near 0 for most of the throw, then ramps
+          // up sharply as the finger nears the screen edge — late, decisive turn.
+          const sa = Math.abs(ndx);
+          const dir = Math.sign(ndx);
+          touchTurn = sa < 0.1 ? 0 : dir * Math.pow(Math.min(1, sa), 3);
         };
         // Fade out the mobile mow hint on the first tap, then never again.
         let mobileHintHidden = false;
@@ -1639,8 +1636,14 @@ if (!revealFired) {
           // Mower local +Z (handle push direction) mapped to the horizontal
           // world direction; with no roll/pitch this is the forward heading.
           const dir = _dir.copy(forward).applyQuaternion(mower.mesh.quaternion);
-          const turn = keyTurn() || touchTurn;
+          const rawTurn = keyTurn() || touchTurn;
           const v = keyF() || touchF;
+          // Car-like steering: reversing inverts the rotation so pressing left
+          // swings the rear of the mower the way the player expects. Applied to
+          // the final input for BOTH desktop and mobile alike. Stationary (v=0)
+          // keeps the sign so you can still pivot in place.
+          const reverseMultiplier = v > 0 ? -1 : 1;
+          const turn = rawTurn * reverseMultiplier;
           const speed = 2;
           // Shift slows the mower but tightens the turn proportionally: ratio of
           // move to turnSpeed gives a shift radius (1.5/1.5 = 1) half of the
