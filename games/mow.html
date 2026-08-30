@@ -285,23 +285,32 @@
         enableShadows: true,
       });
 
-      // --- Global sun: a single point source hovering directly overhead, far
-      // above the scene, lighting BOTH the moon surface and the Earth. Rays
-      // fall straight down, so the moon's floor (all facing up) is fully lit
-      // while the Earth's lower hemisphere — the half turned away from the sun
-      // toward the moon — stays shrouded in darkness.
-      const SUN_INTENSITY = 2.6;
-      const sunLight = new THREE.PointLight(0xfff2d9, SUN_INTENSITY, 0, 0);
-      sunLight.position.set(0, 320, 0);
+      // --- Global sun: a directional source beaming straight down from directly
+      // overhead, lighting BOTH the moon surface and the Earth. Parallel rays,
+      // so the moon's floor (all facing up) is fully lit while the Earth's lower
+      // hemisphere — the half turned away from the sun toward the moon — falls to
+      // a crisp, real day/night terminator.
+      const SUN_INTENSITY = 3.0;
+      const sunLight = new THREE.DirectionalLight(0xfff2d9, SUN_INTENSITY);
+      // Offset the sun toward the horizon so the day/night terminator cuts
+      // across the globe at an angle, tilting the Earth's shadowed side rather
+      // than a perfectly horizontal shade line.
+      sunLight.position.set(180, 320, 120);
+      sunLight.target.position.set(0, 0, 0);
       sunLight.castShadow = true;
       sunLight.shadow.mapSize.set(2048, 2048);
       sunLight.shadow.camera.near = 1;
       sunLight.shadow.camera.far = 700;
+      sunLight.shadow.camera.left = -260;
+      sunLight.shadow.camera.right = 260;
+      sunLight.shadow.camera.top = 260;
+      sunLight.shadow.camera.bottom = -260;
       sunLight.shadow.bias = -0.0005;
       sim.scene.add(sunLight);
+      sim.scene.add(sunLight.target);
 
       // Drop the engine's default directional light so it isn't fighting the
-      // point sun.
+      // real sun.
       const engineSun = sim.scene.children.find((c) => c.isDirectionalLight);
       if (engineSun) sim.scene.remove(engineSun);
 
@@ -952,7 +961,7 @@
               const fwd = _dir.copy(forward).applyQuaternion(mower.mesh.quaternion).negate();
               earth.mesh.position
                 .copy(mower.mesh.position)
-                .addScaledVector(fwd, 300);
+                .addScaledVector(fwd, 150);
               earth.mesh.position.y = 24;
             }
           } else {
@@ -965,6 +974,9 @@
             // Box closed: the moon sun can't reach the sealed lawn, so shut it
             // off and let only the fake in-dome day light drive the grass.
             if (sunLight) sunLight.intensity = 0;
+            // Re-arm the reveal so closing the dome and opening it again
+            // re-snaps the Earth back into view.
+            revealFired = false;
           }
           // Fake sun: bright warm light at noon, dimming & warming as the sky
           // darkens through dusk, fully off by night.
