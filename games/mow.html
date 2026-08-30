@@ -49,6 +49,18 @@
       <h1 style="margin: 0; font-size: 1.2rem; opacity: 0.8">
         Moasis
       </h1>
+      <div
+        id="mowed-counter"
+        style="
+          margin: 2px 0 0;
+          font-size: 0.85rem;
+          opacity: 0;
+          transform: translateX(-24px);
+          transition: opacity 0.6s ease, transform 0.6s ease;
+        "
+      >
+        <span id="mowed-count">0</span> <span id="mowed-label">dandelions</span>
+      </div>
       <p
         id="hint"
         style="
@@ -802,7 +814,7 @@
           // Declare the uniform at global scope (#include <common> is the first
           // include); #include <begin_vertex> sits inside main().
           shader.vertexShader = shader.vertexShader
-            .replace("#include <common>", "#include <common>\nuniform float uTime;")
+            .replace("#include <common>", "#include <common>\nuniform float uTime;\nattribute float aGrowth;")
             .replace(
             "#include <begin_vertex>",
             `#include <begin_vertex>
@@ -816,12 +828,21 @@
             // A shallow wave drifting across the lawn, gentler near the base.
             float _wave = sin(_base.x * 1.2 + uTime * 1.6 + _ph * 6.2831)
                         + cos(_base.z * 1.4 + uTime * 1.2 + _ph * 6.2831);
-            transformed.x += _wave * h * h * 0.025;
+            // Sway is bound to the blade's own height: freshly-cut blades (low
+            // growth) stand still, reaching full sway only at full height. An
+            // exponential curve keeps it near zero until the blade is most of
+            // the way grown — sway barely registers until ~max height.
+            float _g = clamp(aGrowth, 0.0, 1.0);
+            _g = pow(_g, 6.0);
+            transformed.x += _wave * h * h * 0.025 * _g;
 #endif
 `,
           );
         };
         const grassMesh = new THREE.InstancedMesh(bladeGeo, bladeMat, total);
+        const growthAttr = new THREE.InstancedBufferAttribute(new Float32Array(total), 1);
+        bladeGeo.setAttribute("aGrowth", growthAttr);
+        const growthArr = growthAttr.array;
         grassMesh.castShadow = false;
         grassMesh.receiveShadow = true;
         const dummy = new THREE.Object3D();
@@ -843,6 +864,7 @@
               const s = 0.6 + Math.random() * 0.8;
               bladeScale[idx] = s;
               bladeGrowth[idx] = 1; // start fully grown
+              growthArr[idx] = 1;   // keep sway attribute in sync
               bladePos[idx] = new THREE.Vector3(
                 ox + Math.random() * W - hw,
                 0,
@@ -868,6 +890,7 @@
           }
         }
         grassMesh.instanceMatrix.needsUpdate = true;
+        growthAttr.needsUpdate = true;
         sim.scene.add(grassMesh);
 
         // Spatial grid over the lawn so cut checks only test blades near the
@@ -1708,16 +1731,21 @@
         clipMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         clipMesh.frustumCulled = false;
         sim.scene.add(clipMesh);
-        const clipDummy = new THREE.Object3D();
+        // Direct writes into the instance matrix array (no per-frame Object3D):
+        // a reusable matrix + the array view + small Vector3 temps.
+        const clipMat4 = new THREE.Matrix4();
+        const _clipArray = clipMesh.instanceMatrix.array;
+        const _cp = new THREE.Vector3();
+        const _cs = new THREE.Vector3();
         const clipQuat = new THREE.Quaternion();
         const clipEuler = new THREE.Euler();
         const clips = [];
         for (let i = 0; i < CLIP_COUNT; i++) {
           clips.push({ x: 0, y: -1000, z: 0, vx: 0, vy: 0, vz: 0, rx: 0, ry: 0, rz: 0, wrx: 0, wry: 0, wrz: 0, life: 0, scale: 1, alive: false, hidden: true });
-          clipDummy.position.set(-1000, -1000, -1000);
-          clipDummy.updateMatrix();
-          clipMesh.setMatrixAt(i, clipDummy.matrix);
+          clipMat4.makeTranslation(-1000, -1000, -1000);
+          _clipArray.set(clipMat4.elements, i * 16);
         }
+        clipMesh.instanceMatrix.needsUpdate = true;
         let clipCursor = 0;
         let clipAccum = 0;
 
@@ -1864,6 +1892,7 @@
           }
 
           // Age clippings: tumble and arc with gravity, then despawn.
+          const clipArr = clipMesh.instanceMatrix.array;
           for (let i = 0; i < CLIP_COUNT; i++) {
             const p = clips[i];
             if (!p.alive) {
@@ -1871,11 +1900,8 @@
               // dies; once hidden, skip it entirely so dead slots cost nothing.
               if (p.hidden) continue;
               p.hidden = true;
-              clipDummy.position.set(-1000, -1000, -1000);
-              clipDummy.quaternion.identity();
-              clipDummy.scale.set(1, 1, 1);
-              clipDummy.updateMatrix();
-              clipMesh.setMatrixAt(i, clipDummy.matrix);
+              clipMat4.makeTranslation(-1000, -1000, -1000);
+              _clipArray.set(clipMat4.elements, i * 16);
               continue;
             }
             p.life += dt;
@@ -1896,13 +1922,10 @@
               p.alive = false;
               p.y = -1000;
             }
-clipDummy.position.set(p.x, p.y, p.z);
             clipEuler.set(p.rx, p.ry, p.rz);
             clipQuat.setFromEuler(clipEuler);
-            clipDummy.quaternion.copy(clipQuat);
-            clipDummy.scale.set(p.scale, p.scale, p.scale);
-            clipDummy.updateMatrix();
-            clipMesh.setMatrixAt(i, clipDummy.matrix);
+            clipMat4.compose(_cp.set(p.x, p.y, p.z), clipQuat, _cs.set(p.scale, p.scale, p.scale));
+            _clipArray.set(clipMat4.elements, i * 16);
           }
           clipMesh.instanceMatrix.needsUpdate = true;
         });
@@ -2009,6 +2032,8 @@ clipDummy.position.set(p.x, p.y, p.z);
                 if (Math.abs(localPos.x) < CUT_HALF_W &&
                     Math.abs(localPos.z) < CUT_HALF_D) {
                   bladeGrowth[i] = bladeMinGrowth[i];
+                  growthArr[i] = bladeMinGrowth[i]; // no sway when just cut
+                  growthAttr.needsUpdate = true;
                   addToGrow(i);
                 }
               }
@@ -2018,20 +2043,20 @@ clipDummy.position.set(p.x, p.y, p.z);
           // Grow only the blades that are below full height (active set), not
           // every blade. Each blade keeps its full length; it's sunk into the
           // soil by the un-grown amount, so the top `growth` fraction of a thin
-          // blade emerges from the ground and rises as it regrows.
+          // blade emerges from the ground and rises as it regrows. Growth only
+          // moves the blade along Y, so we write straight into the instance
+          // matrix's translation column (index 13) instead of rebuilding a
+          // full Object3D matrix per blade. Rotation/scale/x/z never change.
+          const grassArr = grassMesh.instanceMatrix.array;
+          let growthNeedsUpdate = false;
           for (let k = 0; k < growList.length; ) {
             const i = growList[k];
             bladeGrowth[i] = Math.min(bladeGrowth[i] + dt * growRate, 1);
-            dummy.position.set(
-              bladePos[i].x,
-              BLADE_HALF * bladeScale[i] * (bladeGrowth[i] - 1),
-              bladePos[i].z,
-            );
-            dummy.quaternion.copy(bladeRot[i]);
-            dummy.scale.set(bladeScale[i], bladeScale[i], bladeScale[i]);
-            dummy.updateMatrix();
-            grassMesh.setMatrixAt(i, dummy.matrix);
+            grassArr[i * 16 + 13] =
+              BLADE_HALF * bladeScale[i] * (bladeGrowth[i] - 1);
+            growthArr[i] = bladeGrowth[i]; // sway grows back with the grass
             grassDirty = true;
+            growthNeedsUpdate = true;
             if (bladeGrowth[i] >= 1) {
               // Swap-remove: move the last growing blade into this slot.
               const last = growList.pop();
@@ -2044,7 +2069,13 @@ clipDummy.position.set(p.x, p.y, p.z);
               k++;
             }
           }
-          if (grassDirty) grassMesh.instanceMatrix.needsUpdate = true;
+          if (grassDirty) {
+            grassMesh.instanceMatrix.needsUpdate = true;
+            if (growthNeedsUpdate) {
+              growthAttr.needsUpdate = true;
+              growthNeedsUpdate = false;
+            }
+          }
 
           // Cut dandelions under the reel and regrow them after a random delay.
           invMower.copy(mower.mesh.matrixWorld).invert();
@@ -2058,6 +2089,11 @@ clipDummy.position.set(p.x, p.y, p.z);
                   // the fold (see the fold loop below) so the head + stalks
                   // visibly fold down first — not an instant despawn.
                   if (!d.flower) d.shouldPuff = true;
+                  // Count it (once) toward the mowed-dandelion total.
+                  mowedCount += 1;
+                  mowedCountEl.textContent = String(mowedCount);
+                  updateMowedLabel();
+                  revealCounter(mowedCountEl.parentElement);
                   // Fold over away from the mower: rotate flat about the axis
                   // perpendicular to the mower's travel, then despawn (handled
                   // in the fold animation below).
@@ -2077,17 +2113,14 @@ clipDummy.position.set(p.x, p.y, p.z);
           }
           for (const d of dandelions) {
             if (d.grown) continue;
-            if (!d.flower) {
-              // Seed-phase puffs regrow; flowers stay mowed once cut.
-              d.regrowT -= dt;
-              if (d.regrowT <= 0) {
-                d.ent.mesh.quaternion.setFromEuler(d.baseEuler); // stand upright again
-                d.ent.mesh.visible = true;
-                d.grown = true;
-                d.puffed = false; // re-armed: can puff again next time it's mowed
-                d.shouldPuff = false;
-                d.ent.restore?.(); // regrow a fresh seed puff
-              }
+            d.regrowT -= dt;
+            if (d.regrowT <= 0) {
+              d.ent.mesh.quaternion.setFromEuler(d.baseEuler); // stand upright again
+              d.ent.mesh.visible = true;
+              d.grown = true;
+              d.puffed = false; // re-armed: can puff again next time it's mowed
+              d.shouldPuff = false;
+              d.ent.restore?.(); // regrow a fresh seed puff (seed phase only)
             }
           }
 
@@ -2852,6 +2885,21 @@ clipDummy.position.set(p.x, p.y, p.z);
             baseEuler: ent.mesh.rotation.clone() });
         }
         dandelionsReady = true; // now applySky can drive petal nastic closure
+        // Running total of dandelions mowed down, shown under the title.
+        let mowedCount = 0;
+        const mowedCountEl = document.getElementById("mowed-count");
+        const mowedLabelEl = document.getElementById("mowed-label");
+        const updateMowedLabel = () => {
+          mowedLabelEl.textContent = mowedCount === 1 ? "dandelion" : "dandelions";
+        };
+        // Fade in + slide a counter element in from the left, once, on its
+        // first trigger. Subsequent updates just refresh the number.
+        const revealCounter = (el) => {
+          if (el.dataset.revealed) return;
+          el.dataset.revealed = "1";
+          el.style.opacity = "1";
+          el.style.transform = "translateX(0)";
+        };
         // Fold-over animation: temps reused each frame so mowing doesn't allocate.
         const _foldBaseQ = new THREE.Quaternion();
         const _foldQ = new THREE.Quaternion();
