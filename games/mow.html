@@ -170,8 +170,24 @@
             pointer-events: auto;
           "
         >
+          <label
+            id="manual-time-toggle"
+            style="
+              display: inline-flex;
+              align-items: center;
+              gap: 6px;
+              margin-bottom: 6px;
+              font-size: 0.9rem;
+              pointer-events: auto;
+              cursor: pointer;
+            "
+          >
+            <input type="checkbox" id="manual-time-checkbox" />
+            Manual time
+          </label>
           <div style="opacity: 0.8; margin-bottom: 4px">
             Sun <span id="sun-clock">12:00</span>
+            <span id="sun-phase" style="opacity: 0.6; margin-left: 4px">noon</span>
           </div>
           <input
             type="range"
@@ -182,7 +198,78 @@
             value="12"
             style="width: 180px; vertical-align: middle"
           />
-          <span id="sun-phase" style="opacity: 0.6; margin-left: 6px">noon</span>
+        </div>
+        <div
+          id="sun-angle-control"
+          style="
+            display: none;
+            margin-top: 8px;
+            font-size: 0.9rem;
+            pointer-events: auto;
+          "
+        >
+          <div style="opacity: 0.6; font-family: monospace; font-size: 0.75rem; margin-top: 4px">
+            Sun pos <span id="sun-pos">—</span> · dir <span id="sun-dir">—</span>
+          </div>
+          <div style="opacity: 0.8; margin-bottom: 4px; margin-top: 8px">
+            Sun azimuth <span id="sun-az-value" style="font-weight: bold">90°</span>
+          </div>
+          <input
+            type="range"
+            id="sun-az-slider"
+            min="0"
+            max="360"
+            step="1"
+            value="90"
+            style="width: 180px; vertical-align: middle"
+          />
+          <div style="opacity: 0.8; margin-bottom: 4px; margin-top: 8px">
+            Sun elevation <span id="sun-el-value" style="font-weight: bold">30°</span>
+          </div>
+          <input
+            type="range"
+            id="sun-el-slider"
+            min="0"
+            max="89"
+            step="1"
+            value="30"
+            style="width: 180px; vertical-align: middle"
+          />
+          <div style="opacity: 0.8; margin-bottom: 4px; margin-top: 8px">
+            Earth angle above horizon <span id="earth-angle-value" style="font-weight: bold">6°</span>
+          </div>
+          <input
+            type="range"
+            id="earth-angle-slider"
+            min="0"
+            max="45"
+            step="1"
+            value="6"
+            style="width: 180px; vertical-align: middle"
+          />
+          <div style="opacity: 0.8; margin-bottom: 4px; margin-top: 8px">
+            Earth distance <span id="earth-dist-value" style="font-weight: bold">157</span>
+          </div>
+          <input
+            type="range"
+            id="earth-dist-slider"
+            min="50"
+            max="250"
+            step="1"
+            value="157"
+            style="width: 180px; vertical-align: middle"
+          />
+          <button
+            id="copy-config"
+            style="
+              margin-top: 10px;
+              padding: 4px 12px;
+              font-size: 0.85rem;
+              cursor: pointer;
+            "
+          >
+            Copy config
+          </button>
         </div>
         <div
           id="grass-control"
@@ -321,13 +408,51 @@
       const sunLight = new THREE.DirectionalLight(0xfff2d9, SUN_INTENSITY);
       // Offset the sun toward the horizon so the day/night terminator cuts
       // across the globe at an angle, tilting the Earth's shadowed side rather
-      // than a perfectly horizontal shade line.
-      sunLight.position.set(180, 320, 120);
+      // than a perfectly horizontal shade line. The sun is parked very far away
+      // along that direction (aimed back at the origin) so its rays arrive
+      // genuinely parallel — an effectively infinite distance like the real sun —
+      // making the light's angle independent of the moon/Earth's position.
+      const SUN_FLAT = 20000; // large but finite stand-in for "infinitely far"
+      // The cinematic sun direction, driven by two sandbox sliders: azimuth
+      // (rotation around the world Y axis) and elevation (angle above the
+      // ground plane). Derived so the default matches (180, 320, 120).
+      const SUN_AZ = 90 * (Math.PI / 180);   // azimuth 90° (light from the side)
+      const SUN_EL = 30 * (Math.PI / 180);   // elevation 30° (low, grazing)
+      let sunAzimuth = SUN_AZ;
+      let sunElevation = SUN_EL;
+      // Solar declination for the current real-world day, tilting the Earth's
+      // day/night terminator. δ = 23.45° · sin(360/365 · (N − 81)), where N is
+      // the day of the year. Applied as a roll of the sun's direction around
+      // the camera's view axis so the crescent tilts by δ like the real sky.
+      const declinationDeg = () => {
+        const now = new Date();
+        const start = new Date(now.getFullYear(), 0, 0);
+        const dayOfYear = Math.floor((now - start) / 86400000); // N
+        return 23.45 * Math.sin((360 / 365) * (dayOfYear - 81) * (Math.PI / 180));
+      };
+      // Earth's altitude above the horizon at the reveal, in degrees (0-45).
+      // Reveal parks the Earth ahead of the camera; this is the elevation of
+      // that line of sight above the ground plane.
+      let earthAngleDeg = 6;
+      // Earth's straight-line distance from the camera at the reveal, in units.
+      let earthDistance = 157;
+      const _sunDir0Base = new THREE.Vector3();
+      const updateSunDir = () => {
+        const ce = Math.cos(sunElevation);
+        _sunDir0Base.set(
+          ce * Math.sin(sunAzimuth),
+          Math.sin(sunElevation),
+          ce * Math.cos(sunAzimuth),
+        ).normalize();
+      };
+      updateSunDir();
+      const _sunDir0 = _sunDir0Base.clone();
+      sunLight.position.copy(_sunDir0).multiplyScalar(SUN_FLAT);
       sunLight.target.position.set(0, 0, 0);
       sunLight.castShadow = true;
       sunLight.shadow.mapSize.set(2048, 2048);
       sunLight.shadow.camera.near = 1;
-      sunLight.shadow.camera.far = 700;
+      sunLight.shadow.camera.far = SUN_FLAT;
       sunLight.shadow.camera.left = -260;
       sunLight.shadow.camera.right = 260;
       sunLight.shadow.camera.top = 260;
@@ -1001,13 +1126,32 @@
             // Snap the Earth directly into the player's field of view: instantly
             // park it far ahead along the mower's forward heading, held at a
             // cinematic altitude. One-time at the reveal.
-            if (!revealFired) {
+if (!revealFired) {
               revealFired = true;
-              const fwd = _dir.copy(forward).applyQuaternion(mower.mesh.quaternion).negate();
-              earth.mesh.position
-                .copy(mower.mesh.position)
-                .addScaledVector(fwd, 150);
-              earth.mesh.position.y = 24;
+              // Park the Earth 150m directly ahead of the CAMERA (not the
+              // mower) in the ground plane, so it's always dead-center in view
+              // at the reveal; its height comes from the earth-angle slider.
+              positionEarth();
+              // Reset the Earth's own spin so every reveal shows the same face.
+              earth.globe.rotation.y = 0;
+              if (earth.children) {
+                for (const c of earth.children) {
+                  if (c !== earth.globe) c.rotation.y = 0;
+                }
+              }
+              // Lock the sun to the camera: rotate its direction with the camera
+              // so the Earth is lit from the exact same relative angle every
+              // reveal, keeping the crescent/terminator perfectly identical on
+              // the (now camera-centered) Earth no matter how the player was
+              // facing. Push it far away so its rays arrive parallel.
+              const cinematicSunDir = _sunDir0.clone().applyQuaternion(sim.camera.quaternion);
+              // Roll the sun direction around the camera's view axis by the
+              // day's solar declination, tilting the day/night terminator on the
+              // Earth to its correct seasonal angle.
+              cinematicSunDir.applyAxisAngle(_camFwd, declinationDeg() * (Math.PI / 180));
+              sunLight.position.copy(cinematicSunDir).multiplyScalar(SUN_FLAT);
+              sunLight.target.position.copy(sim.camera.position);
+              sunLight.target.updateMatrixWorld(true);
             }
           } else {
             // Opaque sky: fully hide the space outside the dome (survives the
@@ -1062,27 +1206,155 @@
             for (const item of fam.items) (nowAwake ? item.wake() : item.sleep());
           }
         };
-        sunSlider.addEventListener("input", () => {
-          time.hour = parseFloat(sunSlider.value);
-          applySky(time.hour);
-          dispatchDayNight(time.hour);
-          const hh = Math.floor(time.hour);
-          const mm = Math.round((time.hour - hh) * 60);
-          const clockEl = document.getElementById("sun-clock");
+        // Apply a new hour: recompute sky/lighting, dispatch creature sleep/wake
+        // boundaries, and refresh the clock + phase readout. Shared by the sun
+        // slider and the automatic time-advance loop below.
+        const clockEl = document.getElementById("sun-clock");
+        const phaseEl = document.getElementById("sun-phase");
+        const setHour = (hour) => {
+          time.hour = hour;
+          applySky(hour);
+          dispatchDayNight(hour);
+          const hh = Math.floor(hour);
+          const mm = Math.round((hour - hh) * 60);
           clockEl.textContent = `${String(hh % 24).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
-          document.getElementById("sun-phase").textContent =
-            parityLabels[Math.min(4, Math.floor(time.hour / 6))];
+          phaseEl.textContent = parityLabels[Math.min(4, Math.floor(hour / 6))];
+        };
+        sunSlider.addEventListener("input", () => {
+          setHour(parseFloat(sunSlider.value));
         });
         applySky(parseFloat(sunSlider.value));
         time.prevHour = time.hour;
-        {
-          const hh = Math.floor(time.hour);
-          const mm = Math.round((time.hour - hh) * 60);
-          document.getElementById("sun-clock").textContent =
-            `${String(hh % 24).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
-          document.getElementById("sun-phase").textContent =
-            parityLabels[Math.min(4, Math.floor(time.hour / 6))];
-        }
+        setHour(time.hour);
+
+        // Temporary debug readout of the global sun's world position and
+        // direction (toward the light) for verifying lighting angles.
+        const sunPosEl = document.getElementById("sun-pos");
+        const sunDirEl = document.getElementById("sun-dir");
+        sim.addEntity(null, null, () => {
+          if (sunPosEl && sunDirEl) {
+            const p = sunLight.position;
+            sunPosEl.textContent =
+              `${p.x.toFixed(0)}, ${p.y.toFixed(0)}, ${p.z.toFixed(0)}`;
+            const d = _sunDir.copy(sunLight.target.position).sub(p).normalize();
+            sunDirEl.textContent = `${d.x.toFixed(2)}, ${d.y.toFixed(2)}, ${d.z.toFixed(2)}`;
+          }
+        });
+
+        // Sun angle/direction sliders: adjust the cinematic sun's azimuth and
+        // elevation (the base direction the reveal rays come from). Updates the
+        // live global light immediately and re-arms the next reveal to use it.
+        const sunAzSlider = document.getElementById("sun-az-slider");
+        const sunAzValueEl = document.getElementById("sun-az-value");
+        const sunElSlider = document.getElementById("sun-el-slider");
+        const sunElValueEl = document.getElementById("sun-el-value");
+        const applySunAngle = () => {
+          sunAzimuth = parseFloat(sunAzSlider.value) * (Math.PI / 180);
+          sunElevation = parseFloat(sunElSlider.value) * (Math.PI / 180);
+          updateSunDir();
+          _sunDir0.copy(_sunDir0Base);
+          // Apply immediately to the live global sun (aimed at the origin).
+          sunLight.position.copy(_sunDir0).multiplyScalar(SUN_FLAT);
+          sunLight.target.position.set(0, 0, 0);
+          sunLight.target.updateMatrixWorld(true);
+          sunAzValueEl.textContent = `${Math.round(sunAzSlider.value)}°`;
+          sunElValueEl.textContent = `${Math.round(sunElSlider.value)}°`;
+        };
+        sunAzSlider.addEventListener("input", applySunAngle);
+        sunElSlider.addEventListener("input", applySunAngle);
+        applySunAngle();
+
+        // Earth angle above horizon slider, plus the copy-config button.
+        const earthAngleSlider = document.getElementById("earth-angle-slider");
+        const earthAngleValueEl = document.getElementById("earth-angle-value");
+        const earthDistSlider = document.getElementById("earth-dist-slider");
+        const earthDistValueEl = document.getElementById("earth-dist-value");
+        // Place the Earth for the reveal: `earthDistance` ahead of the camera in
+        // the ground plane, elevated to `earthAngleDeg` above the horizon,
+        // measured from the ground. Used on reveal and to nudge it live while
+        // the sliders move.
+        const positionEarth = () => {
+          _camFwd.set(0, 0, -1).applyQuaternion(sim.camera.quaternion);
+          earth.mesh.position
+            .copy(sim.camera.position)
+            .addScaledVector(_fwdXZ.copy(_camFwd).setY(0).normalize(), earthDistance);
+          earth.mesh.position.y = earthDistance * Math.tan(THREE.MathUtils.degToRad(earthAngleDeg));
+        };
+        const applyEarthPlacement = () => {
+          earthAngleDeg = parseFloat(earthAngleSlider.value);
+          earthDistance = parseFloat(earthDistSlider.value);
+          earthAngleValueEl.textContent = `${Math.round(earthAngleDeg)}°`;
+          earthDistValueEl.textContent = String(Math.round(earthDistance));
+          // Live-update the Earth if a reveal has already happened.
+          if (revealFired) positionEarth();
+        };
+        earthAngleSlider.addEventListener("input", applyEarthPlacement);
+        earthDistSlider.addEventListener("input", applyEarthPlacement);
+        applyEarthPlacement();
+
+        // Copy the current sun + earth configuration to the clipboard as TOML-ish
+        // text so settings can be shared/pasted back into code.
+        const copyBtn = document.getElementById("copy-config");
+        copyBtn.addEventListener("click", async () => {
+          const d = _sunDir0;
+          const sunPos = d.clone().multiplyScalar(SUN_FLAT);
+          const text = [
+            `[sun]`,
+            `azimuth = ${sunAzimuth * (180 / Math.PI)}`,
+            `elevation = ${sunElevation * (180 / Math.PI)}`,
+            `position = ${sunPos.x.toFixed(0)}, ${sunPos.y.toFixed(0)}, ${sunPos.z.toFixed(0)}`,
+            `direction = ${d.x.toFixed(2)}, ${d.y.toFixed(2)}, ${d.z.toFixed(2)}`,
+            ``,
+            `[earth]`,
+            `angle_above_horizon = ${earthAngleDeg}`,
+            `distance = ${earthDistance}`,
+          ].join("\n");
+          try {
+            await navigator.clipboard.writeText(text);
+            const old = copyBtn.textContent;
+            copyBtn.textContent = "Copied!";
+            setTimeout(() => { copyBtn.textContent = old; }, 1200);
+          } catch {
+            copyBtn.textContent = "Copy failed";
+          }
+        });
+
+        // Manual time toggle: when the "Manual time" box is checked the clock
+        // freezes and the sun slider takes over (auto-advance pauses); when
+        // unchecked the clock runs on its own and the slider is disabled.
+        const manualTimeCheckbox = document.getElementById("manual-time-checkbox");
+        let manualTime = false;
+        sunSlider.disabled = !manualTime;
+        manualTimeCheckbox.addEventListener("change", () => {
+          manualTime = manualTimeCheckbox.checked;
+          sunSlider.disabled = !manualTime;
+          if (manualTime) {
+            // Sync the slider to the current elapsed time so it's at the right
+            // spot when manual mode begins.
+            sunSlider.value = String(time.hour);
+          }
+        });
+
+        // Automatic time advancement: time flows even without touching the sun
+        // slider. One game hour elapses per real minute of play; through the
+        // night/reveal hours the clock runs 2x faster so we reach sunrise sooner.
+        // Night is where the absolute offset from noon (p = |hour-12|/6) reaches
+        // NIGHT_P — the glass dome has gone transparent (the reveal). The night
+        // hours begin at 22:30 (22.5) and end moving past midnight at 01:30 (1.5).
+        const NIGHT_START = 12 + NIGHT_P * 6; // 22.5
+        const NIGHT_END = 12 - NIGHT_P * 6;   // 1.5
+        const atNight = (h) => {
+          // Night wraps past midnight: hour >= NIGHT_START or hour < NIGHT_END.
+          return h >= NIGHT_START || h < NIGHT_END;
+        };
+        sim.addEntity(null, null, (dt) => {
+          if (manualTime) return; // manual mode freezes the clock
+          const dayRate = dt / 60;               // 1 game hour per real minute
+          const rate = atNight(time.hour) ? dayRate * 2 : dayRate;
+          let next = time.hour + rate;
+          if (next >= 24) next -= 24;
+          setHour(next);
+        });
 
         // Drive the mower: W/S (or up/down arrows) move, A/D (or left/right)
         // turn. Reel spins 2x.
@@ -1162,6 +1434,9 @@
         const _orbQuat = new THREE.Quaternion(); // orbit camera orientation (lookAt)
         const _tmpOrb = new THREE.Vector3();     // orbit camera position
         const _lookAtM = new THREE.Matrix4();    // reusable lookAt matrix (no alloc)
+        const _sunDir = new THREE.Vector3();     // global sun light direction temp
+        const _camFwd = new THREE.Vector3();     // camera forward temp for reveal
+        const _fwdXZ = new THREE.Vector3();      // horizontal camera forward temp
         const turnDir = new THREE.Vector3(0, 1, 0);
         let mowerMoving = false;
         let mowerForward = false; // true only while cutting forward (blades turn)
