@@ -125,6 +125,67 @@
         />
       </div>
       <div
+        id="density-control"
+        style="
+          margin-top: 12px;
+          font-size: 0.9rem;
+          pointer-events: auto;
+        "
+      >
+        <div style="opacity: 0.8; margin-bottom: 4px">
+          Grass Density <span id="density-total"></span>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: center">
+          <label style="display: flex; flex-direction: column; font-size: 0.8rem">
+            Grid cols
+            <input
+              type="number"
+              id="density-cols"
+              min="1"
+              max="20"
+              step="1"
+              value="20"
+              style="width: 64px"
+            />
+          </label>
+          <label style="display: flex; flex-direction: column; font-size: 0.8rem">
+            rows
+            <input
+              type="number"
+              id="density-rows"
+              min="1"
+              max="20"
+              step="1"
+              value="20"
+              style="width: 64px"
+            />
+          </label>
+          <label style="display: flex; flex-direction: column; font-size: 0.8rem">
+            per patch
+            <input
+              type="number"
+              id="density-n"
+              min="1"
+              max="10000"
+              step="50"
+              value="1000"
+              style="width: 80px"
+            />
+          </label>
+        </div>
+        <button
+          id="density-apply"
+          style="
+            margin-top: 8px;
+            padding: 4px 12px;
+            font-size: 0.85rem;
+            cursor: pointer;
+          "
+        >
+          Apply (reload)
+        </button>
+      </div>
+      <div
         id="fov-control"
         style="
           display: none;
@@ -344,8 +405,19 @@
 
         // Grass: single instanced mesh, 3x3 patches tiled across 100x100.
         const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
-        const W = 3, D = 3, N = isMobile ? 250 : 1000;
-        const COLS = 20, ROWS = 20;
+        // Density config is editable in the UI; applied values persist and are
+        // consumed here on the next load (Apply triggers a reload).
+        const density = {
+          COLS: Number(localStorage.getItem("mow-cols")) || 20,
+          ROWS: Number(localStorage.getItem("mow-rows")) || 20,
+          N: Number(localStorage.getItem("mow-n")) || (isMobile ? 250 : 1000),
+        };
+        const clampInt = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v)));
+        density.COLS = clampInt(density.COLS, 1, 20);
+        density.ROWS = clampInt(density.ROWS, 1, 20);
+        density.N = clampInt(density.N, 1, 10000);
+        const { COLS, ROWS, N } = density;
+        const W = 3, D = 3;
         const total = COLS * ROWS * N;
         const bladeGeo = new THREE.ConeGeometry(0.08, 1.7, 4);
         const bladeMat = new THREE.MeshStandardMaterial({ color: 0x44aa55, roughness: 0.8 });
@@ -815,6 +887,33 @@ clipDummy.position.set(p.x, p.y, p.z);
           growSlider.addEventListener("input", applyGrowRate);
           applyCutHeight();
           applyGrowRate();
+        }
+        // Grass density config. Populate the inputs from the current build, show
+        // the live total, and Apply persists to localStorage then reloads so the
+        // next page load rebuilds the lawn with the new density.
+        {
+          const el = (id) => document.getElementById(id);
+          const colsEl = el("density-cols");
+          const rowsEl = el("density-rows");
+          const nEl = el("density-n");
+          const totalEl = el("density-total");
+          colsEl.value = COLS;
+          rowsEl.value = ROWS;
+          nEl.value = N;
+          const upd = () => {
+            const c = clampInt(Number(colsEl.value), 1, 20);
+            const r = clampInt(Number(rowsEl.value), 1, 20);
+            const n = clampInt(Number(nEl.value), 1, 10000);
+            totalEl.textContent = `${(c * r * n).toLocaleString()} blades`;
+          };
+          [colsEl, rowsEl, nEl].forEach((i) => i.addEventListener("input", upd));
+          upd();
+          el("density-apply").addEventListener("click", () => {
+            localStorage.setItem("mow-cols", String(clampInt(Number(colsEl.value), 1, 20)));
+            localStorage.setItem("mow-rows", String(clampInt(Number(rowsEl.value), 1, 20)));
+            localStorage.setItem("mow-n", String(clampInt(Number(nEl.value), 1, 10000)));
+            location.reload();
+          });
         }
         sim.addEntity(null, null, (dt) => {
           swayUniforms.uTime.value = (swayUniforms.uTime.value + dt) % 1000;
