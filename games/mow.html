@@ -1056,6 +1056,10 @@
         const domeD = lawnHalfD * 2 + WALL_INSET;
         const glassCube = new THREE.Group();
         const skyFaces = [];
+        // Curtain reveal: the four side walls modulate their HEIGHT (scaled
+        // about a top-anchored pivot) to fade to/from their full CUBE_H. Saved
+        // here so the animation driver can ease them separately from the ceiling.
+        const skyWalls = [];
         // PlaneGeometry lies in the XY plane (normal +Z, width along X, height
         // along Y). With a BackSide sky material we see the plane's BACK face,
         // so each wall's normal points OUTWARD (away from the lawn) and its
@@ -1067,6 +1071,7 @@
           p.position.set(x, y, z);
           glassCube.add(p);
           skyFaces.push(p);
+          skyWalls.push(p);
         };
         addFace(domeW, CUBE_H, 0, 0, CUBE_H / 2, domeD / 2);            // north
         addFace(domeW, CUBE_H, Math.PI, 0, CUBE_H / 2, -domeD / 2);     // south
@@ -1081,6 +1086,56 @@
           skyFaces.push(ceil);
         }
         sim.scene.add(glassCube);
+
+        // Curtain reveal animation state. Instead of an instant hide, the four
+        // sky walls modulate their height over CURTAIN_S seconds — scaling about
+        // a top-anchored pivot so the bottom edge climbs off the ground first
+        // (revealing the outside from the bottom up). At daybreak the reverse
+        // plays, growing the walls back down like a curtain closing.
+        const CURTAIN_S = 1.0; // seconds for the wall to fully rise/fall
+        let curtainT = 1;      // 1 = full height, 0 = fully raised (gone)
+        let curtainActive = false;
+        let curtainDir = 1;    // +1 opening (raise up), -1 closing (come down)
+        let curtainStarted = false; // reveal act fired once per night (option B)
+        // easeInOutCubic over [0,1].
+        const curtainEase = (t) =>
+          t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        const applyCurtain = (f) => {
+          const h = f * CUBE_H;
+          for (const w of skyWalls) {
+            // Top-anchored: keep the top edge pinned at the ceiling while the
+            // bottom edge rises/falls, so the outside is revealed bottom-up.
+            w.scale.y = f;
+            w.position.y = CUBE_H - h / 2;
+          }
+        };
+        const curtainDone = () => {
+          curtainActive = false;
+          const opened = curtainT <= 0.0001;
+          if (opened) {
+            // Fully raised: the skybox is gone, so it can't occlude the scene.
+            glassMat.transparent = true;
+            glassMat.opacity = 0;
+            glassMat.depthWrite = false;
+            for (const f of skyFaces) f.visible = false;
+          } else {
+            // Fully closed: an opaque sky hides the outside again.
+            glassMat.transparent = false;
+            glassMat.opacity = 1;
+            glassMat.depthWrite = true;
+            for (const f of skyFaces) f.visible = true;
+          }
+        };
+        // Driver: advance the curtain toward its target and apply the eased
+        // height each frame while it's active.
+        sim.addEntity(null, null, (dt) => {
+          if (!curtainActive) return;
+          const target = curtainDir > 0 ? 0 : 1;
+          const dir = target > curtainT ? 1 : -1;
+          curtainT = Math.max(0, Math.min(1, curtainT + dir * (dt / CURTAIN_S)));
+          applyCurtain(curtainEase(curtainT));
+          if ((dir > 0 && curtainT >= 1) || (dir < 0 && curtainT <= 0)) curtainDone();
+        });
 
         // Fake "sun" light inside the Earth dome: a warm point/he directional
         // light tracking the fake-sky time so the grass reads as lit by day
@@ -1111,47 +1166,53 @@
           paintSky(p);
           const isNight = p >= NIGHT_P;
           if (isNight) {
-            // Transparent + fully hidden: remove the skybox from rendering so
-            // it can't possibly occlude the Earth, moon, or stars behind it.
-            glassMat.transparent = true;
-            glassMat.opacity = 0;
-            glassMat.depthWrite = false;
-            for (const f of skyFaces) f.visible = false;
-            // Reveal: the box is gone, so the real moon sun takes over again.
-            if (sunLight) sunLight.intensity = SUN_INTENSITY;
-            // Freeze the grass: with the dome gone there's no breeze to move it.
-            swaying = false;
-            // Weightless clippings drift in the vacuum of space.
-            gravityOn = false;
-            // Snap the Earth directly into the player's field of view: instantly
-            // park it far ahead along the mower's forward heading, held at a
-            // cinematic altitude. One-time at the reveal.
-if (!revealFired) {
-              revealFired = true;
-              // Park the Earth 150m directly ahead of the CAMERA (not the
-              // mower) in the ground plane, so it's always dead-center in view
-              // at the reveal; its height comes from the earth-angle slider.
-              positionEarth();
-              // Reset the Earth's own spin so every reveal shows the same face.
-              earth.globe.rotation.y = 0;
-              if (earth.children) {
-                for (const c of earth.children) {
-                  if (c !== earth.globe) c.rotation.y = 0;
+            // Reveal (option B): the reveal act — sun re-arms, grass freezes,
+            // Earth teleports — fires IMMEDIATELY, while the walls animate up
+            // like a curtain over CURTAIN_S seconds on a separate visual clock.
+            if (!curtainStarted) {
+              curtainStarted = true;
+              // The real moon sun takes over again right away.
+              if (sunLight) sunLight.intensity = SUN_INTENSITY;
+              // Freeze the grass: with the dome gone there's no breeze to move it.
+              swaying = false;
+              // Weightless clippings drift in the vacuum of space.
+              gravityOn = false;
+              if (!revealFired) {
+                revealFired = true;
+                // Park the Earth 150m directly ahead of the CAMERA (not the
+                // mower) in the ground plane, so it's always dead-center in view
+                // at the reveal; its height comes from the earth-angle slider.
+                positionEarth();
+                // Reset the Earth's own spin so every reveal shows the same face.
+                earth.globe.rotation.y = 0;
+                if (earth.children) {
+                  for (const c of earth.children) {
+                    if (c !== earth.globe) c.rotation.y = 0;
+                  }
                 }
+                // Lock the sun to the camera: rotate its direction with the camera
+                // so the Earth is lit from the exact same relative angle every
+                // reveal, keeping the crescent/terminator perfectly identical on
+                // the (now camera-centered) Earth no matter how the player was
+                // facing. Push it far away so its rays arrive parallel.
+                const cinematicSunDir = _sunDir0.clone().applyQuaternion(sim.camera.quaternion);
+                // Roll the sun direction around the camera's view axis by the
+                // day's solar declination, tilting the day/night terminator on the
+                // Earth to its correct seasonal angle.
+                cinematicSunDir.applyAxisAngle(_camFwd, declinationDeg() * (Math.PI / 180));
+                sunLight.position.copy(cinematicSunDir).multiplyScalar(SUN_FLAT);
+                sunLight.target.position.copy(sim.camera.position);
+                sunLight.target.updateMatrixWorld(true);
               }
-              // Lock the sun to the camera: rotate its direction with the camera
-              // so the Earth is lit from the exact same relative angle every
-              // reveal, keeping the crescent/terminator perfectly identical on
-              // the (now camera-centered) Earth no matter how the player was
-              // facing. Push it far away so its rays arrive parallel.
-              const cinematicSunDir = _sunDir0.clone().applyQuaternion(sim.camera.quaternion);
-              // Roll the sun direction around the camera's view axis by the
-              // day's solar declination, tilting the day/night terminator on the
-              // Earth to its correct seasonal angle.
-              cinematicSunDir.applyAxisAngle(_camFwd, declinationDeg() * (Math.PI / 180));
-              sunLight.position.copy(cinematicSunDir).multiplyScalar(SUN_FLAT);
-              sunLight.target.position.copy(sim.camera.position);
-              sunLight.target.updateMatrixWorld(true);
+              // Ensure the sky is opaque so the rising walls read as a curtain.
+              glassMat.transparent = false;
+              glassMat.opacity = 1;
+              glassMat.depthWrite = true;
+              for (const f of skyFaces) f.visible = true;
+              // Lift the curtain: top edge pinned, bottom edge rises off the
+              // ground so the outside is revealed from the bottom up.
+              curtainDir = 1;
+              curtainActive = true;
             }
           } else {
             // Opaque sky: fully hide the space outside the dome (survives the
@@ -1159,10 +1220,6 @@ if (!revealFired) {
             glassMat.transparent = false;
             glassMat.opacity = 1;
             glassMat.depthWrite = true;
-            for (const f of skyFaces) f.visible = true;
-            // Box closed: the moon sun can't reach the sealed lawn, so shut it
-            // off and let only the fake in-dome day light drive the grass.
-            if (sunLight) sunLight.intensity = 0;
             // Day again: the breeze returns, so grass sway resumes.
             swaying = true;
             // Gravity returns with the day.
@@ -1170,6 +1227,26 @@ if (!revealFired) {
             // Re-arm the reveal so closing the dome and opening it again
             // re-snaps the Earth back into view.
             revealFired = false;
+            // Fireflies return once the reveal clears (still governed by the
+            // daytime/nighttime sleep-wake cycle from here on). Skipped during
+            // the initial setup call before the family has been created.
+            if (firefliesReady) {
+              for (const f of fireflies) f.group.visible = creaturesEnabled && !f.sleeping && !revealFired;
+            }
+            // Box closed: the moon sun can't reach the sealed lawn, so shut it
+            // off and let only the fake in-dome day light drive the grass.
+            if (sunLight) sunLight.intensity = 0;
+            // Bring the curtain back down only if it had been raised.
+            if (curtainStarted) {
+              curtainStarted = false;
+              // Make the sky opaque + visible so the closing curtain shows.
+              glassMat.transparent = false;
+              glassMat.opacity = 1;
+              glassMat.depthWrite = true;
+              for (const f of skyFaces) f.visible = true;
+              curtainDir = -1;
+              curtainActive = true;
+            }
           }
           // Fake sun: bright warm light at noon, dimming & warming as the sky
           // darkens through dusk, fully off by night.
@@ -1187,6 +1264,9 @@ if (!revealFired) {
         // and dispatchDayNight sleeps/wakes them as the hour crosses their
         // thresholds. The registry is populated as each family is created.
         const dayCycle = [];
+        // Set true once the firefly family exists so applySky can safely toggle
+        // their visibility during the reveal/restore (it runs earlier at setup).
+        let firefliesReady = false;
         // Cross a sleep/wake boundary when the current hour straddles the
         // threshold and the previous hour was on the opposite side, handling
         // slider jumps that leap across midnight (wrap backward or forward).
@@ -1349,7 +1429,7 @@ if (!revealFired) {
         };
         sim.addEntity(null, null, (dt) => {
           if (manualTime) return; // manual mode freezes the clock
-          const dayRate = dt / 60;               // 1 game hour per real minute
+          const dayRate = dt / 30;               // 2 game hours per real minute
           const rate = atNight(time.hour) ? dayRate * 2 : dayRate;
           let next = time.hour + rate;
           if (next >= 24) next -= 24;
@@ -1632,6 +1712,25 @@ if (!revealFired) {
         let clipCursor = 0;
         let clipAccum = 0;
 
+        // Headlamp: a warm spotlight mounted on the mower handle, aimed down
+        // and forward so the two night hours before the reveal (and the wee
+        // hours after) stay readable. It switches on once the sky gets dark.
+        const HEADLAMP_BIAS = -0.0005; // dodge striping on the dark lawn
+        const headlamp = new THREE.SpotLight(0xfff3e0, 0); // warm white/yellow, off by day
+        headlamp.angle = 0.84;
+        headlamp.penumbra = 0.5;
+        headlamp.distance = 18;
+        headlamp.decay = 1.4;
+        headlamp.castShadow = true;
+        headlamp.shadow.mapSize.set(512, 512);
+        headlamp.shadow.bias = HEADLAMP_BIAS;
+        sim.scene.add(headlamp);
+        sim.scene.add(headlamp.target);
+        // Headlamp aim direction held in mower-local space (down + forward).
+        const _lampDir = new THREE.Vector3(0, -1.15, -0.7).normalize();
+        const _lampWorld = new THREE.Vector3();
+        const _lampTarget = new THREE.Vector3();
+
         sim.addEntity(null, null, (dt) => {
           // Mower local +Z (handle push direction) mapped to the horizontal
           // world direction; with no roll/pitch this is the forward heading.
@@ -1699,6 +1798,20 @@ if (!revealFired) {
           // Reflect the fresh transform immediately so the cut-footprint check
           // (which uses matrixWorld) matches the mower's real position this frame.
           mower.mesh.updateWorldMatrix(true, false);
+
+          // Headlamp: on once it's dark (22:00 onward through the night), off
+          // once the reveal fires (the moon sun re-takes over). It rides the
+          // mower, looking down and forward.
+          const lampOn = !revealFired && (time.hour >= 22 || time.hour < 6);
+          headlamp.intensity = lampOn ? 3.5 : 0;
+          if (lampOn) {
+            headlamp.position.copy(mower.mesh.position);
+            headlamp.position.y += 1.4; // ride just above the handle
+            // Aim down + forward, rotated into world space by the mower's
+            // heading so the beam follows wherever the mower is pointing.
+            const wd = _lampWorld.copy(_lampDir).applyQuaternion(mower.mesh.quaternion);
+            headlamp.target.position.copy(_lampTarget.copy(headlamp.position).addScaledVector(wd, 6));
+          }
 
           // Emit clippings from the reel when moving AND actually cutting grass.
           const reelWorld = mower.mesh.localToWorld(_reelWorld.set(0, 0.1, 0));
@@ -1951,6 +2064,23 @@ clipDummy.position.set(p.x, p.y, p.z);
             }
           }
 
+          // Dandelions wave in the wind like the grass: each stalk oscillates
+          // ±10° about a random horizontal direction, sharing the grass's clock
+          // (so it sways at the same rate) and freezing with it at the reveal.
+          if (swaying) {
+            const t = swayUniforms.uTime.value;
+            for (const d of dandelions) {
+              if (!d.grown) continue;
+              for (let i = 0; i < d.waves.length; i++) {
+                const w = d.waves[i];
+                const stalk = d.ent.mesh.children[i];
+                const wave = 0.1745 * Math.sin(t * 1.3 + w.ph); // ±10°
+                stalk.rotation.x = w.baseX + w.ax * wave;
+                stalk.rotation.z = w.baseZ + w.az * wave;
+              }
+            }
+          }
+
           // Camera: first-person by default, riding the mower's handle (facing
           // the mower's forward vector, just back from the reel); hold C to
           // switch to the drifting orbit view. On mobile it's always
@@ -2062,6 +2192,12 @@ clipDummy.position.set(p.x, p.y, p.z);
             scatterT: 0,
             scareCooldown: 0,
             rejoinT: 0, // > 0 while easing back into the orbit after a flight
+            // Lunar-reveal "antigravity": a random 3D axis the butterfly slowly
+            // spins around, parked in place (null until the reveal is armed).
+            antiAxis: null,
+            antiAngle: 0,
+            antiRate: 0,
+            antiDir: null,
           });
         }
 
@@ -2074,6 +2210,36 @@ clipDummy.position.set(p.x, p.y, p.z);
           mowerPos.copy(mower.mesh.position);
           for (const b of butterflies) {
             b.ent.setFlapSpeed(b.scatterT > 0 ? 42 : b.flapSpeed + b.flapBoost);
+
+            if (revealFired) {
+              // Lunar reveal "antigravity": wings frozen (flap speed 0) while
+              // each butterfly drifts along a random 3D heading and spins
+              // around a random axis. Both picked the moment the reveal fires.
+              b.ent.setFlapSpeed(0);
+              if (!b.antiAxis) {
+                b.antiAxis = new THREE.Vector3(
+                  Math.random() * 2 - 1,
+                  Math.random() * 2 - 1,
+                  Math.random() * 2 - 1,
+                ).normalize();
+                b.antiAngle = 0;
+                b.antiRate = (Math.random() < 0.5 ? 1 : -1) * 3 * (0.4 + Math.random() * 0.6);
+                b.antiDir = new THREE.Vector3(
+                  Math.random() * 2 - 1,
+                  Math.random() * 2 - 1,
+                  Math.random() * 2 - 1,
+                ).normalize();
+              }
+              b.antiAngle += b.antiRate * dt;
+              b.x += b.antiDir.x * dt * 0.6;
+              b.h += b.antiDir.y * dt * 0.6;
+              b.z += b.antiDir.z * dt * 0.6;
+              b.group.position.set(b.x, b.h, b.z);
+              b.group.quaternion.setFromAxisAngle(b.antiAxis, b.antiAngle);
+              continue;
+            } else {
+              b.antiAxis = null; // back to day: thaw the spin, resume the orbit
+            }
 
             if (b.scatterT > 0) {
               // Frightened: burst upward and away from the mower, then calm.
@@ -2151,7 +2317,7 @@ clipDummy.position.set(p.x, p.y, p.z);
               b.h = Math.max(0.6, Math.min(2.2, b.h));
             }
             b.group.position.set(b.x, b.h, b.z);
-            b.group.rotation.y = b.yaw;
+            b.group.rotation.set(0, b.yaw, 0);
           }
         });
 
@@ -2374,9 +2540,10 @@ clipDummy.position.set(p.x, p.y, p.z);
         }
         // Nocturnal: awake over the night window [20h, 6h) — emerges at dusk.
         dayCycle.push({ items: fireflies, wakeHour: 20, sleepHour: 6 });
+        firefliesReady = true;
 
         sim.addEntity(null, null, (dt) => {
-          for (const f of fireflies) f.group.visible = creaturesEnabled && !f.sleeping;
+          for (const f of fireflies) f.group.visible = creaturesEnabled && !f.sleeping && !revealFired;
           if (!creaturesEnabled) return;
           for (const f of fireflies) {
             if (f.sleeping) continue;
@@ -2610,7 +2777,20 @@ clipDummy.position.set(p.x, p.y, p.z);
             position: [x, 0, z],
             rotation: [0, Math.random() * Math.PI * 2, 0],
           });
-          dandelions.push({ ent, x, z, flower, grown: true, regrowT: 0 });
+          // Precompute a wind-wave per stalk: an oscillation direction (horizontal)
+          // and a phase. Rate is shared across a bunch so they sway in step.
+          const waves = [];
+          for (const stalk of ent.mesh.children) {
+            const az = Math.random() * Math.PI * 2;
+            waves.push({
+              ax: Math.cos(az), // tilt direction (horizontal)
+              az: Math.sin(az),
+              ph: Math.random() * Math.PI * 2, // off-phase stalk to stalk
+              baseX: stalk.rotation.x, // keep the built-in lean
+              baseZ: stalk.rotation.z,
+            });
+          }
+          dandelions.push({ ent, x, z, flower, grown: true, regrowT: 0, waves });
         }
 
         // Creatures checkbox: toggle all bugs (midges, butterflies, dragonflies, swarms).
@@ -2627,7 +2807,7 @@ clipDummy.position.set(p.x, p.y, p.z);
           for (const d of dragonflies) d.group.visible = creaturesEnabled && !d.sleeping;
           for (const s of flySwarms) s.mesh.visible = creaturesEnabled && !s.sleeping;
           for (const b of bees) b.group.visible = creaturesEnabled && !b.sleeping;
-          for (const f of fireflies) f.group.visible = creaturesEnabled && !f.sleeping;
+          for (const f of fireflies) f.group.visible = creaturesEnabled && !f.sleeping && !revealFired;
         };
         creaturesCheckbox.addEventListener("change", applyCreatures);
 
