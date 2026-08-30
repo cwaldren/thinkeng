@@ -359,13 +359,16 @@
         if (isMobile) {
           document.getElementById("hint").textContent =
             "Tap screen to mow, drag left/right to turn.";
+          // Hide all UI panels on mobile — the touch controls drive the game.
+          const ui = document.getElementById("ui");
+          ui.style.display = "none";
         }
         // Density config is editable in the UI; applied values persist and are
         // consumed here on the next load (Apply triggers a reload).
         const density = {
-          COLS: Number(localStorage.getItem("mow-cols")) || 10,
-          ROWS: Number(localStorage.getItem("mow-rows")) || 10,
-          N: Number(localStorage.getItem("mow-n")) || 2000,
+          COLS: Number(localStorage.getItem("mow-cols")) || 5,
+          ROWS: Number(localStorage.getItem("mow-rows")) || 5,
+          N: Number(localStorage.getItem("mow-n")) || (isMobile ? 500 : 8000),
         };
         const clampInt = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v)));
         density.COLS = clampInt(density.COLS, 1, 20);
@@ -631,6 +634,8 @@
         // bends in local space before the instance transform, so each blade
         // keeps its own scale/orientation and its base stays anchored.
         const swayUniforms = { uTime: { value: 0 } };
+        let swaying = true; // grass wind-blows by day, freezes at the reveal
+        let gravityOn = true; // clipping gravity: off after the reveal, back on at dawn
         bladeMat.onBeforeCompile = (shader) => {
           shader.uniforms.uTime = swayUniforms.uTime;
           // Declare the uniform at global scope (#include <common> is the first
@@ -953,6 +958,10 @@
             for (const f of skyFaces) f.visible = false;
             // Reveal: the box is gone, so the real moon sun takes over again.
             if (sunLight) sunLight.intensity = SUN_INTENSITY;
+            // Freeze the grass: with the dome gone there's no breeze to move it.
+            swaying = false;
+            // Weightless clippings drift in the vacuum of space.
+            gravityOn = false;
             // Snap the Earth directly into the player's field of view: instantly
             // park it far ahead along the mower's forward heading, held at a
             // cinematic altitude. One-time at the reveal.
@@ -974,6 +983,10 @@
             // Box closed: the moon sun can't reach the sealed lawn, so shut it
             // off and let only the fake in-dome day light drive the grass.
             if (sunLight) sunLight.intensity = 0;
+            // Day again: the breeze returns, so grass sway resumes.
+            swaying = true;
+            // Gravity returns with the day.
+            gravityOn = true;
             // Re-arm the reveal so closing the dome and opening it again
             // re-snaps the Earth back into view.
             revealFired = false;
@@ -1313,14 +1326,20 @@
               continue;
             }
             p.life += dt;
-            p.vy -= 5 * dt;
+            if (gravityOn) {
+              p.vy -= 5 * dt;
+            } else {
+              // Weightless: no gravity, and damp the initial upward toss so
+              // clippings hover/drift instead of shooting straight up.
+              p.vy *= Math.max(0, 1 - 6 * dt);
+            }
             p.x += p.vx * dt;
             p.y += p.vy * dt;
             p.z += p.vz * dt;
             p.rx += p.wrx * dt;
             p.ry += p.wry * dt;
             p.rz += p.wrz * dt;
-            if (p.life > 0.9 || p.y < 0.01) {
+            if (p.life > (gravityOn ? 0.9 : 20) || p.y < 0.01) {
               p.alive = false;
               p.y = -1000;
             }
@@ -1417,7 +1436,7 @@ clipDummy.position.set(p.x, p.y, p.z);
           });
         }
         sim.addEntity(null, null, (dt) => {
-          swayUniforms.uTime.value = (swayUniforms.uTime.value + dt) % 1000;
+          if (swaying) swayUniforms.uTime.value = (swayUniforms.uTime.value + dt) % 1000;
           // Cut any blades under the mower's reel, then grow the lawn back.
           grassDirty = false;
           // Cut: only test blades in the grid cells under the reel. Trim any
@@ -1785,7 +1804,7 @@ clipDummy.position.set(p.x, p.y, p.z);
         // Each cloud is an instanced swarm buzzing inside a small
         // bounding sphere; we drag the whole mesh lazily around the lawn so the
         // spheres wander randomly from spot to spot rather than staying put.
-        const SWARM_COUNT = 4;
+        const SWARM_COUNT = 2;
         const flySwarms = [];
         for (let i = 0; i < SWARM_COUNT; i++) {
           const ent = createGnats(sim, {
@@ -2201,6 +2220,8 @@ clipDummy.position.set(p.x, p.y, p.z);
           });
         });
         document.body.appendChild(statsBtn);
+        // Mobile: show only the FPS counter — hide the toggleable stats button.
+        if (isMobile) statsBtn.style.display = "none";
       }
 
       setup(sim);
