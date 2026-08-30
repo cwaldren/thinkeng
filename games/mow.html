@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Zen Mow</title>
+    <title>Moasis</title>
     <style>
       body {
         margin: 0;
@@ -17,6 +17,18 @@
         left: 16px;
         color: #fff;
         pointer-events: none;
+        display: none;
+      }
+      #side {
+        position: absolute;
+        top: 78px;
+        right: 14px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        color: #fff;
+        pointer-events: auto;
+        font-size: 0.9rem;
         display: none;
       }
     </style>
@@ -35,157 +47,21 @@
   <body>
     <div id="ui">
       <h1 style="margin: 0; font-size: 1.2rem; opacity: 0.8">
-        Zen Mow
+        Moasis
       </h1>
-      <p id="hint" style="margin: 4px 0 0; font-size: 0.85rem; opacity: 0.5">
-        W/A/S/D or arrow keys to move. Hold C for orbit camera.
-      </p>
-      <label
-        id="creatures-toggle"
-        style="
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          margin-top: 10px;
-          font-size: 0.9rem;
-          pointer-events: auto;
-          cursor: pointer;
-        "
-      >
-        <input type="checkbox" id="creatures-checkbox" checked />
-        Creatures
-      </label>
-      <label
-        id="sampler-toggle"
+      <p
+        id="hint"
         style="
           display: flex;
-          align-items: center;
-          gap: 6px;
-          margin-top: 10px;
-          font-size: 0.9rem;
-          pointer-events: auto;
-          cursor: pointer;
+          gap: 0.4em;
+          margin: 4px 0 0;
+          font-size: 0.85rem;
+          opacity: 0.5;
         "
       >
-        <input type="checkbox" id="sampler-checkbox" />
-        Sampler box
-      </label>
-      <div
-        id="sun-control"
-        style="
-          margin-top: 12px;
-          font-size: 0.9rem;
-          pointer-events: auto;
-        "
-      >
-        <div style="opacity: 0.8; margin-bottom: 4px">
-          Sun <span id="sun-clock">12:00</span>
-        </div>
-        <input
-          type="range"
-          id="sun-slider"
-          min="0"
-          max="24"
-          step="0.05"
-          value="12"
-          style="width: 180px; vertical-align: middle"
-        />
-        <span id="sun-phase" style="opacity: 0.6; margin-left: 6px">noon</span>
-      </div>
-      <div
-        id="grass-control"
-        style="
-          margin-top: 12px;
-          font-size: 0.9rem;
-          pointer-events: auto;
-        "
-      >
-        <div style="opacity: 0.8; margin-bottom: 4px">
-          Cut Height <span id="cut-height-value" style="font-weight: bold">0.20m</span>
-        </div>
-        <input
-          type="range"
-          id="cut-height-slider"
-          min="0.01"
-          max="0.5"
-          step="0.01"
-          value="0.2"
-          style="width: 180px; vertical-align: middle"
-        />
-        <div style="opacity: 0.8; margin-bottom: 4px; margin-top: 8px">
-          Grow Rate <span id="grow-rate-value" style="font-weight: bold">0.005</span>
-        </div>
-        <input
-          type="range"
-          id="grow-rate-slider"
-          min="0.001"
-          max="0.1"
-          step="0.001"
-          value="0.005"
-          style="width: 180px; vertical-align: middle"
-        />
-      </div>
-      <div
-        id="density-control"
-        style="
-          margin-top: 12px;
-          font-size: 0.9rem;
-          pointer-events: auto;
-        "
-      >
-        <div style="opacity: 0.8; margin-bottom: 4px">
-          Grass Density <span id="density-total"></span>
-        </div>
-        <div style="display: flex; gap: 10px; align-items: center">
-          <label style="display: flex; flex-direction: column; font-size: 0.8rem">
-            Grid cols
-            <input
-              type="number"
-              id="density-cols"
-              min="1"
-              max="20"
-              step="1"
-              value="10"
-              style="width: 64px"
-            />
-          </label>
-          <label style="display: flex; flex-direction: column; font-size: 0.8rem">
-            rows
-            <input
-              type="number"
-              id="density-rows"
-              min="1"
-              max="20"
-              step="1"
-              value="10"
-              style="width: 64px"
-            />
-          </label>
-          <label style="display: flex; flex-direction: column; font-size: 0.8rem">
-            per patch
-            <input
-              type="number"
-              id="density-n"
-              min="1"
-              max="10000"
-              step="50"
-              value="2000"
-              style="width: 80px"
-            />
-          </label>
-        </div>
-        <button
-          id="density-apply"
-          style="
-            margin-top: 8px;
-            padding: 4px 12px;
-            font-size: 0.85rem;
-            cursor: pointer;
-          "
-        >
-          Apply (reload)
-        </button>
-      </div>
+        <span id="hint-move">W/A/S/D or arrow keys to move.</span>
+        <span id="hint-orbit">Space toggles orbit camera.</span>
+      </p>
       <div
         id="fov-control"
         style="
@@ -254,6 +130,156 @@
       </div>
     </div>
 
+    <div id="side">
+      <label
+        id="creatures-toggle"
+        style="
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          margin-bottom: 8px;
+          font-size: 0.9rem;
+          pointer-events: auto;
+          cursor: pointer;
+        "
+      >
+        <input type="checkbox" id="creatures-checkbox" checked />
+        Creatures
+      </label>
+      <label
+        id="sandbox-toggle"
+        style="
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          margin-bottom: 8px;
+          font-size: 0.9rem;
+          pointer-events: auto;
+          cursor: pointer;
+        "
+      >
+        <input type="checkbox" id="sandbox-checkbox" />
+        Sandbox
+      </label>
+      <div id="sandbox-panel" style="display: none">
+        <div
+          id="sun-control"
+          style="
+            margin-top: 8px;
+            font-size: 0.9rem;
+            pointer-events: auto;
+          "
+        >
+          <div style="opacity: 0.8; margin-bottom: 4px">
+            Sun <span id="sun-clock">12:00</span>
+          </div>
+          <input
+            type="range"
+            id="sun-slider"
+            min="0"
+            max="24"
+            step="0.05"
+            value="12"
+            style="width: 180px; vertical-align: middle"
+          />
+          <span id="sun-phase" style="opacity: 0.6; margin-left: 6px">noon</span>
+        </div>
+        <div
+          id="grass-control"
+          style="
+            margin-top: 12px;
+            font-size: 0.9rem;
+            pointer-events: auto;
+          "
+        >
+          <div style="opacity: 0.8; margin-bottom: 4px">
+            Cut Height <span id="cut-height-value" style="font-weight: bold">0.20m</span>
+          </div>
+          <input
+            type="range"
+            id="cut-height-slider"
+            min="0.01"
+            max="0.5"
+            step="0.01"
+            value="0.2"
+            style="width: 180px; vertical-align: middle"
+          />
+          <div style="opacity: 0.8; margin-bottom: 4px; margin-top: 8px">
+            Grow Rate <span id="grow-rate-value" style="font-weight: bold">0.005</span>
+          </div>
+          <input
+            type="range"
+            id="grow-rate-slider"
+            min="0.001"
+            max="0.1"
+            step="0.001"
+            value="0.005"
+            style="width: 180px; vertical-align: middle"
+          />
+        </div>
+        <div
+          id="density-control"
+          style="
+            margin-top: 12px;
+            font-size: 0.9rem;
+            pointer-events: auto;
+          "
+        >
+          <div style="opacity: 0.8; margin-bottom: 4px">
+            Grass Density <span id="density-total"></span>
+          </div>
+          <div style="display: flex; gap: 10px; align-items: center">
+            <label style="display: flex; flex-direction: column; font-size: 0.8rem">
+              Grid cols
+              <input
+                type="number"
+                id="density-cols"
+                min="1"
+                max="20"
+                step="1"
+                value="10"
+                style="width: 64px"
+              />
+            </label>
+            <label style="display: flex; flex-direction: column; font-size: 0.8rem">
+              rows
+              <input
+                type="number"
+                id="density-rows"
+                min="1"
+                max="20"
+                step="1"
+                value="10"
+                style="width: 64px"
+              />
+            </label>
+            <label style="display: flex; flex-direction: column; font-size: 0.8rem">
+              per patch
+              <input
+                type="number"
+                id="density-n"
+                min="1"
+                max="10000"
+                step="50"
+                value="2000"
+                style="width: 80px"
+              />
+            </label>
+          </div>
+          <button
+            id="density-apply"
+            style="
+              margin-top: 8px;
+              padding: 4px 12px;
+              font-size: 0.85rem;
+              cursor: pointer;
+            "
+          >
+            Apply (reload)
+          </button>
+        </div>
+      </div>
+    </div>
     <script type="module">
       import { Simulation } from "engine/core.js";
       import {
@@ -370,9 +396,9 @@
         // Density config is editable in the UI; applied values persist and are
         // consumed here on the next load (Apply triggers a reload).
         const density = {
-          COLS: Number(localStorage.getItem("mow-cols")) || 5,
-          ROWS: Number(localStorage.getItem("mow-rows")) || 5,
-          N: Number(localStorage.getItem("mow-n")) || (isMobile ? 500 : 8000),
+          COLS: Number(localStorage.getItem("mow-cols")) || 7,
+          ROWS: Number(localStorage.getItem("mow-rows")) || 7,
+          N: Number(localStorage.getItem("mow-n")) || (isMobile ? 500 : 5000),
         };
         const clampInt = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v)));
         density.COLS = clampInt(density.COLS, 1, 20);
@@ -1055,7 +1081,65 @@
         // Drive the mower: W/S (or up/down arrows) move, A/D (or left/right)
         // turn. Reel spins 2x.
         const keys = new Set();
-        window.addEventListener("keydown", (e) => keys.add(e.code));
+        let hintMoveHidden = false;
+        let hintOrbitHidden = false;
+        let hintStart = 0; // the hint line's full (two-tip) height, frozen once
+        // Freeze the hint line at its full height so the fades never make the
+        // controls jump, and remember that height for the collapse below.
+        const freezeHint = () => {
+          const hint = document.getElementById("hint");
+          if (!hint || hint.style.display === "none") return;
+          if (hintStart === 0) hintStart = hint.offsetHeight;
+          hint.style.height = `${hintStart}px`;
+          hint.style.overflow = "hidden";
+        };
+        // Animate the hint line's height down to 0 so the controls beneath
+        // glide up smoothly. Runs from whichever of the two fades finishes last.
+        const collapseHint = () => {
+          const hint = document.getElementById("hint");
+          if (!hint || hint.style.display === "none") return;
+          const from = hintStart || hint.offsetHeight;
+          const start = performance.now();
+          const dur = 400;
+          hint.style.overflow = "hidden";
+          const ease = (t) => 1 - Math.pow(1 - t, 3); // easeOutCubic
+          const tick = (now) => {
+            const p = Math.min(1, (now - start) / dur);
+            hint.style.height = `${from * (1 - ease(p))}px`;
+            if (p < 1) requestAnimationFrame(tick);
+            else {
+              hint.style.display = "none";
+              hint.style.height = "";
+            }
+          };
+          requestAnimationFrame(tick);
+        };
+        window.addEventListener("keydown", (e) => {
+          keys.add(e.code);
+          // Space toggles the orbit camera (ignore key-repeat).
+          if (e.code === "Space" && !e.repeat) {
+            camBlendTarget = camBlendTarget > 0.5 ? 0 : 1;
+          }
+          // First Space press also dismisses the orbit hint.
+          if (e.code === "Space" && !hintOrbitHidden) {
+            hintOrbitHidden = true;
+            freezeHint();
+            const orbitHint = document.getElementById("hint-orbit");
+            if (orbitHint) {
+              orbitHint.style.transition = "opacity 0.4s ease";
+              requestAnimationFrame(() => {
+                orbitHint.style.opacity = "0";
+              });
+              // Fade the orbit tip over 400ms, then hide it.
+              setTimeout(() => {
+                orbitHint.style.display = "none";
+                // If the WASD tip is already gone, collapse the whole line;
+                // otherwise wait for it (the move handler will collapse).
+                if (hintMoveHidden) collapseHint();
+              }, 400);
+            }
+          }
+        });
         window.addEventListener("keyup", (e) => keys.delete(e.code));
         const forward = new THREE.Vector3(0, 0, 1);
         const _dir = new THREE.Vector3();       // reusable per-frame temps (no alloc)
@@ -1069,6 +1153,9 @@
         const _fpQuat = new THREE.Quaternion(); // first-person camera orientation
         const _fpPitch = new THREE.Quaternion(); // downward-tilt offset
         const _fpAxis = new THREE.Vector3(1, 0, 0); // mower-local X for that tilt
+        const _orbQuat = new THREE.Quaternion(); // orbit camera orientation (lookAt)
+        const _tmpOrb = new THREE.Vector3();     // orbit camera position
+        const _lookAtM = new THREE.Matrix4();    // reusable lookAt matrix (no alloc)
         const turnDir = new THREE.Vector3(0, 1, 0);
         let mowerMoving = false;
         let mowerForward = false; // true only while cutting forward (blades turn)
@@ -1087,14 +1174,6 @@
         const STICK_R = Math.min(window.innerWidth, window.innerHeight) * 0.35; // dead-zone + max throw
         const canvas = sim.renderer.domElement;
         canvas.style.touchAction = "none";
-        // Debug: draw the forward/back boundary line (red) for tuning the touch
-        // throttle. Remove once the layout feels right.
-        const backLine = window.innerHeight * 0.66;
-        const touchGuide = document.createElement("div");
-        touchGuide.style.cssText =
-          `position:absolute;left:0;width:100%;height:2px;background:rgba(255,0,0,0.8);` +
-          `top:${backLine}px;pointer-events:none;z-index:999;`;
-        document.body.appendChild(touchGuide);
         const updateTouch = (cx, cy) => {
           const dx = cx - touchOX;
           const ndx = dx / STICK_R;
@@ -1190,18 +1269,6 @@
         const SAMPLE_HALF_W = CUT_HALF_W; // same width as the reel
         const SAMPLE_HALF_D = 0.12; // thin strip ahead of the reel
         const SAMPLE_OFF_Z = -(CUT_HALF_D + SAMPLE_HALF_D); // just ahead of the cut
-        // Debug wireframe: draws the sampling box so we can see exactly where
-        // the particle sizes are being read from. Toggle with the checkbox.
-        const samplerBox = new THREE.LineSegments(
-          new THREE.EdgesGeometry(new THREE.BoxGeometry(SAMPLE_HALF_W * 2, CUT_HEIGHT, SAMPLE_HALF_D * 2)),
-          new THREE.LineBasicMaterial({ color: 0xff5555 }),
-        );
-        samplerBox.position.set(0, CUT_HEIGHT / 2, SAMPLE_OFF_Z);
-        samplerBox.visible = false;
-        mower.mesh.add(samplerBox);
-        document.getElementById("sampler-checkbox").addEventListener("change", (e) => {
-          samplerBox.visible = e.target.checked;
-        });
         const sampleCutAmount = () => {
           invMower.copy(mower.mesh.matrixWorld).invert();
           let sum = 0, count = 0;
@@ -1272,10 +1339,37 @@
           const shifting = keys.has("ShiftLeft") || keys.has("ShiftRight");
           const ease = shifting ? 0.75 : 1;
           const move = v * speed * ease;
-          const turnSpeed = v === 0 ? 4.0 : (shifting ? 1.5 : 1.0);
+          const turnSpeed = v === 0 ? 2.0 : (shifting ? 1.5 : 1.0);
 
           mowerMoving = v !== 0;
           mowerForward = move < 0; // forward is along the mower's -Z (toward the reel)
+          // Once the player starts moving, drop the "keys to move" hint but keep
+          // the orbit-camera tip visible.
+          if (v !== 0 && !hintMoveHidden) {
+            hintMoveHidden = true;
+            freezeHint();
+            const moveHint = document.getElementById("hint-move");
+            const orbitHint = document.getElementById("hint-orbit");
+            if (moveHint && orbitHint) {
+              const gap = parseFloat(getComputedStyle(moveHint.parentElement).gap) || 0;
+              const shift = moveHint.offsetWidth + gap;
+              moveHint.style.transition = "opacity 0.4s ease";
+              orbitHint.style.transition = "transform 0.4s ease";
+              orbitHint.style.transform = `translateX(${-shift}px)`;
+              requestAnimationFrame(() => {
+                moveHint.style.opacity = "0";
+              });
+              setTimeout(() => {
+                moveHint.style.display = "none";
+                moveHint.style.opacity = "1";
+                orbitHint.style.transition = "none";
+                orbitHint.style.transform = "";
+                // If the orbit tip is already gone, collapse the whole line
+                // now; otherwise it will be collapsed when the orbit fade ends.
+                if (hintOrbitHidden) collapseHint();
+              }, 400);
+            }
+          }
           mower.mesh.rotateOnWorldAxis(turnDir, turn * turnSpeed * dt);
           mower.setSpeed(move);
           mower.mesh.position.addScaledVector(dir, move * dt);
@@ -1383,6 +1477,12 @@ clipDummy.position.set(p.x, p.y, p.z);
         let theta = 0, phi = Math.PI / 6, radius = 25;
         let dragging = false, lastX = 0, lastY = 0;
         const target = new THREE.Vector3(0, 0, 0);
+        // Camera mode blend, 0 = first-person (on the mower), 1 = orbit. Eased
+        // each frame toward the target so pressing/releasing C glides between
+        // the two views instead of snapping.
+        let camBlend = 0;
+        let camBlendTarget = 0; // 0 = first-person, 1 = orbit (Space toggles)
+        const CAM_BLEND_K = 5.3; // higher = faster transition
 
         canvas.addEventListener("mousedown", (e) => {
           dragging = true;
@@ -1542,40 +1642,46 @@ clipDummy.position.set(p.x, p.y, p.z);
           // Camera: first-person by default, riding the mower's handle (facing
           // the mower's forward vector, just back from the reel); hold C to
           // switch to the drifting orbit view. On mobile it's always
-          // first-person (touch steering turns the view).
-          if (!keys.has("KeyC") || isMobile) {
-            // Hand-grip point from the same geometry as the mower itself.
-            const gripY = MOWER.wheelRadius +
-              MOWER.handleLength * Math.cos(MOWER.handleAngle);
-            const gripZ = MOWER.handleLength * Math.sin(MOWER.handleAngle);
-            // Mount above the hand grip (1.5x the handle tube length up); the
-            // forward-offset slider pushes it back (behind the mower) or
-            // forward along the mower's local +Z axis.
-            _fpMount.set(0,
-              MOWER.wheelRadius + (gripY - MOWER.wheelRadius) * 1.5,
-              gripZ * 1.5 + fwdOffset);
-            mower.mesh.updateWorldMatrix(true, false);
-            _fpWorld.copy(mower.mesh.localToWorld(_fpMount));
+          // first-person (touch steering turns the view). The two views are
+          // computed each frame and blended together so the camera eases
+          // smoothly between first-person and orbit rather than snapping.
+          camBlend += (camBlendTarget - camBlend) *
+            Math.min(1, dt * CAM_BLEND_K);
+          const blend = camBlend;
+
+          // First-person pose on the mower's handle.
+          const gripY = MOWER.wheelRadius +
+            MOWER.handleLength * Math.cos(MOWER.handleAngle);
+          const gripZ = MOWER.handleLength * Math.sin(MOWER.handleAngle);
+          _fpMount.set(0,
+            MOWER.wheelRadius + (gripY - MOWER.wheelRadius) * 1.5,
+            gripZ * 1.5 + fwdOffset);
+          mower.mesh.updateWorldMatrix(true, false);
+          _fpWorld.copy(mower.mesh.localToWorld(_fpMount));
+          _fpQuat.copy(mower.mesh.quaternion);
+          _fpQuat.multiply(_fpPitch.setFromAxisAngle(_fpAxis.set(1, 0, 0), gazePitch));
+
+          // Orbit pose around the lawn target.
+          radius = Math.max(3, Math.min(MAX_ZOOM, radius));
+          const sp = Math.sin(phi);
+          _tmpOrb.set(
+            target.x + radius * sp * Math.sin(theta),
+            target.y + radius * Math.cos(phi),
+            target.z + radius * sp * Math.cos(theta),
+          );
+          _orbQuat.setFromRotationMatrix(
+            _lookAtM.lookAt(_tmpOrb, target, _fpAxis.set(0, 1, 0)),
+          );
+
+          if (blend <= 0.001) {
             sim.camera.position.copy(_fpWorld);
-            // The mower travels along local -Z (the handle leans back toward
-            // +Z), so copying its orientation aims the camera straight along
-            // the mower's forward vector. The gaze slider pitches the view
-            // down or up from level.
-            _fpQuat.copy(mower.mesh.quaternion);
-            _fpQuat.multiply(_fpPitch.setFromAxisAngle(_fpAxis.set(1, 0, 0), gazePitch));
             sim.camera.quaternion.copy(_fpQuat);
+          } else if (blend >= 0.999) {
+            sim.camera.position.copy(_tmpOrb);
+            sim.camera.quaternion.copy(_orbQuat);
           } else {
-            // Clamp the orbit radius to the skybox bounds each frame so that
-            // entering orbit (or any prior state) never spawns the camera
-            // outside the walls — it comes in at the furthest allowed zoom.
-            radius = Math.max(3, Math.min(MAX_ZOOM, radius));
-            const sp = Math.sin(phi);
-            sim.camera.position.set(
-              target.x + radius * sp * Math.sin(theta),
-              target.y + radius * Math.cos(phi),
-              target.z + radius * sp * Math.cos(theta),
-            );
-            sim.camera.lookAt(target);
+            sim.camera.position.lerpVectors(_fpWorld, _tmpOrb, blend);
+            sim.camera.quaternion.slerpQuaternions(_fpQuat, _orbQuat, blend);
           }
         });
 
@@ -2197,6 +2303,11 @@ clipDummy.position.set(p.x, p.y, p.z);
 
         // Creatures checkbox: toggle all bugs (midges, butterflies, dragonflies, swarms).
         const creaturesCheckbox = document.getElementById("creatures-checkbox");
+        const sandboxCheckbox = document.getElementById("sandbox-checkbox");
+        const sandboxPanel = document.getElementById("sandbox-panel");
+        sandboxCheckbox.addEventListener("change", () => {
+          sandboxPanel.style.display = sandboxCheckbox.checked ? "" : "none";
+        });
         const applyCreatures = () => {
           creaturesEnabled = creaturesCheckbox.checked;
           flies.mesh.visible = creaturesEnabled && !fliesSleeping.value;
@@ -2244,10 +2355,46 @@ clipDummy.position.set(p.x, p.y, p.z);
             // Push the lines below the [stats] button only while visible.
             el.style.top = statsVisible ? `${statBaseTops[i] + 22}px` : "";
           });
+          // Place the [options] button below the lowest open stat line's real
+          // bottom edge (the entity list is multiline), so nothing overlaps.
+          let bottom = 54;
+          if (statsVisible) {
+            // Force immediate layout so the displayed lines report real size.
+            void statEls[0].offsetHeight;
+            for (const el of statEls) {
+              bottom = Math.max(bottom, el.getBoundingClientRect().bottom);
+            }
+          }
+          const optionsTop = `${bottom + 6}px`;
+          optionsBtn.style.top = optionsTop;
+          sidePanel.style.top = `${bottom + 30}px`;
         });
         document.body.appendChild(statsBtn);
         // Mobile: show only the FPS counter — hide the toggleable stats button.
         if (isMobile) statsBtn.style.display = "none";
+
+        // [options] button tucked below [stats]; toggles the Creatures/Sandbox
+        // controls in the #side panel.
+        const optionsBtn = document.createElement("button");
+        optionsBtn.textContent = "[options]";
+        optionsBtn.style.position = "absolute";
+        optionsBtn.style.top = "54px";
+        optionsBtn.style.right = "14px";
+        optionsBtn.style.fontFamily = "monospace, sans-serif";
+        optionsBtn.style.fontSize = "0.7rem";
+        optionsBtn.style.color = "rgba(255,255,255,0.6)";
+        optionsBtn.style.background = "transparent";
+        optionsBtn.style.border = "none";
+        optionsBtn.style.cursor = "pointer";
+        optionsBtn.style.padding = "0";
+        optionsBtn.style.zIndex = "1000";
+        const sidePanel = document.getElementById("side");
+        optionsBtn.addEventListener("click", () => {
+          const shown = sidePanel.style.display !== "none";
+          sidePanel.style.display = shown ? "none" : "flex";
+        });
+        document.body.appendChild(optionsBtn);
+        if (isMobile) optionsBtn.style.display = "none";
       }
 
       setup(sim);
