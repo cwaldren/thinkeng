@@ -144,7 +144,7 @@
               min="1"
               max="20"
               step="1"
-              value="20"
+              value="10"
               style="width: 64px"
             />
           </label>
@@ -156,7 +156,7 @@
               min="1"
               max="20"
               step="1"
-              value="20"
+              value="10"
               style="width: 64px"
             />
           </label>
@@ -168,7 +168,7 @@
               min="1"
               max="10000"
               step="50"
-              value="1000"
+              value="2000"
               style="width: 80px"
             />
           </label>
@@ -268,6 +268,7 @@
         createFlies,
         createDandelion,
         createBumblebee,
+        createFirefly,
         createFence,
         createGrass,
         createEarth,
@@ -344,13 +345,12 @@
 
       function setup(sim) {
         // Grass: single instanced mesh, 3x3 patches tiled across 100x100.
-        const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
         // Density config is editable in the UI; applied values persist and are
         // consumed here on the next load (Apply triggers a reload).
         const density = {
-          COLS: Number(localStorage.getItem("mow-cols")) || 20,
-          ROWS: Number(localStorage.getItem("mow-rows")) || 20,
-          N: Number(localStorage.getItem("mow-n")) || (isMobile ? 250 : 1000),
+          COLS: Number(localStorage.getItem("mow-cols")) || 10,
+          ROWS: Number(localStorage.getItem("mow-rows")) || 10,
+          N: Number(localStorage.getItem("mow-n")) || 2000,
         };
         const clampInt = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v)));
         density.COLS = clampInt(density.COLS, 1, 20);
@@ -919,6 +919,9 @@
         // depth so the stars/Earth behind can't bleed through). Once the sun
         // sets it becomes transparent: the reveal.
         const sunSlider = document.getElementById("sun-slider");
+        const time = { hour: parseFloat(sunSlider.value), prevHour: parseFloat(sunSlider.value) };
+        // Phase name shown next to the sun clock, quartered by 6-hour bucket.
+        const parityLabels = ["dawn", "morning", "afternoon", "dusk", "night"];
         const applySky = (hour) => {
           // Phase: 0 at noon, 1 at sunrise/sunset (deep red), through dusk to
           // ~2 at midnight (ink black-blue), then the reveal.
@@ -952,8 +955,50 @@
           domeAmbient.intensity = 1.2 * dayFactor;
           if (isNight) domeAmbient.intensity = 0;
         };
-        sunSlider.addEventListener("input", () => applySky(parseFloat(sunSlider.value)));
+        // Day/night lifecycle: families register here (with wake/sleep hours),
+        // and dispatchDayNight sleeps/wakes them as the hour crosses their
+        // thresholds. The registry is populated as each family is created.
+        const dayCycle = [];
+        // Cross a sleep/wake boundary when the current hour straddles the
+        // threshold and the previous hour was on the opposite side, handling
+        // slider jumps that leap across midnight (wrap backward or forward).
+        const dispatchDayNight = (hour) => {
+          const prev = time.prevHour;
+          time.prevHour = hour;
+          for (const fam of dayCycle) {
+            // Night spans [sleepHour, wakeHour) wrapping past midnight; a
+            // creature is awake when the hour lies in [wakeHour, sleepHour).
+            const awake = (h) => {
+              if (fam.wakeHour < fam.sleepHour) return h >= fam.wakeHour && h < fam.sleepHour;
+              return h >= fam.wakeHour || h < fam.sleepHour; // wraps past midnight
+            };
+            const wasAwake = awake(prev);
+            const nowAwake = awake(hour);
+            if (wasAwake === nowAwake) continue;
+            for (const item of fam.items) (nowAwake ? item.wake() : item.sleep());
+          }
+        };
+        sunSlider.addEventListener("input", () => {
+          time.hour = parseFloat(sunSlider.value);
+          applySky(time.hour);
+          dispatchDayNight(time.hour);
+          const hh = Math.floor(time.hour);
+          const mm = Math.round((time.hour - hh) * 60);
+          const clockEl = document.getElementById("sun-clock");
+          clockEl.textContent = `${String(hh % 24).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+          document.getElementById("sun-phase").textContent =
+            parityLabels[Math.min(4, Math.floor(time.hour / 6))];
+        });
         applySky(parseFloat(sunSlider.value));
+        time.prevHour = time.hour;
+        {
+          const hh = Math.floor(time.hour);
+          const mm = Math.round((time.hour - hh) * 60);
+          document.getElementById("sun-clock").textContent =
+            `${String(hh % 24).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+          document.getElementById("sun-phase").textContent =
+            parityLabels[Math.min(4, Math.floor(time.hour / 6))];
+        }
 
         // Drive the mower: W/S (or up/down arrows) move, A/D (or left/right)
         // turn. Reel spins 2x.
@@ -1443,10 +1488,18 @@ clipDummy.position.set(p.x, p.y, p.z);
           size: 0.035,
           spread: bx * 2,
         });
+        const fliesSleeping = { value: false };
+        const fliesLife = {
+          sleep() { fliesSleeping.value = true; flies.mesh.visible = false; },
+          wake() { fliesSleeping.value = false; flies.mesh.visible = creaturesEnabled; },
+        };
 
         sim.addEntity(null, null, () => {
-          flies.mesh.visible = creaturesEnabled;
+          flies.mesh.visible = creaturesEnabled && !fliesSleeping.value;
         });
+
+        // Diurnal: midges sleep through the night (20h-6h).
+        dayCycle.push({ items: [fliesLife], wakeHour: 6, sleepHour: 20 });
 
         // --- Butterflies: graceful, colorful flappers ---
         // We reuse the butterfly model/animation from the component library
@@ -1596,6 +1649,9 @@ clipDummy.position.set(p.x, p.y, p.z);
           dragonflies.push({
             group: ent.mesh,
             ent,
+            sleeping: false,
+            sleep() { this.sleeping = true; this.group.visible = false; },
+            wake() { this.sleeping = false; this.group.visible = creaturesEnabled; },
             x,
             z,
             h,
@@ -1610,11 +1666,14 @@ clipDummy.position.set(p.x, p.y, p.z);
             tx: 0, tz: 0, th: 0, // destination
           });
         }
+        // Diurnal: dragonflies sleep through the night too (20h-6h).
+        dayCycle.push({ items: dragonflies, wakeHour: 6, sleepHour: 20 });
 
         sim.addEntity(null, null, (dt) => {
-          for (const d of dragonflies) d.group.visible = creaturesEnabled;
+          for (const d of dragonflies) d.group.visible = creaturesEnabled && !d.sleeping;
           if (!creaturesEnabled) return;
           for (const d of dragonflies) {
+            if (d.sleeping) continue;
             if (d.state === "hover") {
               d.hoverT -= dt;
               // Gentle hovering wiggle in place.
@@ -1682,6 +1741,9 @@ clipDummy.position.set(p.x, p.y, p.z);
           flySwarms.push({
             mesh: ent.mesh,
             ent,
+            sleeping: false,
+            sleep() { this.sleeping = true; this.mesh.visible = false; },
+            wake() { this.sleeping = false; this.mesh.visible = creaturesEnabled; },
             x: ent.mesh.position.x,
             z: ent.mesh.position.z,
             h: ent.mesh.position.y,
@@ -1691,11 +1753,14 @@ clipDummy.position.set(p.x, p.y, p.z);
             wanderDur: 1,
           });
         }
+        // Diurnal: gnat swarms sleep through the night too (20h-6h).
+        dayCycle.push({ items: flySwarms, wakeHour: 6, sleepHour: 20 });
 
         sim.addEntity(null, null, (dt) => {
-          for (const s of flySwarms) s.mesh.visible = creaturesEnabled;
+          for (const s of flySwarms) s.mesh.visible = creaturesEnabled && !s.sleeping;
           if (!creaturesEnabled) return;
           for (const s of flySwarms) {
+            if (s.sleeping) continue;
             s.wanderT -= dt;
             if (s.wanderT <= 0) {
               // Pick a new slow-drifting destination on the lawn.
@@ -1735,6 +1800,9 @@ clipDummy.position.set(p.x, p.y, p.z);
           bees.push({
             group: ent.mesh,
             ent,
+            sleeping: false,
+            sleep() { this.sleeping = true; this.group.visible = false; },
+            wake() { this.sleeping = false; this.group.visible = creaturesEnabled; },
             x,
             z,
             h: FEED_H,
@@ -1753,11 +1821,68 @@ clipDummy.position.set(p.x, p.y, p.z);
             flyDur: 1,
           });
         }
+        // Diurnal: bees sleep through the night too (20h-6h).
+        dayCycle.push({ items: bees, wakeHour: 6, sleepHour: 20 });
+
+        // --- Fireflies: nocturnal — they emerge at dusk, blink through the night,
+        // and fade away at dawn, the inverse of the diurnal insects (which are
+        // awake 6h-20h). They lazily drift around the lawn's dark patches while
+        // their component drives each blink.
+        const FIREFLY_COUNT = isMobile ? 8 : 16;
+        const fireflies = [];
+        for (let i = 0; i < FIREFLY_COUNT; i++) {
+          const x = (Math.random() * 2 - 1) * bx;
+          const z = (Math.random() * 2 - 1) * bz;
+          const h = 0.4 + Math.random() * 0.6;
+          const ent = createFirefly(sim, {
+            position: [x, h, z],
+            size: 0.035,
+          });
+          fireflies.push({
+            group: ent.mesh,
+            ent,
+            sleeping: false,
+            sleep() { this.sleeping = true; this.group.visible = false; },
+            wake() { this.sleeping = false; this.group.visible = creaturesEnabled; },
+            x, z, h,
+            tx: 0, tz: 0, th: 0,
+            wanderT: 1 + Math.random() * 2,
+          });
+        }
+        // Nocturnal: awake over the night window [20h, 6h) — emerges at dusk.
+        dayCycle.push({ items: fireflies, wakeHour: 20, sleepHour: 6 });
 
         sim.addEntity(null, null, (dt) => {
-          for (const b of bees) b.group.visible = creaturesEnabled;
+          for (const f of fireflies) f.group.visible = creaturesEnabled && !f.sleeping;
+          if (!creaturesEnabled) return;
+          for (const f of fireflies) {
+            if (f.sleeping) continue;
+            // Slow lazy drift between dark patches; eases toward a new target
+            // every few seconds so the swarm reads as wandering, not frozen.
+            f.wanderT -= dt;
+            if (f.wanderT <= 0) {
+              f.tx = (Math.random() * 2 - 1) * bx * 0.9;
+              f.tz = (Math.random() * 2 - 1) * bz * 0.9;
+              f.th = 0.3 + Math.random() * 0.7;
+              f.wanderT = 6 + Math.random() * 8;
+            }
+            const e = 1 - Math.exp(-dt * 0.5);
+            f.x += (f.tx - f.x) * e;
+            f.z += (f.tz - f.z) * e;
+            f.h += (f.th - f.h) * e;
+            f.group.position.set(f.x, f.h, f.z);
+          }
+        });
+
+        // Sync initial sleep/wake state to the current hour (so a page loaded
+        // at night starts the diurnal families already asleep).
+        dispatchDayNight(time.hour);
+
+        sim.addEntity(null, null, (dt) => {
+          for (const b of bees) b.group.visible = creaturesEnabled && !b.sleeping;
           if (!creaturesEnabled) return;
           for (const b of bees) {
+            if (b.sleeping) continue;
             if (b.state === "feed") {
               // Stationary at feeding height: gentle bobbing and slow yaw drift.
               b.feedT -= dt;
@@ -1962,11 +2087,12 @@ clipDummy.position.set(p.x, p.y, p.z);
         const creaturesCheckbox = document.getElementById("creatures-checkbox");
         const applyCreatures = () => {
           creaturesEnabled = creaturesCheckbox.checked;
-          flies.mesh.visible = creaturesEnabled;
+          flies.mesh.visible = creaturesEnabled && !fliesSleeping.value;
           for (const b of butterflies) b.group.visible = creaturesEnabled;
-          for (const d of dragonflies) d.group.visible = creaturesEnabled;
-          for (const s of flySwarms) s.mesh.visible = creaturesEnabled;
-          for (const b of bees) b.group.visible = creaturesEnabled;
+          for (const d of dragonflies) d.group.visible = creaturesEnabled && !d.sleeping;
+          for (const s of flySwarms) s.mesh.visible = creaturesEnabled && !s.sleeping;
+          for (const b of bees) b.group.visible = creaturesEnabled && !b.sleeping;
+          for (const f of fireflies) f.group.visible = creaturesEnabled && !f.sleeping;
         };
         creaturesCheckbox.addEventListener("change", applyCreatures);
 
