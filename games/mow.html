@@ -17,6 +17,7 @@
         left: 16px;
         color: #fff;
         pointer-events: none;
+        display: none;
       }
     </style>
 
@@ -359,9 +360,12 @@
         if (isMobile) {
           document.getElementById("hint").textContent =
             "Tap screen to mow, drag left/right to turn.";
-          // Hide all UI panels on mobile — the touch controls drive the game.
           const ui = document.getElementById("ui");
           ui.style.display = "none";
+        } else {
+          // Desktop: show the control panel. It stays hidden by default so it
+          // never flashes for a frame on mobile before being suppressed.
+          document.getElementById("ui").style.display = "block";
         }
         // Density config is editable in the UI; applied values persist and are
         // consumed here on the next load (Apply triggers a reload).
