@@ -1006,8 +1006,8 @@
         // the sun slider drops, then turns fully transparent AT sunset so the
         // player suddenly sees out and realizes they're on the Moon.
         const skyCanvas = document.createElement("canvas");
-        const skyCvS = 64;
-        skyCanvas.width = 64;
+        const skyCvS = 512;
+        skyCanvas.width = skyCvS;
         skyCanvas.height = skyCvS;
         const skyCtx = skyCanvas.getContext("2d");
         const skyTex = new THREE.CanvasTexture(skyCanvas);
@@ -1042,16 +1042,30 @@
           // wall stays solid sky color and the red->purple transition happens
           // down where it's actually in view.
           skyCtx.fillStyle = top;
-          skyCtx.fillRect(0, 0, 64, skyCvS);
+          skyCtx.fillRect(0, 0, skyCvS, skyCvS);
           // Overlay the horizon->top transition only across the bottom 25%
-          // (canvas row 0 = wall top, row 64 = wall base) so the warm/dark
+          // (canvas row 0 = wall top, row skyCvS = wall base) so the warm/dark
           // color hangs low near the ground where it reads.
           const startRow = skyCvS * 0.75;
           const g = skyCtx.createLinearGradient(0, startRow, 0, skyCvS);
           g.addColorStop(0, top);
           g.addColorStop(1, hor);
           skyCtx.fillStyle = g;
-          skyCtx.fillRect(0, startRow, 64, skyCvS);
+          skyCtx.fillRect(0, startRow, skyCvS, skyCvS);
+          // "HELLO WORLD" painted low on the sky walls (shared texture => it
+          // reads on every face of the cube). The BackSide material shows each
+          // plane's back face, which mirrors left/right — so we pre-mirror the
+          // text horizontally to cancel that and read correctly from inside.
+          skyCtx.save();
+          skyCtx.translate(skyCvS / 2, 0);
+          skyCtx.scale(-1, 1);
+          skyCtx.translate(-skyCvS / 2, 0);
+          skyCtx.fillStyle = "#ffffff";
+          skyCtx.font = "bold 22px sans-serif";
+          skyCtx.textAlign = "center";
+          skyCtx.textBaseline = "middle";
+          skyCtx.fillText("30 SECONDS TO TERMINATION", skyCvS / 2, skyCvS * 0.85);
+          skyCtx.restore();
           skyTex.needsUpdate = true;
         };
         const glassMat = new THREE.MeshPhysicalMaterial({
