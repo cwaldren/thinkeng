@@ -46,9 +46,7 @@
   </head>
   <body>
     <div id="ui">
-      <h1 style="margin: 0; font-size: 1.2rem; opacity: 0.8">
-        Moasis
-      </h1>
+      <h1 style="margin: 0; font-size: 1.2rem; opacity: 0.8">Moasis</h1>
       <div
         id="mowed-counter"
         style="
@@ -56,7 +54,9 @@
           font-size: 0.85rem;
           opacity: 0;
           transform: translateX(-24px);
-          transition: opacity 0.6s ease, transform 0.6s ease;
+          transition:
+            opacity 0.6s ease,
+            transform 0.6s ease;
         "
       >
         <span id="mowed-count">0</span> <span id="mowed-label">dandelions</span>
@@ -84,7 +84,8 @@
         "
       >
         <div style="opacity: 0.8; margin-bottom: 4px">
-          Field of View <span id="fov-value" style="font-weight: bold">90°</span>
+          Field of View
+          <span id="fov-value" style="font-weight: bold">90°</span>
         </div>
         <input
           type="range"
@@ -176,11 +177,7 @@
       <div id="sandbox-panel" style="display: none">
         <div
           id="sun-control"
-          style="
-            margin-top: 8px;
-            font-size: 0.9rem;
-            pointer-events: auto;
-          "
+          style="margin-top: 8px; font-size: 0.9rem; pointer-events: auto"
         >
           <label
             id="manual-time-toggle"
@@ -195,11 +192,13 @@
             "
           >
             <input type="checkbox" id="manual-time-checkbox" />
-            Manual time
+            Manual time (SPOILERS!!!)
           </label>
           <div style="opacity: 0.8; margin-bottom: 4px">
             Sun <span id="sun-clock">12:00</span>
-            <span id="sun-phase" style="opacity: 0.6; margin-left: 4px">noon</span>
+            <span id="sun-phase" style="opacity: 0.6; margin-left: 4px"
+              >noon</span
+            >
           </div>
           <input
             type="range"
@@ -220,11 +219,20 @@
             pointer-events: auto;
           "
         >
-          <div style="opacity: 0.6; font-family: monospace; font-size: 0.75rem; margin-top: 4px">
-            Sun pos <span id="sun-pos">—</span> · dir <span id="sun-dir">—</span>
+          <div
+            style="
+              opacity: 0.6;
+              font-family: monospace;
+              font-size: 0.75rem;
+              margin-top: 4px;
+            "
+          >
+            Sun pos <span id="sun-pos">—</span> · dir
+            <span id="sun-dir">—</span>
           </div>
           <div style="opacity: 0.8; margin-bottom: 4px; margin-top: 8px">
-            Sun azimuth <span id="sun-az-value" style="font-weight: bold">90°</span>
+            Sun azimuth
+            <span id="sun-az-value" style="font-weight: bold">90°</span>
           </div>
           <input
             type="range"
@@ -236,7 +244,8 @@
             style="width: 180px; vertical-align: middle"
           />
           <div style="opacity: 0.8; margin-bottom: 4px; margin-top: 8px">
-            Sun elevation <span id="sun-el-value" style="font-weight: bold">30°</span>
+            Sun elevation
+            <span id="sun-el-value" style="font-weight: bold">30°</span>
           </div>
           <input
             type="range"
@@ -248,7 +257,8 @@
             style="width: 180px; vertical-align: middle"
           />
           <div style="opacity: 0.8; margin-bottom: 4px; margin-top: 8px">
-            Earth angle above horizon <span id="earth-angle-value" style="font-weight: bold">6°</span>
+            Earth angle above horizon
+            <span id="earth-angle-value" style="font-weight: bold">6°</span>
           </div>
           <input
             type="range"
@@ -260,7 +270,8 @@
             style="width: 180px; vertical-align: middle"
           />
           <div style="opacity: 0.8; margin-bottom: 4px; margin-top: 8px">
-            Earth distance <span id="earth-dist-value" style="font-weight: bold">157</span>
+            Earth distance
+            <span id="earth-dist-value" style="font-weight: bold">157</span>
           </div>
           <input
             type="range"
@@ -285,14 +296,11 @@
         </div>
         <div
           id="grass-control"
-          style="
-            margin-top: 12px;
-            font-size: 0.9rem;
-            pointer-events: auto;
-          "
+          style="margin-top: 12px; font-size: 0.9rem; pointer-events: auto"
         >
           <div style="opacity: 0.8; margin-bottom: 4px">
-            Cut Height <span id="cut-height-value" style="font-weight: bold">0.20m</span>
+            Cut Height
+            <span id="cut-height-value" style="font-weight: bold">0.20m</span>
           </div>
           <input
             type="range"
@@ -304,7 +312,8 @@
             style="width: 180px; vertical-align: middle"
           />
           <div style="opacity: 0.8; margin-bottom: 4px; margin-top: 8px">
-            Grow Rate <span id="grow-rate-value" style="font-weight: bold">0.005</span>
+            Grow Rate
+            <span id="grow-rate-value" style="font-weight: bold">0.005</span>
           </div>
           <input
             type="range"
@@ -318,17 +327,15 @@
         </div>
         <div
           id="density-control"
-          style="
-            margin-top: 12px;
-            font-size: 0.9rem;
-            pointer-events: auto;
-          "
+          style="margin-top: 12px; font-size: 0.9rem; pointer-events: auto"
         >
           <div style="opacity: 0.8; margin-bottom: 4px">
             Grass Density <span id="density-total"></span>
           </div>
           <div style="display: flex; gap: 10px; align-items: center">
-            <label style="display: flex; flex-direction: column; font-size: 0.8rem">
+            <label
+              style="display: flex; flex-direction: column; font-size: 0.8rem"
+            >
               Grid cols
               <input
                 type="number"
@@ -340,7 +347,9 @@
                 style="width: 64px"
               />
             </label>
-            <label style="display: flex; flex-direction: column; font-size: 0.8rem">
+            <label
+              style="display: flex; flex-direction: column; font-size: 0.8rem"
+            >
               rows
               <input
                 type="number"
@@ -352,7 +361,9 @@
                 style="width: 64px"
               />
             </label>
-            <label style="display: flex; flex-direction: column; font-size: 0.8rem">
+            <label
+              style="display: flex; flex-direction: column; font-size: 0.8rem"
+            >
               per patch
               <input
                 type="number"
@@ -428,8 +439,8 @@
       // The cinematic sun direction, driven by two sandbox sliders: azimuth
       // (rotation around the world Y axis) and elevation (angle above the
       // ground plane). Derived so the default matches (180, 320, 120).
-      const SUN_AZ = 90 * (Math.PI / 180);   // azimuth 90° (light from the side)
-      const SUN_EL = 30 * (Math.PI / 180);   // elevation 30° (low, grazing)
+      const SUN_AZ = 90 * (Math.PI / 180); // azimuth 90° (light from the side)
+      const SUN_EL = 30 * (Math.PI / 180); // elevation 30° (low, grazing)
       let sunAzimuth = SUN_AZ;
       let sunElevation = SUN_EL;
       // Solar declination for the current real-world day, tilting the Earth's
@@ -440,7 +451,9 @@
         const now = new Date();
         const start = new Date(now.getFullYear(), 0, 0);
         const dayOfYear = Math.floor((now - start) / 86400000); // N
-        return 23.45 * Math.sin((360 / 365) * (dayOfYear - 81) * (Math.PI / 180));
+        return (
+          23.45 * Math.sin((360 / 365) * (dayOfYear - 81) * (Math.PI / 180))
+        );
       };
       // Earth's altitude above the horizon at the reveal, in degrees (0-45).
       // Reveal parks the Earth ahead of the camera; this is the elevation of
@@ -451,11 +464,13 @@
       const _sunDir0Base = new THREE.Vector3();
       const updateSunDir = () => {
         const ce = Math.cos(sunElevation);
-        _sunDir0Base.set(
-          ce * Math.sin(sunAzimuth),
-          Math.sin(sunElevation),
-          ce * Math.cos(sunAzimuth),
-        ).normalize();
+        _sunDir0Base
+          .set(
+            ce * Math.sin(sunAzimuth),
+            Math.sin(sunElevation),
+            ce * Math.cos(sunAzimuth),
+          )
+          .normalize();
       };
       updateSunDir();
       const _sunDir0 = _sunDir0Base.clone();
@@ -522,11 +537,11 @@
         const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
         if (isMobile) {
           // Show just the mow hint on mobile (hide the title + control panels,
-          // which stay display:none anyway); it fades out on the first tap.
+          // which stay display:none anyway); it fades out on the first tap. It
+          // stays hidden until the boot countdown's "MOW!" clears, showing the
+          // hint only once the player is free to move (see the intro driver).
           const hint = document.getElementById("hint");
-          hint.style.display = "block";
-          hint.style.opacity = "0.5";
-          hint.style.fontSize = "0.85rem";
+          hint.style.display = "none";
           hint.textContent = "Tap and drag to mow.";
           const ui = document.getElementById("ui");
           ui.style.display = "block";
@@ -543,12 +558,14 @@
           ROWS: Number(localStorage.getItem("mow-rows")) || 7,
           N: Number(localStorage.getItem("mow-n")) || (isMobile ? 500 : 5000),
         };
-        const clampInt = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v)));
+        const clampInt = (v, lo, hi) =>
+          Math.max(lo, Math.min(hi, Math.round(v)));
         density.COLS = clampInt(density.COLS, 1, 20);
         density.ROWS = clampInt(density.ROWS, 1, 20);
         density.N = clampInt(density.N, 1, 10000);
         const { COLS, ROWS, N } = density;
-        const W = 3, D = 3;
+        const W = 3,
+          D = 3;
         const total = COLS * ROWS * N;
 
         // Dirt patch beneath the lawn (inside the fence): a dirt-brown rectangular
@@ -566,10 +583,8 @@
         // RADIAL BAND of crater centers outside the glass territory.
         // Radial band on the moon's surface where craters live, clear of the
         // grass cube. The cube's walls sit 0.6 past the lawn edges.
-        const cubeR = Math.hypot(
-          (COLS * W) / 2 + 0.6,
-          (ROWS * D) / 2 + 0.6,
-        ) + 4; // just outside the nearest wall, plus breathing room
+        const cubeR =
+          Math.hypot((COLS * W) / 2 + 0.6, (ROWS * D) / 2 + 0.6) + 4; // just outside the nearest wall, plus breathing room
         const GROUND_R = 48; // stay off the ground disc's very edge
         const craterCenters = [];
         for (let i = 0; i < 26; i++) {
@@ -625,7 +640,8 @@
           for (const c of craterCenters) {
             // Cosmetic darkening of the bowl that fades into the surrounding
             // ground; the geometry supplies the real bump shape.
-            const U = toU(c.x), V = toV(c.z);
+            const U = toU(c.x),
+              V = toV(c.z);
             const px = c.r * (ALB / (GROUND_R * 2));
             const grad = g.createRadialGradient(U, V, 0, U, V, px * 0.62);
             grad.addColorStop(0.0, "rgba(58,55,52,0.9)");
@@ -641,7 +657,8 @@
         const craterHeight = (x, z) => {
           let y = 0;
           for (const c of craterCenters) {
-            const dx = x - c.x, dz = z - c.z;
+            const dx = x - c.x,
+              dz = z - c.z;
             const d = Math.sqrt(dx * dx + dz * dz);
             const t = d / c.r;
             const RIM_EDGE = 1.22; // outer falloff just past the crest
@@ -669,10 +686,15 @@
           const pos = groundGeo.attributes.position;
           const uv = groundGeo.attributes.uv;
           for (let i = 0; i < pos.count; i++) {
-            const x = pos.getX(i), z = pos.getZ(i);
+            const x = pos.getX(i),
+              z = pos.getZ(i);
             pos.setY(i, craterHeight(x, z));
             // Remap UV to the albedo canvas (disc -> square texture space).
-            uv.setXY(i, (x + GROUND_R) / (GROUND_R * 2), (z + GROUND_R) / (GROUND_R * 2));
+            uv.setXY(
+              i,
+              (x + GROUND_R) / (GROUND_R * 2),
+              (z + GROUND_R) / (GROUND_R * 2),
+            );
           }
         }
         groundGeo.computeVertexNormals();
@@ -706,7 +728,14 @@
           const size = 64;
           cv.width = cv.height = size;
           const g = cv.getContext("2d");
-          const grad = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+          const grad = g.createRadialGradient(
+            size / 2,
+            size / 2,
+            0,
+            size / 2,
+            size / 2,
+            size / 2,
+          );
           grad.addColorStop(0, "rgba(255,255,255,1)");
           grad.addColorStop(0.35, "rgba(255,255,255,0.7)");
           grad.addColorStop(1, "rgba(255,255,255,0)");
@@ -728,7 +757,7 @@
             g = 99.47 * Math.log(t) - 161.12;
             b = t <= 19 ? 0 : 138.52 * Math.log(t - 10) - 305.04;
           } else {
-            r = 329.70 * Math.pow(t - 60, -0.1332);
+            r = 329.7 * Math.pow(t - 60, -0.1332);
             g = 288.12 * Math.pow(t - 60, -0.0755);
             b = 255;
           }
@@ -801,7 +830,10 @@
         sim.scene.add(starPeel);
 
         const bladeGeo = new THREE.ConeGeometry(0.08, 1.7, 4);
-        const bladeMat = new THREE.MeshStandardMaterial({ color: 0x44aa55, roughness: 0.8 });
+        const bladeMat = new THREE.MeshStandardMaterial({
+          color: 0x44aa55,
+          roughness: 0.8,
+        });
         // Gentle breeze: sway lives in the vertex shader, so it costs nothing
         // on the CPU (only the regrowing blades touch instance matrices). It
         // bends in local space before the instance transform, so each blade
@@ -814,10 +846,13 @@
           // Declare the uniform at global scope (#include <common> is the first
           // include); #include <begin_vertex> sits inside main().
           shader.vertexShader = shader.vertexShader
-            .replace("#include <common>", "#include <common>\nuniform float uTime;\nattribute float aGrowth;")
             .replace(
-            "#include <begin_vertex>",
-            `#include <begin_vertex>
+              "#include <common>",
+              "#include <common>\nuniform float uTime;\nattribute float aGrowth;",
+            )
+            .replace(
+              "#include <begin_vertex>",
+              `#include <begin_vertex>
 #ifdef USE_INSTANCING
             // h: 0 at the base, 1 at the tip (cone height 1.7, centered at 0).
             float h = clamp((transformed.y + 0.85) / 1.7, 0.0, 1.0);
@@ -837,10 +872,13 @@
             transformed.x += _wave * h * h * 0.025 * _g;
 #endif
 `,
-          );
+            );
         };
         const grassMesh = new THREE.InstancedMesh(bladeGeo, bladeMat, total);
-        const growthAttr = new THREE.InstancedBufferAttribute(new Float32Array(total), 1);
+        const growthAttr = new THREE.InstancedBufferAttribute(
+          new Float32Array(total),
+          1,
+        );
         bladeGeo.setAttribute("aGrowth", growthAttr);
         const growthArr = growthAttr.array;
         grassMesh.castShadow = false;
@@ -859,12 +897,13 @@
           for (let c = 0; c < COLS; c++) {
             const ox = (c - COLS / 2 + 0.5) * W;
             const oz = (r - ROWS / 2 + 0.5) * D;
-            const hw = W / 2, hd = D / 2;
+            const hw = W / 2,
+              hd = D / 2;
             for (let i = 0; i < N; i++) {
               const s = 0.6 + Math.random() * 0.8;
               bladeScale[idx] = s;
-              bladeGrowth[idx] = 1; // start fully grown
-              growthArr[idx] = 1;   // keep sway attribute in sync
+              bladeGrowth[idx] = 0; // boot cinematic: grass starts underground
+              growthArr[idx] = 0; // keep sway attribute in sync
               bladePos[idx] = new THREE.Vector3(
                 ox + Math.random() * W - hw,
                 0,
@@ -899,18 +938,27 @@
         const CELL = 1.5; // grid cell size (world units)
         const GRID_COLS = Math.ceil((COLS * W) / CELL);
         const GRID_ROWS = Math.ceil((ROWS * D) / CELL);
-        const lawnMinX = -(COLS * W) / 2, lawnMinZ = -(ROWS * D) / 2;
+        const lawnMinX = -(COLS * W) / 2,
+          lawnMinZ = -(ROWS * D) / 2;
         const gridCells = new Array(GRID_COLS * GRID_ROWS);
         const counts = new Uint32Array(GRID_COLS * GRID_ROWS);
         const cellIndex = (x, z) => {
-          const cx = Math.min(GRID_COLS - 1, Math.max(0, Math.floor((x - lawnMinX) / CELL)));
-          const cz = Math.min(GRID_ROWS - 1, Math.max(0, Math.floor((z - lawnMinZ) / CELL)));
+          const cx = Math.min(
+            GRID_COLS - 1,
+            Math.max(0, Math.floor((x - lawnMinX) / CELL)),
+          );
+          const cz = Math.min(
+            GRID_ROWS - 1,
+            Math.max(0, Math.floor((z - lawnMinZ) / CELL)),
+          );
           return cz * GRID_COLS + cx;
         };
-        for (let i = 0; i < total; i++) counts[cellIndex(bladePos[i].x, bladePos[i].z)]++;
+        for (let i = 0; i < total; i++)
+          counts[cellIndex(bladePos[i].x, bladePos[i].z)]++;
         // Prefix-sum so each cell's indices are a contiguous slice of one array.
         const cellStart = new Int32Array(gridCells.length + 1);
-        for (let i = 0; i < gridCells.length; i++) cellStart[i + 1] = cellStart[i] + counts[i];
+        for (let i = 0; i < gridCells.length; i++)
+          cellStart[i + 1] = cellStart[i] + counts[i];
         const cellIndices = new Uint32Array(total);
         {
           const cursor = new Int32Array(gridCells.length);
@@ -936,9 +984,15 @@
           const minZ = center.z - Math.abs(fx.z) - Math.abs(fz.z);
           const maxZ = center.z + Math.abs(fx.z) + Math.abs(fz.z);
           const c0x = Math.max(0, Math.floor((minX - lawnMinX) / CELL));
-          const c1x = Math.min(GRID_COLS - 1, Math.floor((maxX - lawnMinX) / CELL));
+          const c1x = Math.min(
+            GRID_COLS - 1,
+            Math.floor((maxX - lawnMinX) / CELL),
+          );
           const c0z = Math.max(0, Math.floor((minZ - lawnMinZ) / CELL));
-          const c1z = Math.min(GRID_ROWS - 1, Math.floor((maxZ - lawnMinZ) / CELL));
+          const c1z = Math.min(
+            GRID_ROWS - 1,
+            Math.floor((maxZ - lawnMinZ) / CELL),
+          );
           for (let cz = c0z; cz <= c1z; cz++) {
             for (let cx = c0x; cx <= c1x; cx++) {
               const ci = cz * GRID_COLS + cx;
@@ -952,7 +1006,11 @@
 
         // Place a push lawnmower on the lawn. Keep the handle geometry params
         // here so the first-person camera can mount itself on the handle.
-        const MOWER = { wheelRadius: 0.4, handleAngle: 0.75, handleLength: 1.7 };
+        const MOWER = {
+          wheelRadius: 0.4,
+          handleAngle: 0.75,
+          handleLength: 1.7,
+        };
         const mower = createLawnmower(sim, {
           wheelRadius: MOWER.wheelRadius,
           reelWidth: 1.25,
@@ -966,6 +1024,28 @@
           position: [0, 0, 0],
           rotation: [0, 0, 0],
         });
+
+        // Fade the whole mower in/out by tuning every MeshStandardMaterial's
+        // opacity across its object tree (wheels, reel, blades, handle, grip).
+        // Returns the shared materials it touched so they can be restored.
+        const mowerMats = new Set();
+        const setMowerOpacity = (o) => {
+          mower.mesh.traverse((obj) => {
+            if (obj.isMesh && obj.material) {
+              for (const m of Array.isArray(obj.material)
+                ? obj.material
+                : [obj.material]) {
+                if (m.isMeshStandardMaterial) {
+                  m.transparent = true;
+                  m.opacity = o;
+                  mowerMats.add(m);
+                }
+              }
+            }
+          });
+        };
+        // Boot: the mower starts transparent and fades in at the end of init.
+        setMowerOpacity(0.0001);
 
         // Surround the grass lawn with a wooden fence. The lawn spans
         // COLS*W (x) by ROWS*D (z), centered on the origin; each side gets its
@@ -989,10 +1069,26 @@
             position,
             rotation,
           });
-        sideFence({ length: COLS * W, position: [0, 0, lawnHalfD + gap], rotation: [0, 0, 0] });
-        sideFence({ length: COLS * W, position: [0, 0, -lawnHalfD - gap], rotation: [0, Math.PI, 0] });
-        sideFence({ length: ROWS * D, position: [lawnHalfW + gap, 0, 0], rotation: [0, Math.PI / 2, 0] });
-        sideFence({ length: ROWS * D, position: [-lawnHalfW - gap, 0, 0], rotation: [0, -Math.PI / 2, 0] });
+        sideFence({
+          length: COLS * W,
+          position: [0, 0, lawnHalfD + gap],
+          rotation: [0, 0, 0],
+        });
+        sideFence({
+          length: COLS * W,
+          position: [0, 0, -lawnHalfD - gap],
+          rotation: [0, Math.PI, 0],
+        });
+        sideFence({
+          length: ROWS * D,
+          position: [lawnHalfW + gap, 0, 0],
+          rotation: [0, Math.PI / 2, 0],
+        });
+        sideFence({
+          length: ROWS * D,
+          position: [-lawnHalfW - gap, 0, 0],
+          rotation: [0, -Math.PI / 2, 0],
+        });
 
         // Glass cube around the patch: four walls + a lid rising 20m from the
         // ground, encasing the lawn (and the mower with it). Translucent, so
@@ -1016,16 +1112,48 @@
           const c = new THREE.Color(a).lerp(new THREE.Color(b), t);
           return c.getStyle();
         };
-        const DAY_TOP = "#3399ff", DAY_HOR = "#cfe8ff";
-        const SET_TOP = "#5b3a6e", SET_HOR = "#ff7a3d";
-        const DUSK_TOP = "#07070f", DUSK_HOR = "#140a1e"; // deep inky blue-black
+        const DAY_TOP = "#3399ff",
+          DAY_HOR = "#cfe8ff";
+        const SET_TOP = "#5b3a6e",
+          SET_HOR = "#ff7a3d";
+        const DUSK_TOP = "#07070f",
+          DUSK_HOR = "#140a1e"; // deep inky blue-black
         // p spans 0..~2 across the day: 0 at noon (deep blue), 1 at sunrise/
         // sunset (deep red), then fading through dusk toward a deep inky
         // black-blue as it approaches night. NIGHT_P is where it goes fully
         // transparent (the reveal).
         const NIGHT_P = 1.75;
-        const paintSky = (p) => {
-          // Pick the top and horizon colors for this phase.
+        // Current sky phase (0 noon -> 2 night), read by paintGradient.
+        let p = 0;
+        // The sky DOMAINS: the 4 walls share one canvas (carrying the warning
+        // text), while the ceiling gets its own text-free canvas so the message
+        // never shows overhead.
+        const ceilCanvas = document.createElement("canvas");
+        ceilCanvas.width = ceilCanvas.height = skyCvS;
+        const ceilCtx = ceilCanvas.getContext("2d");
+        const ceilTex = new THREE.CanvasTexture(ceilCanvas);
+        ceilTex.colorSpace = THREE.SRGBColorSpace;
+        // Boot cinematic sequence state. `introActive` is true from load until
+        // the intro finishes; `introT` counts seconds in; `wallsDawn` (0..1)
+        // crossfades the walls from grey up to their real palette.
+        let introActive = true;
+        let introT = 0;
+        let wallsDawn = 0;
+        // Countdown phase timing (end of init: "3","2","1","MOW!", one/s).
+        const COUNT_START = 10;
+        const COUNT_SEC = 1;
+        const INTRO_END = COUNT_START + 4;
+        // "CONTAINMENT BREACH" / "LOW PRESSURE" warning: shown on the walls in
+        // the 5 real-seconds leading up to the reveal, swapping every 1s.
+        let breachActive = false;
+        let breachT = 0;
+        // Paint the shared gradient palette into a given context, compressing it
+        // toward the bottom quarter (near the ground) where the mower's eye is.
+        // Boot cinematic: the walls start a neutral GREY, crossfading to their
+        // true day/dusk palette as the intro's `wallsDawn` (0..1) reaches 1.
+        const INTRO_GREY_TOP = "#7c7c86",
+          INTRO_GREY_HOR = "#b6b6be";
+        const paintGradient = (ctx) => {
           let top, hor;
           if (p <= 1) {
             // Blue -> red as the sun approaches the horizon.
@@ -1037,36 +1165,89 @@
             top = lerpC(SET_TOP, DUSK_TOP, d);
             hor = lerpC(SET_HOR, DUSK_HOR, d);
           }
-          // The mower's eye only sees the low band of the 20m walls, so the
-          // gradient is compressed toward the wall's bottom quarter: the upper
-          // wall stays solid sky color and the red->purple transition happens
-          // down where it's actually in view.
-          skyCtx.fillStyle = top;
-          skyCtx.fillRect(0, 0, skyCvS, skyCvS);
+          // Fade from intro grey up to the real palette as wallsDawn climbs.
+          if (introActive || wallsDawn < 1) {
+            top = lerpC(INTRO_GREY_TOP, top, wallsDawn);
+            hor = lerpC(INTRO_GREY_HOR, hor, wallsDawn);
+          }
+          ctx.fillStyle = top;
+          ctx.fillRect(0, 0, skyCvS, skyCvS);
           // Overlay the horizon->top transition only across the bottom 25%
           // (canvas row 0 = wall top, row skyCvS = wall base) so the warm/dark
           // color hangs low near the ground where it reads.
           const startRow = skyCvS * 0.75;
-          const g = skyCtx.createLinearGradient(0, startRow, 0, skyCvS);
+          const g = ctx.createLinearGradient(0, startRow, 0, skyCvS);
           g.addColorStop(0, top);
           g.addColorStop(1, hor);
-          skyCtx.fillStyle = g;
-          skyCtx.fillRect(0, startRow, skyCvS, skyCvS);
-          // "HELLO WORLD" painted low on the sky walls (shared texture => it
-          // reads on every face of the cube). The BackSide material shows each
-          // plane's back face, which mirrors left/right — so we pre-mirror the
-          // text horizontally to cancel that and read correctly from inside.
+          ctx.fillStyle = g;
+          ctx.fillRect(0, startRow, skyCvS, skyCvS);
+        };
+        // Draw the day-start message on the WALL fabric (shared by all four
+        // walls; the ceiling has its own text-free canvas). Pre-mirrored to
+        // cancel the BackSide flip so it reads correctly from inside the lawn.
+        // Priority: intro boot messages -> countdown -> breach warning.
+        const paintWallText = () => {
+          let msg,
+            big = false;
+          if (introActive) {
+            if (introT >= COUNT_START) {
+              // Countdown: "3" / "2" / "1" / "MOW!", one per second.
+              const i = Math.floor(introT - COUNT_START);
+              const labels = ["3", "2", "1", "MOW!"];
+              msg = labels[Math.min(i, labels.length - 1)];
+              big = true;
+            } else {
+              // On mobile the walls are close, so the boot message wraps onto
+              // two lines ("STARTING" / "SIMULATION.."); desktop keeps one line.
+              const starting = Math.floor(introT / 2) % 2 === 0;
+              msg = starting
+                ? isMobile
+                  ? ["STARTING", "SIMULATION.."]
+                  : "STARTING SIMULATION.."
+                : "PLEASE WAIT..";
+              if (starting && isMobile) {
+                skyCtx.save();
+                skyCtx.translate(skyCvS / 2, 0);
+                skyCtx.scale(-1, 1);
+                skyCtx.translate(-skyCvS / 2, 0);
+                skyCtx.fillStyle = "#ffffff";
+                skyCtx.font = "bold 26px sans-serif";
+                skyCtx.textAlign = "center";
+                skyCtx.textBaseline = "middle";
+                skyCtx.fillText(msg[0], skyCvS / 2, skyCvS * 0.75);
+                skyCtx.fillText(msg[1], skyCvS / 2, skyCvS * 0.81);
+                skyCtx.restore();
+                return;
+              }
+            }
+          } else if (breachActive) {
+            msg =
+              Math.floor(breachT) % 2 === 0
+                ? "CONTAINMENT BREACH"
+                : "LOW PRESSURE";
+          } else {
+            return;
+          }
           skyCtx.save();
           skyCtx.translate(skyCvS / 2, 0);
           skyCtx.scale(-1, 1);
           skyCtx.translate(-skyCvS / 2, 0);
           skyCtx.fillStyle = "#ffffff";
-          skyCtx.font = "bold 22px sans-serif";
+          skyCtx.font = big ? "bold 78px sans-serif" : "bold 26px sans-serif";
           skyCtx.textAlign = "center";
           skyCtx.textBaseline = "middle";
-          skyCtx.fillText("30 SECONDS TO TERMINATION", skyCvS / 2, skyCvS * 0.85);
+          // Draw low on the wall (near the base) where the mower's camera looks;
+          // big countdown digits sit just above the small boot text's line.
+          skyCtx.fillText(msg, skyCvS / 2, big ? skyCvS * 0.82 : skyCvS * 0.78);
           skyCtx.restore();
+        };
+        const paintSky = (pv) => {
+          p = pv;
+          paintGradient(skyCtx);
+          paintWallText();
           skyTex.needsUpdate = true;
+          paintGradient(ceilCtx);
+          ceilTex.needsUpdate = true;
         };
         const glassMat = new THREE.MeshPhysicalMaterial({
           map: skyTex,
@@ -1091,32 +1272,105 @@
         // inside the lawn.
         const domeW = lawnHalfW * 2 + WALL_INSET;
         const domeD = lawnHalfD * 2 + WALL_INSET;
+        // The ceiling reuses the sky gradient but NOT the warning text, so it
+        // gets its own (text-free) material on its own canvas.
+        const ceilMat = new THREE.MeshPhysicalMaterial({
+          map: ceilTex,
+          color: 0xffffff,
+          emissive: 0xffffff,
+          emissiveMap: ceilTex,
+          emissiveIntensity: 1.0,
+          transparent: true,
+          opacity: 0.85,
+          roughness: 0.1,
+          metalness: 0,
+          side: THREE.BackSide,
+          depthWrite: false,
+        });
         const glassCube = new THREE.Group();
         const skyFaces = [];
-        // Curtain reveal: the four side walls modulate their HEIGHT (scaled
-        // about a top-anchored pivot) to fade to/from their full CUBE_H. Saved
-        // here so the animation driver can ease them separately from the ceiling.
-        const skyWalls = [];
+        // Glass size of the shatter cells (world units). Each sealed face is a
+        // single subdivided PlaneGeometry — one cheap draw call by day — and its
+        // grid of triangles is split apart into individual shards at the reveal.
+        const SHARD_CELL = 2.83;
         // PlaneGeometry lies in the XY plane (normal +Z, width along X, height
         // along Y). With a BackSide sky material we see the plane's BACK face,
         // so each wall's normal points OUTWARD (away from the lawn) and its
         // back face reads the sky from inside. Rotation is about Y to swing
         // the walls into place, never Z (which would lay them flat).
-        const addFace = (width, height, ry, x, y, z) => {
-          const p = new THREE.Mesh(new THREE.PlaneGeometry(width, height), glassMat);
+        const addFace = (
+          width,
+          height,
+          ry,
+          x,
+          y,
+          z,
+          mat = glassMat,
+          segX = 1,
+          segY = 1,
+        ) => {
+          const p = new THREE.Mesh(
+            new THREE.PlaneGeometry(width, height, segX, segY),
+            mat,
+          );
           p.rotation.set(0, ry, 0);
           p.position.set(x, y, z);
           glassCube.add(p);
           skyFaces.push(p);
-          skyWalls.push(p);
         };
-        addFace(domeW, CUBE_H, 0, 0, CUBE_H / 2, domeD / 2);            // north
-        addFace(domeW, CUBE_H, Math.PI, 0, CUBE_H / 2, -domeD / 2);     // south
-        addFace(domeD, CUBE_H, Math.PI / 2, domeW / 2, CUBE_H / 2, 0);  // east
-        addFace(domeD, CUBE_H, -Math.PI / 2, -domeW / 2, CUBE_H / 2, 0); // west
+        const wallSegX = (w) => Math.max(1, Math.round(w / CELL));
+        const wallSegY = Math.max(1, Math.round(CUBE_H / CELL));
+        addFace(
+          domeW,
+          CUBE_H,
+          0,
+          0,
+          CUBE_H / 2,
+          domeD / 2,
+          glassMat,
+          wallSegX(domeW),
+          wallSegY,
+        ); // north
+        addFace(
+          domeW,
+          CUBE_H,
+          Math.PI,
+          0,
+          CUBE_H / 2,
+          -domeD / 2,
+          glassMat,
+          wallSegX(domeW),
+          wallSegY,
+        ); // south
+        addFace(
+          domeD,
+          CUBE_H,
+          Math.PI / 2,
+          domeW / 2,
+          CUBE_H / 2,
+          0,
+          glassMat,
+          wallSegX(domeD),
+          wallSegY,
+        ); // east
+        addFace(
+          domeD,
+          CUBE_H,
+          -Math.PI / 2,
+          -domeW / 2,
+          CUBE_H / 2,
+          0,
+          glassMat,
+          wallSegX(domeD),
+          wallSegY,
+        ); // west
         // Ceiling: rotate about X by -90° to lie flat with its +Y normal up.
         {
-          const ceil = new THREE.Mesh(new THREE.PlaneGeometry(domeW, domeD), glassMat);
+          const ceilSeg = Math.max(1, Math.round(domeW / CELL));
+          const ceil = new THREE.Mesh(
+            new THREE.PlaneGeometry(domeW, domeD, ceilSeg, ceilSeg),
+            ceilMat,
+          );
           ceil.rotation.set(-Math.PI / 2, 0, 0);
           ceil.position.set(0, CUBE_H, 0);
           glassCube.add(ceil);
@@ -1124,55 +1378,239 @@
         }
         sim.scene.add(glassCube);
 
-        // Curtain reveal animation state. Instead of an instant hide, the four
-        // sky walls modulate their height over CURTAIN_S seconds — scaling about
-        // a top-anchored pivot so the bottom edge climbs off the ground first
-        // (revealing the outside from the bottom up). At daybreak the reverse
-        // plays, growing the walls back down like a curtain closing.
-        const CURTAIN_S = 1.0; // seconds for the wall to fully rise/fall
-        let curtainT = 1;      // 1 = full height, 0 = fully raised (gone)
-        let curtainActive = false;
-        let curtainDir = 1;    // +1 opening (raise up), -1 closing (come down)
+        // Shattering reveal. At the moment of reveal the sealed glass cube doesn't
+        // slide or drift in whole — it SHATTERS: every tessellated triangle of
+        // the skybox flies apart as its own shard, blasted outward on a course
+        // away from the lawn with a tumble, then coasts forever through the
+        // weightless void (no gravity). Daytime rebuilds the sealed box and
+        // disposes the debris.
         let curtainStarted = false; // reveal act fired once per night (option B)
-        // easeInOutCubic over [0,1].
-        const curtainEase = (t) =>
-          t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-        const applyCurtain = (f) => {
-          const h = f * CUBE_H;
-          for (const w of skyWalls) {
-            // Top-anchored: keep the top edge pinned at the ceiling while the
-            // bottom edge rises/falls, so the outside is revealed bottom-up.
-            w.scale.y = f;
-            w.position.y = CUBE_H - h / 2;
+        const EXPLODE_SPEED = 12; // m/s outward from the cube center
+        const EXPLODE_SPREAD = 6; // extra random outward fan
+        const EXPLODE_TUMBLE = 2.0; // angular velocity (rad/s) per spin axis
+        // Glass shards currently airborne (each carries vel/rvel on its userData).
+        let debris = [];
+        // Split a sealed face's tessellated geometry into one buffer per triangle
+        // so each can be flung independently. UVs (and so the sky/text mapping)
+        // are preserved because the shard keeps its face-local plane coordinates.
+        const splitShards = (face) => {
+          const flat = face.geometry.toNonIndexed();
+          const pos = flat.attributes.position;
+          const uv = flat.attributes.uv;
+          const nrm = flat.attributes.normal;
+          const nTri = pos.count / 3;
+          const geos = [];
+          for (let t = 0; t < nTri; t++) {
+            const g = new THREE.BufferGeometry();
+            const p = new THREE.BufferAttribute(new Float32Array(9), 3);
+            const u = new THREE.BufferAttribute(new Float32Array(6), 2);
+            const n = new THREE.BufferAttribute(new Float32Array(9), 3);
+            for (let k = 0; k < 3; k++) {
+              p.setXYZ(
+                k,
+                pos.getX(3 * t + k),
+                pos.getY(3 * t + k),
+                pos.getZ(3 * t + k),
+              );
+              u.setXY(k, uv.getX(3 * t + k), uv.getY(3 * t + k));
+              n.setXYZ(
+                k,
+                nrm.getX(3 * t + k),
+                nrm.getY(3 * t + k),
+                nrm.getZ(3 * t + k),
+              );
+            }
+            g.setAttribute("position", p);
+            g.setAttribute("uv", u);
+            g.setAttribute("normal", n);
+            geos.push(g);
+          }
+          flat.dispose();
+          return geos;
+        };
+        // Blast every triangle of every sealed face outward as an indepdent
+        // shard. Direction follows each FACE's outward normal (horizontal for
+        // the walls, straight up off the ceiling) so the glass blasts away from
+        // the lawn rather than raining up — with a little random fan so the
+        // shards spread instead of sliding as one sheet.
+        const explodeSky = () => {
+          const tmp = new THREE.Vector3();
+          for (const face of skyFaces) {
+            // Face's outward direction: ceiling (no horizontal offset) flies
+            // straight up; walls fly along their outward horizontal normal.
+            const px = face.position.x,
+              pz = face.position.z;
+            const horiz = Math.hypot(px, pz);
+            const dir = new THREE.Vector3();
+            if (horiz < 1e-3) {
+              dir.set(0, 1, 0); // ceiling
+            } else {
+              dir.set(px / horiz, 0, pz / horiz); // wall outward normal
+            }
+            const upKick = horiz < 1e-3 ? 8 : 2; // ceiling soars, walls lift a touch
+            const shardGeos = splitShards(face);
+            for (const g of shardGeos) {
+              const m = new THREE.Mesh(g, face.material);
+              m.position.copy(face.position);
+              m.rotation.copy(face.rotation);
+              m.frustumCulled = false;
+              glassCube.add(m);
+              // Fling along the face's outward normal, plus per-shard fan so
+              // the sheet shatters apart rather than staying aligned.
+              const vel = tmp.copy(dir).multiplyScalar(EXPLODE_SPEED);
+              vel.x += (Math.random() - 0.5) * EXPLODE_SPREAD;
+              vel.y += (Math.random() - 0.5) * EXPLODE_SPREAD + upKick;
+              vel.z += (Math.random() - 0.5) * EXPLODE_SPREAD;
+              m.userData.vel = vel.clone();
+              m.userData.rvel = new THREE.Vector3(
+                (Math.random() - 0.5) * 2 * EXPLODE_TUMBLE,
+                (Math.random() - 0.5) * 2 * EXPLODE_TUMBLE,
+                (Math.random() - 0.5) * 2 * EXPLODE_TUMBLE,
+              );
+              debris.push(m);
+            }
+            face.visible = false; // the sealed sheet is gone; shards take over
           }
         };
-        const curtainDone = () => {
-          curtainActive = false;
-          const opened = curtainT <= 0.0001;
-          if (opened) {
-            // Fully raised: the skybox is gone, so it can't occlude the scene.
-            glassMat.transparent = true;
-            glassMat.opacity = 0;
-            glassMat.depthWrite = false;
-            for (const f of skyFaces) f.visible = false;
-          } else {
-            // Fully closed: an opaque sky hides the outside again.
-            glassMat.transparent = false;
-            glassMat.opacity = 1;
-            glassMat.depthWrite = true;
-            for (const f of skyFaces) f.visible = true;
+        // Reseal the box: remove every airborne shard and bring the tessellated
+        // sealed faces back, so closed daylight reads as a solid cube again.
+        const resealSky = () => {
+          for (const m of debris) {
+            glassCube.remove(m);
+            m.geometry.dispose();
           }
+          debris = [];
+          for (const face of skyFaces) face.visible = true;
         };
-        // Driver: advance the curtain toward its target and apply the eased
-        // height each frame while it's active.
+        // Flight driver: integrate each shard always (friction-free, constant
+        // velocity + steady tumble) so the glass coasts into space.
         sim.addEntity(null, null, (dt) => {
-          if (!curtainActive) return;
-          const target = curtainDir > 0 ? 0 : 1;
-          const dir = target > curtainT ? 1 : -1;
-          curtainT = Math.max(0, Math.min(1, curtainT + dir * (dt / CURTAIN_S)));
-          applyCurtain(curtainEase(curtainT));
-          if ((dir > 0 && curtainT >= 1) || (dir < 0 && curtainT <= 0)) curtainDone();
+          for (const m of debris) {
+            m.position.addScaledVector(m.userData.vel, dt);
+            m.rotation.x += m.userData.rvel.x * dt;
+            m.rotation.y += m.userData.rvel.y * dt;
+            m.rotation.z += m.userData.rvel.z * dt;
+          }
+          overlayUpdate(dt);
+          greetingUpdate(dt);
         });
+
+        // Doom fade: a fullscreen red wash fades IN at the blast, then fades to
+        // complete black. Two stacked layers make the crossfade crisp: a black
+        // layer sits permanently behind; a red layer fades in over the top,
+        // then fades back out to reveal the black — ending on a solid blackout.
+        const doomBlack = document.createElement("div");
+        Object.assign(doomBlack.style, {
+          position: "fixed",
+          inset: "0",
+          background: "#000",
+          opacity: 0,
+          pointerEvents: "none",
+          zIndex: "9998",
+        });
+        document.body.appendChild(doomBlack);
+        const doomRed = document.createElement("div");
+        Object.assign(doomRed.style, {
+          position: "fixed",
+          inset: "0",
+          background: "#f00",
+          opacity: 0,
+          pointerEvents: "none",
+          zIndex: "9999",
+        });
+        document.body.appendChild(doomRed);
+        const DOOM_DELAY_MS = 5000; // give the user ~5s to see the void before doom
+        const DOOM_RISE_MS = 5000; // total red phase, pulsing, ending solid
+        const DOOM_PULSE_FULL_MS = 4000; // the ramp reaches full red by here
+        const DOOM_BLACK_MS = 4000; // red fades out to black
+        let doomT = -1; // seconds since doom started; negative = idle
+        // Drive the overlays each frame: a red wash that starts transparent and
+        // PULSES while it fades in, locking to 100% red for its final ~2s, then
+        // crosses over to a full blackout. Through the whole red phase the black
+        // backdrop stays transparent so the scene stays visible under the red.
+        const overlayUpdate = (dt) => {
+          if (doomT < 0) return;
+          doomT += dt;
+          const ms = doomT * 1000;
+          if (ms < DOOM_RISE_MS) {
+            // Ramp 0->1 that reaches full by DOOM_PULSE_FULL_MS and holds.
+            const ramp = Math.min(1, ms / DOOM_PULSE_FULL_MS);
+            // Pulse riding the ramp: full pulses early, settling to a steady 1
+            // as the ramp saturates, so the last ~2s are a solid red.
+            const wave = 0.55 + 0.45 * Math.sin(doomT * Math.PI * 2); // oscil. between fades
+            const pulse = 0.72 + 0.28 * wave;
+            const red = Math.min(1, ramp * pulse);
+            doomRed.style.opacity = red.toFixed(3);
+          } else {
+            // Crossfade to black: red falls away while the black backdrop fades
+            // in to complete the blackout.
+            const k = Math.min(1, (ms - DOOM_RISE_MS) / DOOM_BLACK_MS);
+            doomRed.style.opacity = ((1 - k) * 1).toFixed(3);
+            doomBlack.style.opacity = k.toFixed(3);
+            // Once fully black, restart the simulation at a fresh day.
+            if (k >= 1 && !doomRestarted) {
+              doomRestarted = true;
+              if (typeof simRestart === "function") simRestart();
+            }
+          }
+        };
+        // Flips true the first time the blackout completes, so the restart only
+        // fires once per doom.
+        let doomRestarted = false;
+        // Trigger the doom after a delay so the explosion + void are seen first.
+        const doomStart = () => {
+          doomRestarted = false; // allow the end-of-doom restart again
+          setTimeout(() => {
+            doomT = 0;
+          }, DOOM_DELAY_MS);
+        };
+
+        // Day-start greeting: "GOOD MORNING." plays during the first 10 seconds
+        // of each new day (simulation time T = 0..10). A fresh page load boots
+        // the simulation in at T = 11 — mid-story — so the very first greeting is
+        // a surprise withheld until the night has passed and a new day dawns.
+        // Simulation clock in real seconds; resets to 0 at each new day. The
+        // day-start message ("GOOD MORNING." / "EARTH-LIKE GARDEN SIM v3") is
+        // painted onto the skybox WALLS by paintSky, keyed off this timer.
+        let simT = 20; // a fresh load starts past both messages (no wall text)
+        // A new day dawns: reset the simulation clock (so the wall text plays)
+        // and lift the doom blackout so the new day is actually visible.
+        const newDay = () => {
+          simT = 0;
+          doomT = -1; // stop the doom idle
+          doomRed.style.opacity = "0";
+          doomBlack.style.opacity = "0";
+        };
+        // Just advance the sim clock; the wall text reads simT each repaint, so
+        // no extra rendering is needed here.
+        const greetingUpdate = (dt) => {
+          if (simT >= 20) return;
+          simT += dt;
+          // Force a repaint so the walls pick up the changing message.
+          paintSky(p);
+        };
+
+        // Camera "kick" at the blast: over 500ms we tilt the view up
+        // (looking a bit higher once the sky shatters) and widen the FOV to
+        // 120°, then settle back to the player's normal gaze/FOV.
+        const KICK_RISE_MS = 500; // how long to reach the kick peak
+        const KICK_HOLD_MS = 5000; // how long to HOLD at the peak
+        const KICK_FALL_MS = 5000; // how long to ease back to normal
+        const KICK_PITCH = 12 * (Math.PI / 180); // extra look-up (radians)
+        const KICK_TARGET_FOV = 70;
+        let kickElapsed = Infinity; // ms since blast; Infinity = no mask
+        const kickStart = () => {
+          kickElapsed = 0;
+        };
+        // Returns the kick envelope 0..1 (0 = normal, 1 = peak) for a given
+        // elapsed time, easing in over KICK_RISE_MS, holding at peak for
+        // KICK_HOLD_MS, then easing out over KICK_FALL_MS.
+        const kickEnv = (el) => {
+          if (el >= KICK_RISE_MS + KICK_HOLD_MS + KICK_FALL_MS) return 0;
+          if (el < KICK_RISE_MS) return el / KICK_RISE_MS;
+          if (el < KICK_RISE_MS + KICK_HOLD_MS) return 1;
+          return 1 - (el - KICK_RISE_MS - KICK_HOLD_MS) / KICK_FALL_MS;
+        };
 
         // Fake "sun" light inside the Earth dome: a warm point/he directional
         // light tracking the fake-sky time so the grass reads as lit by day
@@ -1193,7 +1631,10 @@
         // depth so the stars/Earth behind can't bleed through). Once the sun
         // sets it becomes transparent: the reveal.
         const sunSlider = document.getElementById("sun-slider");
-        const time = { hour: parseFloat(sunSlider.value), prevHour: parseFloat(sunSlider.value) };
+        const time = {
+          hour: parseFloat(sunSlider.value),
+          prevHour: parseFloat(sunSlider.value),
+        };
         // Phase name shown next to the sun clock, quartered by 6-hour bucket.
         const parityLabels = ["dawn", "morning", "afternoon", "dusk", "night"];
         const applySky = (hour) => {
@@ -1232,24 +1673,34 @@
                 // reveal, keeping the crescent/terminator perfectly identical on
                 // the (now camera-centered) Earth no matter how the player was
                 // facing. Push it far away so its rays arrive parallel.
-                const cinematicSunDir = _sunDir0.clone().applyQuaternion(sim.camera.quaternion);
+                const cinematicSunDir = _sunDir0
+                  .clone()
+                  .applyQuaternion(sim.camera.quaternion);
                 // Roll the sun direction around the camera's view axis by the
                 // day's solar declination, tilting the day/night terminator on the
                 // Earth to its correct seasonal angle.
-                cinematicSunDir.applyAxisAngle(_camFwd, declinationDeg() * (Math.PI / 180));
-                sunLight.position.copy(cinematicSunDir).multiplyScalar(SUN_FLAT);
+                cinematicSunDir.applyAxisAngle(
+                  _camFwd,
+                  declinationDeg() * (Math.PI / 180),
+                );
+                sunLight.position
+                  .copy(cinematicSunDir)
+                  .multiplyScalar(SUN_FLAT);
                 sunLight.target.position.copy(sim.camera.position);
                 sunLight.target.updateMatrixWorld(true);
               }
-              // Ensure the sky is opaque so the rising walls read as a curtain.
+              // Ensure the sky is opaque so the flying faces read as a solid
+              // sheet until they spread apart.
               glassMat.transparent = false;
               glassMat.opacity = 1;
               glassMat.depthWrite = true;
               for (const f of skyFaces) f.visible = true;
-              // Lift the curtain: top edge pinned, bottom edge rises off the
-              // ground so the outside is revealed from the bottom up.
-              curtainDir = 1;
-              curtainActive = true;
+              // BLAST: launch every face outward into space, tumbling.
+              explodeSky();
+              // Punish the camera: tilt up + widen the FOV over 500ms.
+              kickStart();
+              // Flood the screen red, then fade to black — the doom.
+              doomStart();
             }
           } else {
             // Opaque sky: fully hide the space outside the dome (survives the
@@ -1268,21 +1719,26 @@
             // daytime/nighttime sleep-wake cycle from here on). Skipped during
             // the initial setup call before the family has been created.
             if (firefliesReady) {
-              for (const f of fireflies) f.group.visible = creaturesEnabled && !f.sleeping && !revealFired;
+              for (const f of fireflies)
+                f.group.visible =
+                  creaturesEnabled && !f.sleeping && !revealFired;
             }
             // Box closed: the moon sun can't reach the sealed lawn, so shut it
             // off and let only the fake in-dome day light drive the grass.
             if (sunLight) sunLight.intensity = 0;
-            // Bring the curtain back down only if it had been raised.
+            // Reseal the dome: faces snap back into a sealed box before the sky
+            // makes them opaque, so closed daylight reads as a solid cube.
             if (curtainStarted) {
               curtainStarted = false;
-              // Make the sky opaque + visible so the closing curtain shows.
+              // A new day dawns: reset the simulation clock so the "GOOD
+              // MORNING." greeting plays for its first 10 seconds.
+              newDay();
+              resealSky();
+              // Make the sky opaque + visible so the closing cube shows.
               glassMat.transparent = false;
               glassMat.opacity = 1;
               glassMat.depthWrite = true;
               for (const f of skyFaces) f.visible = true;
-              curtainDir = -1;
-              curtainActive = true;
             }
           }
           // Fake sun: bright warm light at noon, dimming & warming as the sky
@@ -1290,7 +1746,11 @@
           const dayFactor = Math.max(0, 1 - p / NIGHT_P);
           domeSun.intensity = 2.0 * dayFactor;
           const heat = Math.min(1, p); // toward sunset, redden the light
-          domeSun.color.setRGB(1, 0.82 + 0.18 * (1 - heat), 0.7 + 0.3 * (1 - heat));
+          domeSun.color.setRGB(
+            1,
+            0.82 + 0.18 * (1 - heat),
+            0.7 + 0.3 * (1 - heat),
+          );
           if (isNight) domeSun.intensity = 0;
           // Interior fill follows the same curve so the dome stays bright by
           // day, dims through dusk, and goes dark at the reveal.
@@ -1323,13 +1783,14 @@
             // Night spans [sleepHour, wakeHour) wrapping past midnight; a
             // creature is awake when the hour lies in [wakeHour, sleepHour).
             const awake = (h) => {
-              if (fam.wakeHour < fam.sleepHour) return h >= fam.wakeHour && h < fam.sleepHour;
+              if (fam.wakeHour < fam.sleepHour)
+                return h >= fam.wakeHour && h < fam.sleepHour;
               return h >= fam.wakeHour || h < fam.sleepHour; // wraps past midnight
             };
             const wasAwake = awake(prev);
             const nowAwake = awake(hour);
             if (wasAwake === nowAwake) continue;
-            for (const item of fam.items) (nowAwake ? item.wake() : item.sleep());
+            for (const item of fam.items) nowAwake ? item.wake() : item.sleep();
           }
         };
         // Apply a new hour: recompute sky/lighting, dispatch creature sleep/wake
@@ -1353,6 +1814,47 @@
         time.prevHour = time.hour;
         setHour(time.hour);
 
+        // Force a fresh day: reseal the dome, lift the doom, and snap the clock
+        // to a daytime hour so the new day is bright and the "GOOD MORNING."
+        // greeting plays from T=0. Called once the doom blackout completes.
+        const simRestart = () => {
+          if (curtainStarted) {
+            curtainStarted = false;
+            resealSky();
+            glassMat.transparent = false;
+            glassMat.opacity = 1;
+            glassMat.depthWrite = true;
+            for (const f of skyFaces) f.visible = true;
+          }
+          // Lift the doom blackout so the fresh sim is actually visible.
+          doomT = -1;
+          doomRed.style.opacity = "0";
+          doomBlack.style.opacity = "0";
+          // Reset the user's position + look direction to the default spawn.
+          mower.mesh.position.set(0, 0, 0);
+          mower.mesh.quaternion.set(0, 0, 0, 1);
+          mower.mesh.updateMatrixWorld(true);
+          // Park the first-person camera (and orbit state) back to the opener.
+          sim.camera.position.copy(mower.mesh.position);
+          sim.camera.quaternion.set(0, 0, 0, 1);
+          sim.camera.lookAt(0, 0, -1);
+          sim.camera.updateProjectionMatrix();
+          theta = 0;
+          phi = Math.PI / 6;
+          radius = 25;
+          camBlend = 0;
+          camBlendTarget = 0;
+          setHour(8); // snap to mid-morning so the scene is bright
+          startIntro(); // replay the boot cinematic (grass up, flowers pop, creatures on)
+        };
+
+        // Global dev/dev-test trigger: jump the sim to ~1 real minute before the
+        // reveal/ending. The reveal starts at NIGHT_START (22.5); the clock runs
+        // 1/30 game-hour per real second by day, so 60s before = 20.5.
+        window.triggerEnd = () => {
+          setHour(NIGHT_START - 60 * (1 / 30)); // 1 min before the reveal
+        };
+
         // Temporary debug readout of the global sun's world position and
         // direction (toward the light) for verifying lighting angles.
         const sunPosEl = document.getElementById("sun-pos");
@@ -1360,8 +1862,7 @@
         sim.addEntity(null, null, () => {
           if (sunPosEl && sunDirEl) {
             const p = sunLight.position;
-            sunPosEl.textContent =
-              `${p.x.toFixed(0)}, ${p.y.toFixed(0)}, ${p.z.toFixed(0)}`;
+            sunPosEl.textContent = `${p.x.toFixed(0)}, ${p.y.toFixed(0)}, ${p.z.toFixed(0)}`;
             const d = _sunDir.copy(sunLight.target.position).sub(p).normalize();
             sunDirEl.textContent = `${d.x.toFixed(2)}, ${d.y.toFixed(2)}, ${d.z.toFixed(2)}`;
           }
@@ -1403,8 +1904,12 @@
           _camFwd.set(0, 0, -1).applyQuaternion(sim.camera.quaternion);
           earth.mesh.position
             .copy(sim.camera.position)
-            .addScaledVector(_fwdXZ.copy(_camFwd).setY(0).normalize(), earthDistance);
-          earth.mesh.position.y = earthDistance * Math.tan(THREE.MathUtils.degToRad(earthAngleDeg));
+            .addScaledVector(
+              _fwdXZ.copy(_camFwd).setY(0).normalize(),
+              earthDistance,
+            );
+          earth.mesh.position.y =
+            earthDistance * Math.tan(THREE.MathUtils.degToRad(earthAngleDeg));
         };
         const applyEarthPlacement = () => {
           earthAngleDeg = parseFloat(earthAngleSlider.value);
@@ -1439,7 +1944,9 @@
             await navigator.clipboard.writeText(text);
             const old = copyBtn.textContent;
             copyBtn.textContent = "Copied!";
-            setTimeout(() => { copyBtn.textContent = old; }, 1200);
+            setTimeout(() => {
+              copyBtn.textContent = old;
+            }, 1200);
           } catch {
             copyBtn.textContent = "Copy failed";
           }
@@ -1448,7 +1955,9 @@
         // Manual time toggle: when the "Manual time" box is checked the clock
         // freezes and the sun slider takes over (auto-advance pauses); when
         // unchecked the clock runs on its own and the slider is disabled.
-        const manualTimeCheckbox = document.getElementById("manual-time-checkbox");
+        const manualTimeCheckbox = document.getElementById(
+          "manual-time-checkbox",
+        );
         let manualTime = false;
         sunSlider.disabled = !manualTime;
         manualTimeCheckbox.addEventListener("change", () => {
@@ -1468,17 +1977,34 @@
         // NIGHT_P — the glass dome has gone transparent (the reveal). The night
         // hours begin at 22:30 (22.5) and end moving past midnight at 01:30 (1.5).
         const NIGHT_START = 12 + NIGHT_P * 6; // 22.5
-        const NIGHT_END = 12 - NIGHT_P * 6;   // 1.5
+        const NIGHT_END = 12 - NIGHT_P * 6; // 1.5
         const atNight = (h) => {
           // Night wraps past midnight: hour >= NIGHT_START or hour < NIGHT_END.
           return h >= NIGHT_START || h < NIGHT_END;
         };
         sim.addEntity(null, null, (dt) => {
           if (manualTime) return; // manual mode freezes the clock
-          const dayRate = dt / 30;               // 2 game hours per real minute
+          const dayRate = dt / 30; // 2 game hours per real minute
           const rate = atNight(time.hour) ? dayRate * 2 : dayRate;
           let next = time.hour + rate;
           if (next >= 24) next -= 24;
+          // Breach warning: light up the 5 real-seconds before the reveal.
+          // The clock advances 1/30 game-hours per real second, so real seconds
+          // to the night boundary = 30 * hours-to-night.
+          if (!introActive) {
+            if (!atNight(time.hour)) {
+              const sTo = 30 * (NIGHT_START - time.hour);
+              if (sTo <= 5 && sTo > 0) {
+                breachActive = true;
+                breachT += dt;
+                paintSky(p); // keep repainting so the swap reads
+              } else if (sTo <= 0) {
+                breachActive = false;
+              }
+            } else {
+              breachActive = false;
+            }
+          }
           setHour(next);
         });
 
@@ -1546,30 +2072,38 @@
         });
         window.addEventListener("keyup", (e) => keys.delete(e.code));
         const forward = new THREE.Vector3(0, 0, 1);
-        const _dir = new THREE.Vector3();       // reusable per-frame temps (no alloc)
+        const _dir = new THREE.Vector3(); // reusable per-frame temps (no alloc)
         const _reelWorld = new THREE.Vector3();
         const _right = new THREE.Vector3();
-        const _fx = new THREE.Vector3();        // cut-footprint AABB axes
+        const _fx = new THREE.Vector3(); // cut-footprint AABB axes
         const _fz = new THREE.Vector3();
         const _boxCenter = new THREE.Vector3(); // footprint box center in world
-        const _fpMount = new THREE.Vector3();   // first-person camera mount (local)
-        const _fpWorld = new THREE.Vector3();   // first-person world-space temp
+        const _fpMount = new THREE.Vector3(); // first-person camera mount (local)
+        const _fpWorld = new THREE.Vector3(); // first-person world-space temp
         const _fpQuat = new THREE.Quaternion(); // first-person camera orientation
         const _fpPitch = new THREE.Quaternion(); // downward-tilt offset
         const _fpAxis = new THREE.Vector3(1, 0, 0); // mower-local X for that tilt
         const _orbQuat = new THREE.Quaternion(); // orbit camera orientation (lookAt)
-        const _tmpOrb = new THREE.Vector3();     // orbit camera position
-        const _lookAtM = new THREE.Matrix4();    // reusable lookAt matrix (no alloc)
-        const _sunDir = new THREE.Vector3();     // global sun light direction temp
-        const _camFwd = new THREE.Vector3();     // camera forward temp for reveal
-        const _fwdXZ = new THREE.Vector3();      // horizontal camera forward temp
+        const _tmpOrb = new THREE.Vector3(); // orbit camera position
+        const _lookAtM = new THREE.Matrix4(); // reusable lookAt matrix (no alloc)
+        const _sunDir = new THREE.Vector3(); // global sun light direction temp
+        const _camFwd = new THREE.Vector3(); // camera forward temp for reveal
+        const _fwdXZ = new THREE.Vector3(); // horizontal camera forward temp
         const turnDir = new THREE.Vector3(0, 1, 0);
         let mowerMoving = false;
         let mowerForward = false; // true only while cutting forward (blades turn)
         const keyF = () =>
-          keys.has("KeyS") || keys.has("ArrowDown") ? 1 : keys.has("KeyW") || keys.has("ArrowUp") ? -1 : 0;
+          keys.has("KeyS") || keys.has("ArrowDown")
+            ? 1
+            : keys.has("KeyW") || keys.has("ArrowUp")
+              ? -1
+              : 0;
         const keyTurn = () =>
-          keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : keys.has("KeyD") || keys.has("ArrowRight") ? -1 : 0;
+          keys.has("KeyA") || keys.has("ArrowLeft")
+            ? 1
+            : keys.has("KeyD") || keys.has("ArrowRight")
+              ? -1
+              : 0;
 
         // Touch control (mobile): a virtual stick. The finger's offset from its
         // grab point drives the mower — dragging up/down gives forward/back,
@@ -1577,7 +2111,8 @@
         let touchActive = false;
         let touchF = 0;
         let touchTurn = 0;
-        let touchOX = 0, touchOY = 0;
+        let touchOX = 0,
+          touchOY = 0;
         const STICK_R = Math.min(window.innerWidth, window.innerHeight) * 0.35; // dead-zone + max throw
         // Forward throttle maps over a smaller vertical stroke than the full stick
         // throw: max forward velocity is reached after dragging up only partway,
@@ -1620,36 +2155,52 @@
             hint.style.display = "none";
           }, 400);
         };
-        canvas.addEventListener("touchstart", (e) => {
-          e.preventDefault();
-          if (e.touches.length > 0) {
+        canvas.addEventListener(
+          "touchstart",
+          (e) => {
+            e.preventDefault();
+            if (e.touches.length > 0) {
+              const t = e.changedTouches[0];
+              touchActive = true;
+              touchOX = t.clientX;
+              touchOY = t.clientY;
+              updateTouch(t.clientX, t.clientY);
+              if (isMobile) dismissMobileHint();
+            }
+          },
+          { passive: false },
+        );
+        canvas.addEventListener(
+          "touchmove",
+          (e) => {
+            e.preventDefault();
             const t = e.changedTouches[0];
-            touchActive = true;
-            touchOX = t.clientX;
-            touchOY = t.clientY;
             updateTouch(t.clientX, t.clientY);
-            if (isMobile) dismissMobileHint();
-          }
-        }, { passive: false });
-        canvas.addEventListener("touchmove", (e) => {
-          e.preventDefault();
-          const t = e.changedTouches[0];
-          updateTouch(t.clientX, t.clientY);
-        }, { passive: false });
-        canvas.addEventListener("touchend", (e) => {
-          e.preventDefault();
-          if (e.touches.length === 0) {
+          },
+          { passive: false },
+        );
+        canvas.addEventListener(
+          "touchend",
+          (e) => {
+            e.preventDefault();
+            if (e.touches.length === 0) {
+              touchActive = false;
+              touchF = 0;
+              touchTurn = 0;
+            }
+          },
+          { passive: false },
+        );
+        canvas.addEventListener(
+          "touchcancel",
+          (e) => {
+            e.preventDefault();
             touchActive = false;
             touchF = 0;
             touchTurn = 0;
-          }
-        }, { passive: false });
-        canvas.addEventListener("touchcancel", (e) => {
-          e.preventDefault();
-          touchActive = false;
-          touchF = 0;
-          touchTurn = 0;
-        }, { passive: false });
+          },
+          { passive: false },
+        );
 
         // Reel cut footprint (matches the grass-cutting test below).
         const CUT_HALF_W = 1.25 / 2; // across the reel (local X)
@@ -1662,7 +2213,10 @@
         const bladeMinGrowth = new Float32Array(total);
         const recomputeMinGrowth = () => {
           for (let i = 0; i < total; i++) {
-            bladeMinGrowth[i] = Math.min(1, CUT_HEIGHT / (BLADE_HALF * bladeScale[i]));
+            bladeMinGrowth[i] = Math.min(
+              1,
+              CUT_HEIGHT / (BLADE_HALF * bladeScale[i]),
+            );
           }
         };
         recomputeMinGrowth();
@@ -1685,7 +2239,10 @@
           return visitCutArea(CUT_HALF_W, CUT_HALF_D, 0, (i) => {
             if (bladeGrowth[i] <= bladeMinGrowth[i]) return false;
             localPos.copy(bladePos[i]).applyMatrix4(invMower);
-            if (Math.abs(localPos.x) < CUT_HALF_W && Math.abs(localPos.z) < CUT_HALF_D) {
+            if (
+              Math.abs(localPos.x) < CUT_HALF_W &&
+              Math.abs(localPos.z) < CUT_HALF_D
+            ) {
               return true;
             }
             return false;
@@ -1703,11 +2260,15 @@
         const SAMPLE_OFF_Z = -(CUT_HALF_D + SAMPLE_HALF_D); // just ahead of the cut
         const sampleCutAmount = () => {
           invMower.copy(mower.mesh.matrixWorld).invert();
-          let sum = 0, count = 0;
+          let sum = 0,
+            count = 0;
           visitCutArea(SAMPLE_HALF_W, SAMPLE_HALF_D, SAMPLE_OFF_Z, (i) => {
             if (bladeGrowth[i] <= bladeMinGrowth[i]) return false;
             localPos.copy(bladePos[i]).applyMatrix4(invMower);
-            if (Math.abs(localPos.x) < SAMPLE_HALF_W && Math.abs(localPos.z - SAMPLE_OFF_Z) < SAMPLE_HALF_D) {
+            if (
+              Math.abs(localPos.x) < SAMPLE_HALF_W &&
+              Math.abs(localPos.z - SAMPLE_OFF_Z) < SAMPLE_HALF_D
+            ) {
               sum += bladeGrowth[i] - bladeMinGrowth[i];
               count++;
             }
@@ -1755,32 +2316,30 @@
         const clipEuler = new THREE.Euler();
         const clips = [];
         for (let i = 0; i < CLIP_COUNT; i++) {
-          clips.push({ x: 0, y: -1000, z: 0, vx: 0, vy: 0, vz: 0, rx: 0, ry: 0, rz: 0, wrx: 0, wry: 0, wrz: 0, life: 0, scale: 1, alive: false, hidden: true });
+          clips.push({
+            x: 0,
+            y: -1000,
+            z: 0,
+            vx: 0,
+            vy: 0,
+            vz: 0,
+            rx: 0,
+            ry: 0,
+            rz: 0,
+            wrx: 0,
+            wry: 0,
+            wrz: 0,
+            life: 0,
+            scale: 1,
+            alive: false,
+            hidden: true,
+          });
           clipMat4.makeTranslation(-1000, -1000, -1000);
           _clipArray.set(clipMat4.elements, i * 16);
         }
         clipMesh.instanceMatrix.needsUpdate = true;
         let clipCursor = 0;
         let clipAccum = 0;
-
-        // Headlamp: a warm spotlight mounted on the mower handle, aimed down
-        // and forward so the two night hours before the reveal (and the wee
-        // hours after) stay readable. It switches on once the sky gets dark.
-        const HEADLAMP_BIAS = -0.0005; // dodge striping on the dark lawn
-        const headlamp = new THREE.SpotLight(0xfff3e0, 0); // warm white/yellow, off by day
-        headlamp.angle = 0.84;
-        headlamp.penumbra = 0.5;
-        headlamp.distance = 18;
-        headlamp.decay = 1.4;
-        headlamp.castShadow = true;
-        headlamp.shadow.mapSize.set(512, 512);
-        headlamp.shadow.bias = HEADLAMP_BIAS;
-        sim.scene.add(headlamp);
-        sim.scene.add(headlamp.target);
-        // Headlamp aim direction held in mower-local space (down + forward).
-        const _lampDir = new THREE.Vector3(0, -1.15, -0.7).normalize();
-        const _lampWorld = new THREE.Vector3();
-        const _lampTarget = new THREE.Vector3();
 
         sim.addEntity(null, null, (dt) => {
           // Mower local +Z (handle push direction) mapped to the horizontal
@@ -1801,10 +2360,18 @@
           const shifting = keys.has("ShiftLeft") || keys.has("ShiftRight");
           const ease = shifting ? 0.75 : 1;
           const move = v * speed * ease;
-          const turnSpeed = v === 0 ? 2.0 : (shifting ? 1.5 : 1.0);
+          // Stationary (touch) spinning on mobile turns 25% faster so pivoting
+          // feels snappier; keyboard turns keep the original speed.
+          const touchSpinBoost = v === 0 && touchTurn !== 0 ? 1.25 : 1;
+          const turnSpeed = (v === 0 ? 2.0 : shifting ? 1.5 : 1.0) * touchSpinBoost;
+
+          // While the boot cinematic plays, movement is locked (you can still
+          // turn/pivot in place); once the intro ends, normal driving resumes.
+          const moveLocked = introActive ? 0 : move;
+          const effectiveMove = moveLocked;
 
           mowerMoving = v !== 0;
-          mowerForward = move < 0; // forward is along the mower's -Z (toward the reel)
+          mowerForward = effectiveMove < 0; // forward is along the mower's -Z (toward the reel)
           // Once the player starts moving, drop the "keys to move" hint but keep
           // the orbit-camera tip visible.
           if (v !== 0 && !hintMoveHidden) {
@@ -1813,7 +2380,8 @@
             const moveHint = document.getElementById("hint-move");
             const orbitHint = document.getElementById("hint-orbit");
             if (moveHint && orbitHint) {
-              const gap = parseFloat(getComputedStyle(moveHint.parentElement).gap) || 0;
+              const gap =
+                parseFloat(getComputedStyle(moveHint.parentElement).gap) || 0;
               const shift = moveHint.offsetWidth + gap;
               moveHint.style.transition = "opacity 0.4s ease";
               orbitHint.style.transition = "transform 0.4s ease";
@@ -1833,8 +2401,8 @@
             }
           }
           mower.mesh.rotateOnWorldAxis(turnDir, turn * turnSpeed * dt);
-          mower.setSpeed(move);
-          mower.mesh.position.addScaledVector(dir, move * dt);
+          mower.setSpeed(effectiveMove);
+          mower.mesh.position.addScaledVector(dir, effectiveMove * dt);
           // Keep the mower inside the lawn so it can't cross the surrounding
           // fence. Clamp to the grass patch bounds (minus a small margin so we
           // never ride up over the fence boards).
@@ -1850,23 +2418,11 @@
           // (which uses matrixWorld) matches the mower's real position this frame.
           mower.mesh.updateWorldMatrix(true, false);
 
-          // Headlamp: on once it's dark (22:00 onward through the night), off
-          // once the reveal fires (the moon sun re-takes over). It rides the
-          // mower, looking down and forward.
-          const lampOn = !revealFired && (time.hour >= 22 || time.hour < 6);
-          headlamp.intensity = lampOn ? 3.5 : 0;
-          if (lampOn) {
-            headlamp.position.copy(mower.mesh.position);
-            headlamp.position.y += 1.4; // ride just above the handle
-            // Aim down + forward, rotated into world space by the mower's
-            // heading so the beam follows wherever the mower is pointing.
-            const wd = _lampWorld.copy(_lampDir).applyQuaternion(mower.mesh.quaternion);
-            headlamp.target.position.copy(_lampTarget.copy(headlamp.position).addScaledVector(wd, 6));
-          }
-
           // Emit clippings from the reel when moving AND actually cutting grass.
           const reelWorld = mower.mesh.localToWorld(_reelWorld.set(0, 0.1, 0));
-          const right = _right.set(1, 0, 0).applyQuaternion(mower.mesh.quaternion);
+          const right = _right
+            .set(1, 0, 0)
+            .applyQuaternion(mower.mesh.quaternion);
           if (mowerForward && hasCuttableGrass()) {
             clipAccum += dt * 250;
             // The mower and grass state are fixed for the whole frame, so the
@@ -1938,15 +2494,23 @@
             }
             clipEuler.set(p.rx, p.ry, p.rz);
             clipQuat.setFromEuler(clipEuler);
-            clipMat4.compose(_cp.set(p.x, p.y, p.z), clipQuat, _cs.set(p.scale, p.scale, p.scale));
+            clipMat4.compose(
+              _cp.set(p.x, p.y, p.z),
+              clipQuat,
+              _cs.set(p.scale, p.scale, p.scale),
+            );
             _clipArray.set(clipMat4.elements, i * 16);
           }
           clipMesh.instanceMatrix.needsUpdate = true;
         });
 
         // Orbit camera.
-        let theta = 0, phi = Math.PI / 6, radius = 25;
-        let dragging = false, lastX = 0, lastY = 0;
+        let theta = 0,
+          phi = Math.PI / 6,
+          radius = 25;
+        let dragging = false,
+          lastX = 0,
+          lastY = 0;
         const target = new THREE.Vector3(0, 0, 0);
         // Camera mode blend, 0 = first-person (on the mower), 1 = orbit. Eased
         // each frame toward the target so pressing/releasing C glides between
@@ -1960,15 +2524,19 @@
           lastX = e.clientX;
           lastY = e.clientY;
         });
-        window.addEventListener("mouseup", () => { dragging = false; });
+        window.addEventListener("mouseup", () => {
+          dragging = false;
+        });
         window.addEventListener("mousemove", (e) => {
           if (!dragging) return;
           theta -= (e.clientX - lastX) * 0.005;
           // Clamp the camera so it can never dip below 5° above the horizon
           // (elevation = 90° - phi; keep elevation >= 5° => phi <= 85°).
           const MAX_PHI = Math.PI / 2 - THREE.MathUtils.degToRad(5);
-          phi = Math.max(0.05, Math.min(MAX_PHI,
-            phi - (e.clientY - lastY) * 0.005));
+          phi = Math.max(
+            0.05,
+            Math.min(MAX_PHI, phi - (e.clientY - lastY) * 0.005),
+          );
           lastX = e.clientX;
           lastY = e.clientY;
         });
@@ -1976,10 +2544,14 @@
         // camera's distance from the lawn center, so it must stay below where
         // it would reach the walls. Derived from the dome's smaller half-extent.
         const MAX_ZOOM = Math.min(domeW, domeD) / 2 - 1.0;
-        canvas.addEventListener("wheel", (e) => {
-          e.preventDefault();
-          radius = Math.max(3, Math.min(MAX_ZOOM, radius + e.deltaY * 0.03));
-        }, { passive: false });
+        canvas.addEventListener(
+          "wheel",
+          (e) => {
+            e.preventDefault();
+            radius = Math.max(3, Math.min(MAX_ZOOM, radius + e.deltaY * 0.03));
+          },
+          { passive: false },
+        );
 
         let grassDirty = false;
         let growRate = 0.005;
@@ -2022,17 +2594,29 @@
             const n = clampInt(Number(nEl.value), 1, 10000);
             totalEl.textContent = `${(c * r * n).toLocaleString()} blades`;
           };
-          [colsEl, rowsEl, nEl].forEach((i) => i.addEventListener("input", upd));
+          [colsEl, rowsEl, nEl].forEach((i) =>
+            i.addEventListener("input", upd),
+          );
           upd();
           el("density-apply").addEventListener("click", () => {
-            localStorage.setItem("mow-cols", String(clampInt(Number(colsEl.value), 1, 20)));
-            localStorage.setItem("mow-rows", String(clampInt(Number(rowsEl.value), 1, 20)));
-            localStorage.setItem("mow-n", String(clampInt(Number(nEl.value), 1, 10000)));
+            localStorage.setItem(
+              "mow-cols",
+              String(clampInt(Number(colsEl.value), 1, 20)),
+            );
+            localStorage.setItem(
+              "mow-rows",
+              String(clampInt(Number(rowsEl.value), 1, 20)),
+            );
+            localStorage.setItem(
+              "mow-n",
+              String(clampInt(Number(nEl.value), 1, 10000)),
+            );
             location.reload();
           });
         }
         sim.addEntity(null, null, (dt) => {
-          if (swaying) swayUniforms.uTime.value = (swayUniforms.uTime.value + dt) % 1000;
+          if (swaying)
+            swayUniforms.uTime.value = (swayUniforms.uTime.value + dt) % 1000;
           // Cut any blades under the mower's reel, then grow the lawn back.
           grassDirty = false;
           // Cut: only test blades in the grid cells under the reel. Trim any
@@ -2043,8 +2627,10 @@
             visitCutArea(CUT_HALF_W, CUT_HALF_D, 0, (i) => {
               if (bladeGrowth[i] > bladeMinGrowth[i]) {
                 localPos.copy(bladePos[i]).applyMatrix4(invMower);
-                if (Math.abs(localPos.x) < CUT_HALF_W &&
-                    Math.abs(localPos.z) < CUT_HALF_D) {
+                if (
+                  Math.abs(localPos.x) < CUT_HALF_W &&
+                  Math.abs(localPos.z) < CUT_HALF_D
+                ) {
                   bladeGrowth[i] = bladeMinGrowth[i];
                   growthArr[i] = bladeMinGrowth[i]; // no sway when just cut
                   growthAttr.needsUpdate = true;
@@ -2097,8 +2683,10 @@
             for (const d of dandelions) {
               if (d.grown && !d.folding) {
                 localPos.set(d.x, 0, d.z).applyMatrix4(invMower);
-                if (Math.abs(localPos.x) < CUT_HALF_W &&
-                    Math.abs(localPos.z) < CUT_HALF_D) {
+                if (
+                  Math.abs(localPos.x) < CUT_HALF_W &&
+                  Math.abs(localPos.z) < CUT_HALF_D
+                ) {
                   // Seed-phase dandelions release their seeds partway through
                   // the fold (see the fold loop below) so the head + stalks
                   // visibly fold down first — not an instant despawn.
@@ -2131,6 +2719,9 @@
             if (d.regrowT <= 0) {
               d.ent.mesh.quaternion.setFromEuler(d.baseEuler); // stand upright again
               d.ent.mesh.visible = true;
+              // Pop up out of the ground over ~0.25s, same as the intro.
+              d.pop = 0;
+              d.ent.mesh.position.y = -0.8;
               d.grown = true;
               d.puffed = false; // re-armed: can puff again next time it's mowed
               d.shouldPuff = false;
@@ -2183,6 +2774,16 @@
               d.regrowT = 3 + Math.random() * 7; // random 3-10s before return
             }
           }
+          // Rise any dandelion that's currently popping out of the ground.
+          // `pop` advances 0..1; the stalk y is parked at -0.8 below ground and
+          // climbs to 0 (its rest height) over ~0.25s. Set when a flower spawns
+          // or regrows; drives the same pop-up as the initial boot.
+          for (const d of dandelions) {
+            if (d.pop !== undefined && d.pop < 1) {
+              d.pop = Math.min(1, d.pop + dt / 0.25);
+              d.ent.mesh.position.y = -0.8 * (1 - d.pop);
+            }
+          }
 
           // Camera: first-person by default, riding the mower's handle (facing
           // the mower's forward vector, just back from the reel); hold C to
@@ -2190,21 +2791,31 @@
           // first-person (touch steering turns the view). The two views are
           // computed each frame and blended together so the camera eases
           // smoothly between first-person and orbit rather than snapping.
-          camBlend += (camBlendTarget - camBlend) *
-            Math.min(1, dt * CAM_BLEND_K);
+          camBlend +=
+            (camBlendTarget - camBlend) * Math.min(1, dt * CAM_BLEND_K);
           const blend = camBlend;
 
           // First-person pose on the mower's handle.
-          const gripY = MOWER.wheelRadius +
+          const gripY =
+            MOWER.wheelRadius +
             MOWER.handleLength * Math.cos(MOWER.handleAngle);
           const gripZ = MOWER.handleLength * Math.sin(MOWER.handleAngle);
-          _fpMount.set(0,
+          _fpMount.set(
+            0,
             MOWER.wheelRadius + (gripY - MOWER.wheelRadius) * 1.5,
-            gripZ * 1.5 + fwdOffset);
+            gripZ * 1.5 + fwdOffset,
+          );
           mower.mesh.updateWorldMatrix(true, false);
           _fpWorld.copy(mower.mesh.localToWorld(_fpMount));
           _fpQuat.copy(mower.mesh.quaternion);
-          _fpQuat.multiply(_fpPitch.setFromAxisAngle(_fpAxis.set(1, 0, 0), gazePitch));
+          // If the blast is active, add the upward look-kick to the pitch.
+          const kickNow = kickEnv(kickElapsed);
+          _fpQuat.multiply(
+            _fpPitch.setFromAxisAngle(
+              _fpAxis.set(1, 0, 0),
+              gazePitch + kickNow * KICK_PITCH,
+            ),
+          );
 
           // Orbit pose around the lawn target.
           radius = Math.max(3, Math.min(MAX_ZOOM, radius));
@@ -2228,12 +2839,23 @@
             sim.camera.position.lerpVectors(_fpWorld, _tmpOrb, blend);
             sim.camera.quaternion.slerpQuaternions(_fpQuat, _orbQuat, blend);
           }
+
+          // Advance (and apply) the blast camera kick: widen the FOV toward
+          // 120° by the envelope, returning to the slider value once it settles.
+          kickElapsed += dt * 1000;
+          const baseFov = parseFloat(fovSlider.value);
+          const kickFovNow = kickEnv(kickElapsed);
+          if (kickFovNow > 0) {
+            sim.camera.fov = baseFov + (KICK_TARGET_FOV - baseFov) * kickFovNow;
+            sim.camera.updateProjectionMatrix();
+          }
         });
 
         // Lawn bounds used by all creatures.
-        const bx = (COLS * W) / 2 - 1, bz = (ROWS * D) / 2 - 1;
+        const bx = (COLS * W) / 2 - 1,
+          bz = (ROWS * D) / 2 - 1;
         const mowerPos = new THREE.Vector3();
-        let creaturesEnabled = true;
+        let creaturesEnabled = false; // boot hidden; the intro toggles them on
 
         // --- Flying bugs: midges that hover and flit around the lawn ---
         const BUG_COUNT = isMobile ? 8 : 20;
@@ -2246,8 +2868,14 @@
         });
         const fliesSleeping = { value: false };
         const fliesLife = {
-          sleep() { fliesSleeping.value = true; flies.mesh.visible = false; },
-          wake() { fliesSleeping.value = false; flies.mesh.visible = creaturesEnabled; },
+          sleep() {
+            fliesSleeping.value = true;
+            flies.mesh.visible = false;
+          },
+          wake() {
+            fliesSleeping.value = false;
+            flies.mesh.visible = creaturesEnabled;
+          },
         };
 
         sim.addEntity(null, null, () => {
@@ -2326,7 +2954,10 @@
                   Math.random() * 2 - 1,
                 ).normalize();
                 b.antiAngle = 0;
-                b.antiRate = (Math.random() < 0.5 ? 1 : -1) * 3 * (0.4 + Math.random() * 0.6);
+                b.antiRate =
+                  (Math.random() < 0.5 ? 1 : -1) *
+                  3 *
+                  (0.4 + Math.random() * 0.6);
                 b.antiDir = new THREE.Vector3(
                   Math.random() * 2 - 1,
                   Math.random() * 2 - 1,
@@ -2367,12 +2998,16 @@
               // flight ends).
               const dx = b.x - mowerPos.x;
               const dz = b.z - mowerPos.z;
-              if (b.scareCooldown <= 0 && dx * dx + dz * dz < SCARE_R * SCARE_R) {
+              if (
+                b.scareCooldown <= 0 &&
+                dx * dx + dz * dz < SCARE_R * SCARE_R
+              ) {
                 b.scatterT = 1.4;
                 continue;
               }
               // Graceful looping path: drift focus slowly, orbit around it.
-              b.orbit = (b.orbit + dt * (0.8 + Math.random() * 0.4)) % (Math.PI * 2);
+              b.orbit =
+                (b.orbit + dt * (0.8 + Math.random() * 0.4)) % (Math.PI * 2);
               b.cx += (Math.random() - 0.5) * dt * 0.5;
               b.cz += (Math.random() - 0.5) * dt * 0.5;
               let ox = b.cx + Math.cos(b.orbit) * b.orbitR;
@@ -2402,7 +3037,8 @@
                 b.rejoinT -= dt;
                 const tt = Math.max(0, b.rejoinT / 0.6);
                 const e = 1 - tt * tt * (3 - 2 * tt); // 0 -> 1 as we rejoin
-                const fromX = b.x, fromZ = b.z;
+                const fromX = b.x,
+                  fromZ = b.z;
                 b.cx = fromX;
                 b.cz = fromZ;
                 ox = b.cx + Math.cos(b.orbit) * b.orbitR;
@@ -2442,8 +3078,14 @@
             group: ent.mesh,
             ent,
             sleeping: false,
-            sleep() { this.sleeping = true; this.group.visible = false; },
-            wake() { this.sleeping = false; this.group.visible = creaturesEnabled; },
+            sleep() {
+              this.sleeping = true;
+              this.group.visible = false;
+            },
+            wake() {
+              this.sleeping = false;
+              this.group.visible = creaturesEnabled;
+            },
             x,
             z,
             h,
@@ -2452,17 +3094,22 @@
             state: "hover",
             hoverT: 0.8 + Math.random() * 1.4,
             hoverDur: 0,
-            fx: 0, fz: 0, fh: 0, // current flight source
+            fx: 0,
+            fz: 0,
+            fh: 0, // current flight source
             flyT: 0,
             flyDur: 0,
-            tx: 0, tz: 0, th: 0, // destination
+            tx: 0,
+            tz: 0,
+            th: 0, // destination
           });
         }
         // Diurnal: dragonflies sleep through the night too (20h-6h).
         dayCycle.push({ items: dragonflies, wakeHour: 6, sleepHour: 20 });
 
         sim.addEntity(null, null, (dt) => {
-          for (const d of dragonflies) d.group.visible = creaturesEnabled && !d.sleeping;
+          for (const d of dragonflies)
+            d.group.visible = creaturesEnabled && !d.sleeping;
           if (!creaturesEnabled) return;
           for (const d of dragonflies) {
             if (d.sleeping) continue;
@@ -2480,7 +3127,10 @@
                 d.tx = (Math.random() * 2 - 1) * bx;
                 d.tz = (Math.random() * 2 - 1) * bz;
                 d.th = 0.8 + Math.random() * 0.8;
-                const dist = Math.max(0.01, Math.hypot(d.tx - d.fx, d.tz - d.fz));
+                const dist = Math.max(
+                  0.01,
+                  Math.hypot(d.tx - d.fx, d.tz - d.fz),
+                );
                 d.flyDur = 0.1 + dist * 0.05;
                 d.flyT = 0;
                 d.state = "fly";
@@ -2534,13 +3184,21 @@
             mesh: ent.mesh,
             ent,
             sleeping: false,
-            sleep() { this.sleeping = true; this.mesh.visible = false; },
-            wake() { this.sleeping = false; this.mesh.visible = creaturesEnabled; },
+            sleep() {
+              this.sleeping = true;
+              this.mesh.visible = false;
+            },
+            wake() {
+              this.sleeping = false;
+              this.mesh.visible = creaturesEnabled;
+            },
             x: ent.mesh.position.x,
             z: ent.mesh.position.z,
             h: ent.mesh.position.y,
             // Lazy wandering: pick a target and ease toward it very slowly.
-            tx: 0, tz: 0, th: 0,
+            tx: 0,
+            tz: 0,
+            th: 0,
             wanderT: 1 + Math.random() * 2,
             wanderDur: 1,
           });
@@ -2549,7 +3207,8 @@
         dayCycle.push({ items: flySwarms, wakeHour: 6, sleepHour: 20 });
 
         sim.addEntity(null, null, (dt) => {
-          for (const s of flySwarms) s.mesh.visible = creaturesEnabled && !s.sleeping;
+          for (const s of flySwarms)
+            s.mesh.visible = creaturesEnabled && !s.sleeping;
           if (!creaturesEnabled) return;
           for (const s of flySwarms) {
             if (s.sleeping) continue;
@@ -2593,8 +3252,14 @@
             group: ent.mesh,
             ent,
             sleeping: false,
-            sleep() { this.sleeping = true; this.group.visible = false; },
-            wake() { this.sleeping = false; this.group.visible = creaturesEnabled; },
+            sleep() {
+              this.sleeping = true;
+              this.group.visible = false;
+            },
+            wake() {
+              this.sleeping = false;
+              this.group.visible = creaturesEnabled;
+            },
             x,
             z,
             h: FEED_H,
@@ -2603,12 +3268,20 @@
             roll: 0,
             // Feed/fly state machine.
             state: "feed",
-            feedT: (() => { const r = Math.random(); return r < 0.33 ? 0.5 : r < 0.66 ? 1 : 3; })(),
+            feedT: (() => {
+              const r = Math.random();
+              return r < 0.33 ? 0.5 : r < 0.66 ? 1 : 3;
+            })(),
             feedPhase: Math.random() * Math.PI * 2,
-            sx: x, sz: z, sh: FEED_H, // flight start
-            tx: 0, tz: 0, th: FEED_H, // flight target
+            sx: x,
+            sz: z,
+            sh: FEED_H, // flight start
+            tx: 0,
+            tz: 0,
+            th: FEED_H, // flight target
             apex: 3, // apex height of the arc
-            upT: 0.5, downT: 0.5,
+            upT: 0.5,
+            downT: 0.5,
             flyT: 0,
             flyDur: 1,
           });
@@ -2634,10 +3307,20 @@
             group: ent.mesh,
             ent,
             sleeping: false,
-            sleep() { this.sleeping = true; this.group.visible = false; },
-            wake() { this.sleeping = false; this.group.visible = creaturesEnabled; },
-            x, z, h,
-            tx: 0, tz: 0, th: 0,
+            sleep() {
+              this.sleeping = true;
+              this.group.visible = false;
+            },
+            wake() {
+              this.sleeping = false;
+              this.group.visible = creaturesEnabled;
+            },
+            x,
+            z,
+            h,
+            tx: 0,
+            tz: 0,
+            th: 0,
             wanderT: 1 + Math.random() * 2,
           });
         }
@@ -2646,7 +3329,8 @@
         firefliesReady = true;
 
         sim.addEntity(null, null, (dt) => {
-          for (const f of fireflies) f.group.visible = creaturesEnabled && !f.sleeping && !revealFired;
+          for (const f of fireflies)
+            f.group.visible = creaturesEnabled && !f.sleeping && !revealFired;
           if (!creaturesEnabled) return;
           for (const f of fireflies) {
             if (f.sleeping) continue;
@@ -2672,13 +3356,18 @@
         // prevHour == hour on init, so no boundary "crosses" and sleep()/wake()
         // would never fire; instead we set each family's state directly.
         for (const fam of dayCycle) {
-          const w = fam.wakeHour, s = fam.sleepHour;
-          const awake = w < s ? time.hour >= w && time.hour < s : time.hour >= w || time.hour < s;
-          for (const item of fam.items) (awake ? item.wake() : item.sleep());
+          const w = fam.wakeHour,
+            s = fam.sleepHour;
+          const awake =
+            w < s
+              ? time.hour >= w && time.hour < s
+              : time.hour >= w || time.hour < s;
+          for (const item of fam.items) awake ? item.wake() : item.sleep();
         }
 
         sim.addEntity(null, null, (dt) => {
-          for (const b of bees) b.group.visible = creaturesEnabled && !b.sleeping;
+          for (const b of bees)
+            b.group.visible = creaturesEnabled && !b.sleeping;
           if (!creaturesEnabled) return;
           for (const b of bees) {
             if (b.sleeping) continue;
@@ -2711,9 +3400,14 @@
                 if (isS) {
                   // Build the S-curve as an arc-length-sampled polyline so the
                   // snake moves at the same constant speed along its weave.
-                  const dist = Math.max(0.01, Math.hypot(b.tx - b.sx, b.tz - b.sz));
-                  const ux = (b.tx - b.sx) / dist, uz = (b.tz - b.sz) / dist;
-                  const pxx = -uz, pzz = ux; // perpendicular (lateral) axis
+                  const dist = Math.max(
+                    0.01,
+                    Math.hypot(b.tx - b.sx, b.tz - b.sz),
+                  );
+                  const ux = (b.tx - b.sx) / dist,
+                    uz = (b.tz - b.sz) / dist;
+                  const pxx = -uz,
+                    pzz = ux; // perpendicular (lateral) axis
                   const A = 0.9 + Math.random() * 1.3; // lateral amplitude
                   const waves = 2 + Math.random() * 2; // 2-4 full S-waves
                   const N = 120;
@@ -2740,7 +3434,10 @@
                   b.waves = waves;
                   b.flyDur = b.spath.len / BEE_SPEED;
                 } else {
-                  const dist = Math.max(0.01, Math.hypot(b.tx - b.sx, b.tz - b.sz));
+                  const dist = Math.max(
+                    0.01,
+                    Math.hypot(b.tx - b.sx, b.tz - b.sz),
+                  );
                   // Constant flying speed regardless of distance OR apex height:
                   // time each climb/descent leg from its 3D path length (half the
                   // horizontal distance plus the vertical rise), so a short hop
@@ -2772,7 +3469,8 @@
                 // constant speed. Find the point at arc-length fraction t.
                 const cum = b.spath.cum;
                 const target = t * b.spath.len;
-                let lo = 0, hi = cum.length - 1;
+                let lo = 0,
+                  hi = cum.length - 1;
                 while (lo < hi) {
                   const m = (lo + hi) >> 1;
                   if (cum[m] < target) lo = m + 1;
@@ -2816,7 +3514,7 @@
                 // Climb phase, 0..1 through it.
                 const lt = Math.min(1, b.flyT / b.upT);
                 const e = lt * lt * (3 - 2 * lt); // smoothstep
-                const bump = Math.sin(lt * Math.PI / 2); // 0 -> 1 (still rising)
+                const bump = Math.sin((lt * Math.PI) / 2); // 0 -> 1 (still rising)
                 b.x = b.sx + (b.loopCx - b.sx) * e;
                 b.z = b.sz + (b.loopCz - b.sz) * e;
                 b.h = b.sh + (b.apex - b.sh) * bump;
@@ -2829,7 +3527,7 @@
                 // Descend phase, 0..1 through it.
                 const lt = Math.min(1, (b.flyT - b.upT) / b.downT);
                 const e = lt * lt * (3 - 2 * lt); // smoothstep
-                const bump = Math.cos(lt * Math.PI / 2); // 1 -> 0 (descending)
+                const bump = Math.cos((lt * Math.PI) / 2); // 1 -> 0 (descending)
                 b.x = b.loopCx + (b.tx - b.loopCx) * e;
                 b.z = b.loopCz + (b.tz - b.loopCz) * e;
                 b.h = b.sh + (b.apex - b.sh) * bump;
@@ -2880,6 +3578,8 @@
             position: [x, 0, z],
             rotation: [0, Math.random() * Math.PI * 2, 0],
           });
+          ent.mesh.visible = false; // hidden until the intro pops them up one by one
+          ent.mesh.position.y = -0.8; // poised below ground for the pop
           // Precompute a wind-wave per stalk: an oscillation direction (horizontal)
           // and a phase. Rate is shared across a bunch so they sway in step.
           const waves = [];
@@ -2893,18 +3593,193 @@
               baseZ: stalk.rotation.z,
             });
           }
-          dandelions.push({ ent, x, z, flower, grown: true, regrowT: 0, waves,
-            folding: false, foldT: 0, foldAngle: 0, foldAxis: new THREE.Vector3(),
-            puffed: false, shouldPuff: false,
-            baseEuler: ent.mesh.rotation.clone() });
+          dandelions.push({
+            ent,
+            x,
+            z,
+            flower,
+            grown: true,
+            regrowT: 0,
+            waves,
+            folding: false,
+            foldT: 0,
+            foldAngle: 0,
+            foldAxis: new THREE.Vector3(),
+            puffed: false,
+            shouldPuff: false,
+            pop: 1,
+            baseEuler: ent.mesh.rotation.clone(),
+          });
         }
         dandelionsReady = true; // now applySky can drive petal nastic closure
+
+        // --- Boot cinematic driver ---
+        // Plays each "day" (on load and after the doom restart), in order:
+        // grass rises from under the ground (0-3s), dandelions pop up one by one
+        // (3-8s), the walls crossfade to their dawn color (8-9s), and creatures
+        // toggle on instantly (9s). The whole time the walls alternate the boot
+        // messages via paintWallText. startIntro() re-arms the whole sequence
+        // from a blank slate (grass underground, flowers hidden, creatures off).
+        const CREATURE_T = 9,
+          MOWER_FADE = 1;
+        const FLOWER_START = 3,
+          FLOWER_DUR = 5;
+        const DAWN_START = 8,
+          DAWN_FADE = 1;
+        const flowerStarted = new Uint8Array(DANDELION_COUNT);
+        const popProgress = new Float32Array(DANDELION_COUNT);
+        let creaturesRevealed = false;
+        const startIntro = () => {
+          // Grass sinks back under the ground.
+          const arr = grassMesh.instanceMatrix.array;
+          for (let i = 0; i < total; i++) {
+            bladeGrowth[i] = 0;
+            growthArr[i] = 0;
+            arr[i * 16 + 13] = BLADE_HALF * bladeScale[i] * -1;
+          }
+          grassMesh.instanceMatrix.needsUpdate = true;
+          growthAttr.needsUpdate = true;
+          // Flowers hide + sink below ground; creature toggle off.
+          flowerStarted.fill(0);
+          popProgress.fill(0);
+          for (const d of dandelions) {
+            d.ent.mesh.visible = false;
+            d.ent.mesh.position.y = -0.8;
+            d.pop = 0;
+          }
+          creaturesEnabled = false;
+          creaturesRevealed = false;
+          setMowerOpacity(0.0001); // mower hidden until the final init step
+          breachActive = false;
+          breachT = 0;
+          introT = 0;
+          wallsDawn = 0;
+          introActive = true;
+          paintSky(p);
+        };
+        // Jump straight to the fully-initialized end-state (used on first page
+        // load so a newcomer just sees a running mowing sim, no boot cinematic).
+        const completeInit = () => {
+          // Grass: full height.
+          const arr = grassMesh.instanceMatrix.array;
+          for (let i = 0; i < total; i++) {
+            bladeGrowth[i] = 1;
+            growthArr[i] = 1;
+            arr[i * 16 + 13] = 0;
+          }
+          grassMesh.instanceMatrix.needsUpdate = true;
+          growthAttr.needsUpdate = true;
+          // Flowers: all visible at rest height; creatures on; mower opaque.
+          for (const d of dandelions) {
+            d.ent.mesh.visible = true;
+            d.ent.mesh.position.y = 0;
+            d.pop = 1;
+          }
+          creaturesEnabled = true;
+          creaturesRevealed = true;
+          setMowerOpacity(1);
+          breachActive = false;
+          breachT = 0;
+          introT = INTRO_END;
+          wallsDawn = 1;
+          introActive = false;
+          paintSky(p);
+        };
+        sim.addEntity(null, null, (dt) => {
+          if (!introActive) return;
+          introT += dt;
+
+          // 1) Grass: rise 0 -> full height over the first 3 seconds.
+          if (introT < FLOWER_START) {
+            const g = Math.min(1, introT / FLOWER_START);
+            const arr = grassMesh.instanceMatrix.array;
+            for (let i = 0; i < total; i++) {
+              bladeGrowth[i] = g;
+              growthArr[i] = g;
+              arr[i * 16 + 13] = BLADE_HALF * bladeScale[i] * (g - 1);
+            }
+            grassMesh.instanceMatrix.needsUpdate = true;
+            growthAttr.needsUpdate = true;
+          }
+
+          // 2) Dandelions: pop out of the ground one at a time (3-8s).
+          if (introT >= FLOWER_START) {
+            const t = introT - FLOWER_START;
+            const target = Math.min(
+              DANDELION_COUNT,
+              Math.floor((t / FLOWER_DUR) * DANDELION_COUNT) + 1,
+            );
+            for (let i = 0; i < target; i++) {
+              const d = dandelions[i];
+              if (!flowerStarted[i]) {
+                flowerStarted[i] = 1;
+                d.ent.mesh.visible = true;
+                popProgress[i] = 0;
+              }
+              if (popProgress[i] < 1) {
+                popProgress[i] = Math.min(1, popProgress[i] + dt / 0.25);
+                d.ent.mesh.position.y = -0.8 * (1 - popProgress[i]);
+              }
+            }
+            // If the window expires, surface anything still hidden.
+            if (t >= FLOWER_DUR) {
+              for (let i = 0; i < DANDELION_COUNT; i++) {
+                if (!flowerStarted[i]) {
+                  flowerStarted[i] = 1;
+                  dandelions[i].ent.mesh.visible = true;
+                  dandelions[i].ent.mesh.position.y = 0;
+                }
+              }
+            }
+          }
+
+          // 3) Walls: crossfade from grey up to their real palette (8-9s).
+          if (introT >= DAWN_START) {
+            wallsDawn = Math.min(1, (introT - DAWN_START) / DAWN_FADE);
+          }
+
+          // 4) Creatures: snap them all on instantly (9s).
+          if (introT >= CREATURE_T && !creaturesRevealed) {
+            creaturesRevealed = true;
+            creaturesEnabled = true;
+          }
+
+          // 5) The mower itself fades in from transparent to opaque over 1s,
+          // the grand-finale step of initialization (9-10s).
+          if (introT >= CREATURE_T && introT < COUNT_START) {
+            const k = (introT - CREATURE_T) / MOWER_FADE;
+            setMowerOpacity(0.0001 + k * 0.9999);
+          }
+
+          // Repaint the walls (text alternation + grey->dawn) each frame.
+          paintSky(p);
+
+          // 6) Done (after the countdown): hand over to the normal day, which
+          // also unlocks movement (movement is gated on introActive). Now that
+          // the "MOW!" text is gone, show the mobile mow hint.
+          if (introT >= INTRO_END) {
+            introActive = false;
+            wallsDawn = 1;
+            paintSky(p);
+            // Re-arm the dismiss so the first tap AFTER the countdown hides the
+            // hint (a tap during the boot's locked phase shouldn't count).
+            mobileHintHidden = false;
+            if (isMobile) {
+              const hint = document.getElementById("hint");
+              hint.style.display = "block";
+              hint.style.opacity = "0.5";
+              hint.style.fontSize = "0.85rem";
+              hint.style.transition = "";
+            }
+          }
+        });
         // Running total of dandelions mowed down, shown under the title.
         let mowedCount = 0;
         const mowedCountEl = document.getElementById("mowed-count");
         const mowedLabelEl = document.getElementById("mowed-label");
         const updateMowedLabel = () => {
-          mowedLabelEl.textContent = mowedCount === 1 ? "dandelion" : "dandelions";
+          mowedLabelEl.textContent =
+            mowedCount === 1 ? "dandelion" : "dandelions";
         };
         // Fade in + slide a counter element in from the left, once, on its
         // first trigger. Subsequent updates just refresh the number.
@@ -2920,7 +3795,7 @@
         const _foldFwd = new THREE.Vector3();
         const _foldAxis = new THREE.Vector3();
         const _tmpCross = new THREE.Vector3();
-        const FOLD_S = 0.35;      // seconds to fold flat then despawn
+        const FOLD_S = 0.35; // seconds to fold flat then despawn
         const FOLD_ANGLE = Math.PI / 2;
 
         // Creatures checkbox: toggle all bugs (midges, butterflies, dragonflies, swarms).
@@ -2934,10 +3809,14 @@
           creaturesEnabled = creaturesCheckbox.checked;
           flies.mesh.visible = creaturesEnabled && !fliesSleeping.value;
           for (const b of butterflies) b.group.visible = creaturesEnabled;
-          for (const d of dragonflies) d.group.visible = creaturesEnabled && !d.sleeping;
-          for (const s of flySwarms) s.mesh.visible = creaturesEnabled && !s.sleeping;
-          for (const b of bees) b.group.visible = creaturesEnabled && !b.sleeping;
-          for (const f of fireflies) f.group.visible = creaturesEnabled && !f.sleeping && !revealFired;
+          for (const d of dragonflies)
+            d.group.visible = creaturesEnabled && !d.sleeping;
+          for (const s of flySwarms)
+            s.mesh.visible = creaturesEnabled && !s.sleeping;
+          for (const b of bees)
+            b.group.visible = creaturesEnabled && !b.sleeping;
+          for (const f of fireflies)
+            f.group.visible = creaturesEnabled && !f.sleeping && !revealFired;
         };
         creaturesCheckbox.addEventListener("change", applyCreatures);
 
@@ -2950,9 +3829,9 @@
         // Toggle button tucked directly below the FPS counter; hides/shows the
         // extended stats (GC + entity). FPS always stays visible. GC may be
         // null when the heap API is unavailable.
-        const statEls = [gcEnt, entityEnt.element].filter(Boolean).map((e) =>
-          e.element ? e.element : e,
-        );
+        const statEls = [gcEnt, entityEnt.element]
+          .filter(Boolean)
+          .map((e) => (e.element ? e.element : e));
         statEls.forEach((el) => (el.style.display = "none"));
         const statsBtn = document.createElement("button");
         statsBtn.textContent = "[stats]";
@@ -3017,6 +3896,20 @@
         });
         document.body.appendChild(optionsBtn);
         if (isMobile) optionsBtn.style.display = "none";
+
+        // First load: start fully initialized (no boot cinematic) so a newcomer
+        // sees a plain mowing sim; the intro only replays on restart after doom.
+        completeInit();
+        // On mobile the boot hint was hidden at setup; on first load (no intro)
+        // show the "Tap and drag to mow" hint ready for the player.
+        if (isMobile) {
+          mobileHintHidden = false;
+          const hint = document.getElementById("hint");
+          hint.style.display = "block";
+          hint.style.opacity = "0.5";
+          hint.style.fontSize = "0.85rem";
+          hint.style.transition = "";
+        }
       }
 
       setup(sim);
