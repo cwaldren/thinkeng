@@ -31,10 +31,27 @@
         z-index: 10;
       }
 
+      /* Top bar: category tags + search */
+      #topbar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 15;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        background: rgba(20, 20, 26, 0.85);
+        backdrop-filter: blur(4px);
+        border-bottom: 1px solid #2a2a33;
+        padding: 10px;
+      }
+
       /* Sidebar: card list of entities */
       #list {
         left: 0;
         width: 220px;
+        top: 112px;
       }
 
       /* Right panel: live controls for the active entity */
@@ -56,10 +73,17 @@
       }
 
       #filter {
-        margin-bottom: 12px;
-        background: #1a1a20;
-        border: 1px solid #2a2a33;
-        border-radius: 8px;
+        display: flex;
+        gap: 4px;
+        overflow-x: auto;
+        white-space: nowrap;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-x;
+      }
+
+      #filter::-webkit-scrollbar {
+        display: none;
       }
 
       #filter a {
@@ -70,6 +94,7 @@
         font-size: 0.8rem;
         opacity: 0.6;
         border-radius: 6px;
+        flex-shrink: 0;
       }
 
       #filter a.active {
@@ -88,6 +113,10 @@
         border-radius: 8px;
         color: #fff;
         font-size: 0.82rem;
+      }
+
+      #topbar #search {
+        margin-bottom: 0;
       }
 
       #search::placeholder {
@@ -245,6 +274,67 @@
       #copy-config.confirmed {
         background: #33aaff;
       }
+    /* Floating toggle button (mobile only) */
+      #controls-toggle {
+        display: none;
+        position: fixed;
+        right: 12px;
+        bottom: 12px;
+        z-index: 20;
+        padding: 10px 14px;
+        background: #4caf50;
+        border: none;
+        border-radius: 8px;
+        color: #111;
+        font-size: 0.82rem;
+        font-weight: 600;
+        cursor: pointer;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+      }
+
+      @media (max-width: 720px) {
+        #controls {
+          display: block;
+          width: min(280px, 85vw);
+          transform: translateX(100%);
+          transition: transform 0.25s ease;
+          box-shadow: -4px 0 20px rgba(0, 0, 0, 0.4);
+        }
+
+        #controls.expanded {
+          transform: translateX(0);
+        }
+
+        #controls-toggle {
+          display: inline-block;
+        }
+
+        #list {
+          width: max-content;
+          max-width: 55vw;
+          padding-right: 10px;
+        }
+
+        #list .card {
+          width: max-content;
+          max-width: 100%;
+          display: block;
+          padding: 8px 10px;
+        }
+
+        #list h2 {
+          margin: 0 0 8px;
+          font-size: 0.8rem;
+        }
+
+        #topbar {
+          padding: 8px;
+        }
+
+        .card p {
+          display: none;
+        }
+      }
     </style>
 
     <script type="importmap">
@@ -260,8 +350,7 @@
   <body>
     <div id="viewport"></div>
 
-    <aside id="list">
-      <h2>Entities</h2>
+    <div id="topbar">
       <div id="filter">
         <a href="?" data-type="">All</a
         ><a href="?type=insect" data-type="insect">Insects</a
@@ -280,6 +369,10 @@
         placeholder="Search all entities..."
         autocomplete="off"
       />
+    </div>
+
+    <aside id="list">
+      <h2>Entities</h2>
     </aside>
 
     <aside id="controls">
@@ -287,6 +380,8 @@
       <button id="copy-config" type="button">Copy config</button>
       <div id="controls-form"></div>
     </aside>
+
+    <button id="controls-toggle" type="button">Options</button>
 
     <script type="module">
       import { Simulation } from "engine/core.js";
@@ -409,6 +504,7 @@
       const listEl = document.getElementById("list");
       const controlsPanel = document.getElementById("controls");
       const controlsForm = document.getElementById("controls-form");
+      const controlsToggle = document.getElementById("controls-toggle");
       const searchInput = document.getElementById("search");
       // Restore the search term from the URL so a search view survives reload.
       let searchTerm =
@@ -436,6 +532,13 @@
 
       let active = null; // { entry, values }
       let liveEntity = null;
+
+      // Mobile: the controls panel is collapsed by default; the floating
+      // toggle opens/closes it. Selecting an entity only opens it on desktop.
+      controlsToggle.addEventListener("click", () => {
+        const expanded = controlsPanel.classList.toggle("expanded");
+        controlsToggle.textContent = expanded ? "Close" : "Options";
+      });
 
       const INPUT_TYPES = { color: "color", vector: "text", text: "text", boolean: "checkbox" };
 
