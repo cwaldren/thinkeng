@@ -15,7 +15,7 @@ import {
 } from "engine/components.js";
 
 export function buildCreatures(sim, ctx, env) {
-  const isMobile = ctx.isMobile;
+  const isMobile = ctx.env.isMobile;
   const { COLS, ROWS } = ctx.density;
   const W = ctx.density.W;
   const D = ctx.density.D;
@@ -25,9 +25,9 @@ export function buildCreatures(sim, ctx, env) {
   // Lawn bounds used by all creatures.
   const bx = (COLS * W) / 2 - 1,
     bz = (ROWS * D) / 2 - 1;
-  ctx.bx = bx;
-  ctx.bz = bz;
-  const mowerPos = ctx.mowerPos;
+  ctx.creatures.bx = bx;
+  ctx.creatures.bz = bz;
+  const mowerPos = ctx.creatures.mowerPos;
 
   // --- Running total of dandelions mowed down, shown under the title ---
   let mowedCount = 0;
@@ -44,11 +44,11 @@ export function buildCreatures(sim, ctx, env) {
     el.style.opacity = "1";
     el.style.transform = "translateX(0)";
   };
-  ctx.mowedCount = () => mowedCount;
-  ctx.mowedCountEl = mowedCountEl;
-  ctx.mowedLabelEl = mowedLabelEl;
-  ctx.updateMowedLabel = updateMowedLabel;
-  ctx.revealCounter = revealCounter;
+  ctx.creatures.mowedCount = () => mowedCount;
+  ctx.creatures.mowedCountEl = mowedCountEl;
+  ctx.creatures.mowedLabelEl = mowedLabelEl;
+  ctx.creatures.updateMowedLabel = updateMowedLabel;
+  ctx.creatures.revealCounter = revealCounter;
   // Mower module needs to increment the live count; expose a small setter.
   const bumpMowed = () => {
     mowedCount += 1;
@@ -56,7 +56,7 @@ export function buildCreatures(sim, ctx, env) {
     updateMowedLabel();
     revealCounter(mowedCountEl.parentElement);
   };
-  ctx.bumpMowed = bumpMowed;
+  ctx.creatures.bumpMowed = bumpMowed;
 
   // --- Flying bugs: midges that hover and flit around the lawn ---
   const BUG_COUNT = isMobile ? C.flies.mobile : C.flies.desktop;
@@ -75,16 +75,16 @@ export function buildCreatures(sim, ctx, env) {
     },
     wake() {
       fliesSleeping.value = false;
-      flies.mesh.visible = ctx.creaturesEnabled;
+      flies.mesh.visible = ctx.flow.creaturesEnabled;
     },
   };
 
   sim.addEntity(null, null, () => {
-    flies.mesh.visible = ctx.creaturesEnabled && !fliesSleeping.value;
+    flies.mesh.visible = ctx.flow.creaturesEnabled && !fliesSleeping.value;
   });
 
   // Diurnal: midges sleep through the night (20h-6h).
-  ctx.dayCycle.push({
+  ctx.creatures.dayCycle.push({
     items: [fliesLife],
     wakeHour: C.day.wake,
     sleepHour: C.day.sleep,
@@ -133,13 +133,13 @@ export function buildCreatures(sim, ctx, env) {
   }
 
   sim.addEntity(null, null, (dt) => {
-    for (const b of butterflies) b.group.visible = ctx.creaturesEnabled;
-    if (!ctx.creaturesEnabled) return;
+    for (const b of butterflies) b.group.visible = ctx.flow.creaturesEnabled;
+    if (!ctx.flow.creaturesEnabled) return;
     mowerPos.copy(ctx.mower.mesh.position);
     for (const b of butterflies) {
       b.ent.setFlapSpeed(b.scatterT > 0 ? 42 : b.flapSpeed + b.flapBoost);
 
-      if (ctx.revealFired) {
+      if (ctx.flow.revealFired) {
         b.ent.setFlapSpeed(0);
         if (!b.antiAxis) {
           b.antiAxis = new THREE.Vector3(
@@ -258,7 +258,7 @@ export function buildCreatures(sim, ctx, env) {
       },
       wake() {
         this.sleeping = false;
-        this.group.visible = ctx.creaturesEnabled;
+        this.group.visible = ctx.flow.creaturesEnabled;
       },
       x,
       z,
@@ -277,12 +277,12 @@ export function buildCreatures(sim, ctx, env) {
       th: 0,
     });
   }
-  ctx.dayCycle.push({ items: dragonflies, wakeHour: C.day.wake, sleepHour: C.day.sleep });
+  ctx.creatures.dayCycle.push({ items: dragonflies, wakeHour: C.day.wake, sleepHour: C.day.sleep });
 
   sim.addEntity(null, null, (dt) => {
     for (const d of dragonflies)
-      d.group.visible = ctx.creaturesEnabled && !d.sleeping;
-    if (!ctx.creaturesEnabled) return;
+      d.group.visible = ctx.flow.creaturesEnabled && !d.sleeping;
+    if (!ctx.flow.creaturesEnabled) return;
     for (const d of dragonflies) {
       if (d.sleeping) continue;
       if (d.state === "hover") {
@@ -351,7 +351,7 @@ export function buildCreatures(sim, ctx, env) {
       },
       wake() {
         this.sleeping = false;
-        this.mesh.visible = ctx.creaturesEnabled;
+        this.mesh.visible = ctx.flow.creaturesEnabled;
       },
       x: ent.mesh.position.x,
       z: ent.mesh.position.z,
@@ -363,12 +363,12 @@ export function buildCreatures(sim, ctx, env) {
       wanderDur: 1,
     });
   }
-  ctx.dayCycle.push({ items: flySwarms, wakeHour: C.day.wake, sleepHour: C.day.sleep });
+  ctx.creatures.dayCycle.push({ items: flySwarms, wakeHour: C.day.wake, sleepHour: C.day.sleep });
 
   sim.addEntity(null, null, (dt) => {
     for (const s of flySwarms)
-      s.mesh.visible = ctx.creaturesEnabled && !s.sleeping;
-    if (!ctx.creaturesEnabled) return;
+      s.mesh.visible = ctx.flow.creaturesEnabled && !s.sleeping;
+    if (!ctx.flow.creaturesEnabled) return;
     for (const s of flySwarms) {
       if (s.sleeping) continue;
       s.wanderT -= dt;
@@ -410,7 +410,7 @@ export function buildCreatures(sim, ctx, env) {
       },
       wake() {
         this.sleeping = false;
-        this.group.visible = ctx.creaturesEnabled;
+        this.group.visible = ctx.flow.creaturesEnabled;
       },
       x,
       z,
@@ -437,7 +437,7 @@ export function buildCreatures(sim, ctx, env) {
       flyDur: 1,
     });
   }
-  ctx.dayCycle.push({ items: bees, wakeHour: C.day.wake, sleepHour: C.day.sleep });
+  ctx.creatures.dayCycle.push({ items: bees, wakeHour: C.day.wake, sleepHour: C.day.sleep });
 
   // --- Fireflies: nocturnal — emerge at dusk, blink through the night ---
   const FIREFLY_COUNT = isMobile ? C.fireflies.mobile : C.fireflies.desktop;
@@ -460,7 +460,7 @@ export function buildCreatures(sim, ctx, env) {
       },
       wake() {
         this.sleeping = false;
-        this.group.visible = ctx.creaturesEnabled;
+        this.group.visible = ctx.flow.creaturesEnabled;
       },
       x,
       z,
@@ -471,14 +471,14 @@ export function buildCreatures(sim, ctx, env) {
       wanderT: 1 + Math.random() * 2,
     });
   }
-  ctx.dayCycle.push({ items: fireflies, wakeHour: C.night.wake, sleepHour: C.night.sleep });
-  ctx.firefliesReady = true;
-  ctx.fireflies = fireflies;
+  ctx.creatures.dayCycle.push({ items: fireflies, wakeHour: C.night.wake, sleepHour: C.night.sleep });
+  ctx.creatures.firefliesReady = true;
+  ctx.creatures.fireflies = fireflies;
 
   sim.addEntity(null, null, (dt) => {
     for (const f of fireflies)
-      f.group.visible = ctx.creaturesEnabled && !f.sleeping && !ctx.revealFired;
-    if (!ctx.creaturesEnabled) return;
+      f.group.visible = ctx.flow.creaturesEnabled && !f.sleeping && !ctx.flow.revealFired;
+    if (!ctx.flow.creaturesEnabled) return;
     for (const f of fireflies) {
       if (f.sleeping) continue;
       f.wanderT -= dt;
@@ -548,15 +548,15 @@ export function buildCreatures(sim, ctx, env) {
       baseEuler: ent.mesh.rotation.clone(),
     });
   }
-  ctx.dandelions = dandelions;
-  ctx.dandelionsReady = true; // now applySky can drive petal nastic closure
-  ctx.flowerStarted = new Uint8Array(DANDELION_COUNT);
-  ctx.popProgress = new Float32Array(DANDELION_COUNT);
+  ctx.creatures.dandelions = dandelions;
+  ctx.creatures.dandelionsReady = true; // now applySky can drive petal nastic closure
+  ctx.creatures.flowerStarted = new Uint8Array(DANDELION_COUNT);
+  ctx.creatures.popProgress = new Float32Array(DANDELION_COUNT);
 
   // Sync initial sleep/wake state to the current hour so a page loaded at
   // night starts the diurnal families already asleep. dispatch lets prevHour
   // == hour on init, so no boundary "crosses" fire; set state directly.
-  for (const fam of ctx.dayCycle) {
+  for (const fam of ctx.creatures.dayCycle) {
     const w = fam.wakeHour,
       s = fam.sleepHour;
     const awake =
@@ -569,17 +569,17 @@ export function buildCreatures(sim, ctx, env) {
   // Creatures checkbox: toggle all bugs.
   const creaturesCheckbox = document.getElementById("creatures-checkbox");
   const applyCreatures = () => {
-    ctx.creaturesEnabled = creaturesCheckbox.checked;
-    flies.mesh.visible = ctx.creaturesEnabled && !fliesSleeping.value;
-    for (const b of butterflies) b.group.visible = ctx.creaturesEnabled;
+    ctx.flow.creaturesEnabled = creaturesCheckbox.checked;
+    flies.mesh.visible = ctx.flow.creaturesEnabled && !fliesSleeping.value;
+    for (const b of butterflies) b.group.visible = ctx.flow.creaturesEnabled;
     for (const d of dragonflies)
-      d.group.visible = ctx.creaturesEnabled && !d.sleeping;
+      d.group.visible = ctx.flow.creaturesEnabled && !d.sleeping;
     for (const s of flySwarms)
-      s.mesh.visible = ctx.creaturesEnabled && !s.sleeping;
+      s.mesh.visible = ctx.flow.creaturesEnabled && !s.sleeping;
     for (const b of bees)
-      b.group.visible = ctx.creaturesEnabled && !b.sleeping;
+      b.group.visible = ctx.flow.creaturesEnabled && !b.sleeping;
     for (const f of fireflies)
-      f.group.visible = ctx.creaturesEnabled && !f.sleeping && !ctx.revealFired;
+      f.group.visible = ctx.flow.creaturesEnabled && !f.sleeping && !ctx.flow.revealFired;
   };
   creaturesCheckbox.addEventListener("change", applyCreatures);
 

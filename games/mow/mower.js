@@ -8,7 +8,7 @@ import { createLawnmower } from "engine/components.js";
 import { CONFIG } from "./config.js";
 
 export function buildMower(sim, ctx, env) {
-  const isMobile = ctx.isMobile;
+  const isMobile = ctx.env.isMobile;
   const grass = ctx.grass;
   const C = CONFIG;
 
@@ -49,7 +49,7 @@ export function buildMower(sim, ctx, env) {
       }
     });
   };
-  ctx.setMowerOpacity = setMowerOpacity;
+  ctx.mower.setOpacity = setMowerOpacity;
   setMowerOpacity(0.0001); // boot: starts transparent, fades in at init end
 
   // --- Cut footprint + grow bookkeeping ---
@@ -81,7 +81,7 @@ export function buildMower(sim, ctx, env) {
 
   const hasCuttableGrass = () => {
     invMower.copy(mower.mesh.matrixWorld).invert();
-    return ctx.visitCutArea(CUT_HALF_W, CUT_HALF_D, 0, (i) => {
+    return ctx.env.visitCutArea(CUT_HALF_W, CUT_HALF_D, 0, (i) => {
       if (grass.bladeGrowth[i] <= bladeMinGrowth[i]) return false;
       localPos.copy(grass.bladePos[i]).applyMatrix4(invMower);
       if (
@@ -102,7 +102,7 @@ export function buildMower(sim, ctx, env) {
     invMower.copy(mower.mesh.matrixWorld).invert();
     let sum = 0,
       count = 0;
-    ctx.visitCutArea(SAMPLE_HALF_W, SAMPLE_HALF_D, SAMPLE_OFF_Z, (i) => {
+    ctx.env.visitCutArea(SAMPLE_HALF_W, SAMPLE_HALF_D, SAMPLE_OFF_Z, (i) => {
       if (grass.bladeGrowth[i] <= bladeMinGrowth[i]) return false;
       localPos.copy(grass.bladePos[i]).applyMatrix4(invMower);
       if (
@@ -234,7 +234,7 @@ export function buildMower(sim, ctx, env) {
   };
   // Toggle the orbit camera + dismiss the hint on the Space action (edge).
   const maybeOrbit = () => {
-    ctx.camBlendTarget = ctx.camBlendTarget > 0.5 ? 0 : 1;
+    ctx.camera.camBlendTarget = ctx.camera.camBlendTarget > 0.5 ? 0 : 1;
     dismissOrbit();
   };
 
@@ -270,7 +270,7 @@ export function buildMower(sim, ctx, env) {
   };
   let mobileHintHidden = false;
   // Re-arm the dismiss so the first tap AFTER the countdown hides the hint.
-  ctx.rearmMobileHint = () => {
+  ctx.mower.rearmMobileHint = () => {
     mobileHintHidden = false;
     if (isMobile) {
       const hint = document.getElementById("hint");
@@ -302,7 +302,7 @@ export function buildMower(sim, ctx, env) {
   const target = new THREE.Vector3(0, 0, 0);
   const CAM_BLEND_K = C.camera.blendK;
   const MAX_ZOOM =
-    Math.min(ctx.lawnHalfW, ctx.lawnHalfD) +
+    Math.min(ctx.env.lawnHalfW, ctx.env.lawnHalfD) +
     C.camera.orbitWallMargin -
     C.camera.orbitMaxMargin;
 
@@ -316,11 +316,11 @@ export function buildMower(sim, ctx, env) {
   });
   window.addEventListener("mousemove", (e) => {
     if (!dragging) return;
-    ctx.theta -= (e.clientX - lastX) * 0.005;
+    ctx.camera.theta -= (e.clientX - lastX) * 0.005;
     const MAX_PHI = Math.PI / 2 - THREE.MathUtils.degToRad(5);
-    ctx.phi = Math.max(
+    ctx.camera.phi = Math.max(
       0.05,
-      Math.min(MAX_PHI, ctx.phi - (e.clientY - lastY) * 0.005),
+      Math.min(MAX_PHI, ctx.camera.phi - (e.clientY - lastY) * 0.005),
     );
     lastX = e.clientX;
     lastY = e.clientY;
@@ -329,7 +329,7 @@ export function buildMower(sim, ctx, env) {
     "wheel",
     (e) => {
       e.preventDefault();
-      ctx.radius = Math.max(3, Math.min(MAX_ZOOM, ctx.radius + e.deltaY * 0.03));
+      ctx.camera.radius = Math.max(3, Math.min(MAX_ZOOM, ctx.camera.radius + e.deltaY * 0.03));
     },
     { passive: false },
   );
@@ -363,7 +363,7 @@ export function buildMower(sim, ctx, env) {
         : shifting
           ? C.mower.shiftTurnSpeed
           : C.mower.turnSpeed) * touchSpinBoost;
-    const moveLocked = ctx.introActive ? 0 : move;
+    const moveLocked = ctx.flow.introActive ? 0 : move;
     const effectiveMove = moveLocked;
 
     mowerMoving = v !== 0;
@@ -399,12 +399,12 @@ export function buildMower(sim, ctx, env) {
     mower.setSpeed(effectiveMove);
     mower.mesh.position.addScaledVector(dir, effectiveMove * dt);
     mower.mesh.position.x = Math.max(
-      -ctx.lawnHalfW + ctx.margin,
-      Math.min(ctx.lawnHalfW - ctx.margin, mower.mesh.position.x),
+      -ctx.env.lawnHalfW + ctx.env.margin,
+      Math.min(ctx.env.lawnHalfW - ctx.env.margin, mower.mesh.position.x),
     );
     mower.mesh.position.z = Math.max(
-      -ctx.lawnHalfD + ctx.margin,
-      Math.min(ctx.lawnHalfD - ctx.margin, mower.mesh.position.z),
+      -ctx.env.lawnHalfD + ctx.env.margin,
+      Math.min(ctx.env.lawnHalfD - ctx.env.margin, mower.mesh.position.z),
     );
     mower.mesh.updateWorldMatrix(true, false);
 
@@ -455,7 +455,7 @@ export function buildMower(sim, ctx, env) {
         continue;
       }
       p.life += dt;
-      if (ctx.gravityOn) {
+      if (ctx.flow.gravityOn) {
         p.vy -= C.mower.clipGravity * dt;
       } else {
         p.vy *= Math.max(0, 1 - 6 * dt);
@@ -466,7 +466,7 @@ export function buildMower(sim, ctx, env) {
       p.rx += p.wrx * dt;
       p.ry += p.wry * dt;
       p.rz += p.wrz * dt;
-      if (p.life > (ctx.gravityOn ? 0.9 : 20) || p.y < 0.01) {
+      if (p.life > (ctx.flow.gravityOn ? 0.9 : 20) || p.y < 0.01) {
         p.alive = false;
         p.y = -1000;
       }
@@ -482,12 +482,12 @@ export function buildMower(sim, ctx, env) {
     clipMesh.instanceMatrix.needsUpdate = true;
 
     // ---- Grass: sway, then cut + grow ----
-    if (ctx.swaying)
-      ctx.swayUniforms.uTime.value = (ctx.swayUniforms.uTime.value + dt) % 1000;
-    ctx.grassDirty = false;
+    if (ctx.flow.swaying)
+      ctx.grass.swayUniforms.uTime.value = (ctx.grass.swayUniforms.uTime.value + dt) % 1000;
+    ctx.grass.grassDirty = false;
     invMower.copy(mower.mesh.matrixWorld).invert();
     if (mowerForward) {
-      ctx.visitCutArea(CUT_HALF_W, CUT_HALF_D, 0, (i) => {
+      ctx.env.visitCutArea(CUT_HALF_W, CUT_HALF_D, 0, (i) => {
         if (grass.bladeGrowth[i] > bladeMinGrowth[i]) {
           localPos.copy(grass.bladePos[i]).applyMatrix4(invMower);
           if (
@@ -508,13 +508,13 @@ export function buildMower(sim, ctx, env) {
     for (let k = 0; k < growList.length; ) {
       const i = growList[k];
       grass.bladeGrowth[i] = Math.min(
-        grass.bladeGrowth[i] + dt * ctx.growRate,
+        grass.bladeGrowth[i] + dt * ctx.grass.growRate,
         1,
       );
       grassArr[i * 16 + 13] =
         grass.half * grass.bladeScale[i] * (grass.bladeGrowth[i] - 1);
       grass.arr[i] = grass.bladeGrowth[i];
-      ctx.grassDirty = true;
+      ctx.grass.grassDirty = true;
       growthNeedsUpdate = true;
       if (grass.bladeGrowth[i] >= 1) {
         const last = growList.pop();
@@ -527,7 +527,7 @@ export function buildMower(sim, ctx, env) {
         k++;
       }
     }
-    if (ctx.grassDirty) {
+    if (ctx.grass.grassDirty) {
       grass.mesh.instanceMatrix.needsUpdate = true;
       if (growthNeedsUpdate) {
         grass.attr.needsUpdate = true;
@@ -543,7 +543,7 @@ export function buildMower(sim, ctx, env) {
     const _tmpCross = new THREE.Vector3();
     invMower.copy(mower.mesh.matrixWorld).invert();
     if (mowerForward) {
-      for (const d of ctx.dandelions) {
+      for (const d of ctx.creatures.dandelions) {
         if (d.grown && !d.folding) {
           localPos.set(d.x, 0, d.z).applyMatrix4(invMower);
           if (
@@ -551,7 +551,7 @@ export function buildMower(sim, ctx, env) {
             Math.abs(localPos.z) < CUT_HALF_D
           ) {
             if (!d.flower) d.shouldPuff = true;
-            ctx.bumpMowed();
+            ctx.creatures.bumpMowed();
             d.folding = true;
             d.foldT = 0;
             _foldFwd.set(0, 0, -1).applyQuaternion(mower.mesh.quaternion);
@@ -564,7 +564,7 @@ export function buildMower(sim, ctx, env) {
         }
       }
     }
-    for (const d of ctx.dandelions) {
+    for (const d of ctx.creatures.dandelions) {
       if (d.grown) continue;
       d.regrowT -= dt;
       if (d.regrowT <= 0) {
@@ -580,9 +580,9 @@ export function buildMower(sim, ctx, env) {
     }
 
     // Dandelions wave in the wind like the grass.
-    if (ctx.swaying) {
-      const t = ctx.swayUniforms.uTime.value;
-      for (const d of ctx.dandelions) {
+    if (ctx.flow.swaying) {
+      const t = ctx.grass.swayUniforms.uTime.value;
+      for (const d of ctx.creatures.dandelions) {
         if (!d.grown || d.folding) continue;
         for (let i = 0; i < d.waves.length; i++) {
           const w = d.waves[i];
@@ -595,11 +595,11 @@ export function buildMower(sim, ctx, env) {
     }
 
     // Fold-over: a mowed dandelion rotates flat then despawns.
-    for (const d of ctx.dandelions) {
+    for (const d of ctx.creatures.dandelions) {
       if (!d.folding) continue;
-      d.foldT = Math.min(1, d.foldT + dt / ctx.FOLD_S);
+      d.foldT = Math.min(1, d.foldT + dt / ctx.creatures.FOLD_S);
       const e = 1 - (1 - d.foldT) * (1 - d.foldT);
-      const ang = ctx.FOLD_ANGLE * e;
+      const ang = ctx.creatures.FOLD_ANGLE * e;
       if (d.shouldPuff && !d.puffed && e >= 0.6) {
         d.puffed = true;
         d.ent.puff();
@@ -619,7 +619,7 @@ export function buildMower(sim, ctx, env) {
       }
     }
     // Rise any dandelion currently popping out of the ground.
-    for (const d of ctx.dandelions) {
+    for (const d of ctx.creatures.dandelions) {
       if (d.pop !== undefined && d.pop < 1) {
         d.pop = Math.min(1, d.pop + dt / 0.25);
         d.ent.mesh.position.y = -0.8 * (1 - d.pop);
@@ -627,8 +627,8 @@ export function buildMower(sim, ctx, env) {
     }
 
     // ---- Camera: blend first-person (on the mower handle) and orbit ----
-    ctx.camBlend += (ctx.camBlendTarget - ctx.camBlend) * Math.min(1, dt * CAM_BLEND_K);
-    const blend = ctx.camBlend;
+    ctx.camera.camBlend += (ctx.camera.camBlendTarget - ctx.camera.camBlend) * Math.min(1, dt * CAM_BLEND_K);
+    const blend = ctx.camera.camBlend;
 
     const gripY =
       MOWER.wheelRadius + MOWER.handleLength * Math.cos(MOWER.handleAngle);
@@ -636,7 +636,7 @@ export function buildMower(sim, ctx, env) {
     const _fpMount = new THREE.Vector3(
       0,
       MOWER.wheelRadius + (gripY - MOWER.wheelRadius) * 1.5,
-      gripZ * 1.5 + ctx.fwdOffset,
+      gripZ * 1.5 + ctx.camera.fwdOffset,
     );
     const _fpWorld = new THREE.Vector3();
     const _fpQuat = new THREE.Quaternion();
@@ -648,20 +648,20 @@ export function buildMower(sim, ctx, env) {
     mower.mesh.updateWorldMatrix(true, false);
     _fpWorld.copy(mower.mesh.localToWorld(_fpMount));
     _fpQuat.copy(mower.mesh.quaternion);
-    const kickNow = ctx.kickEnv(ctx.kick.elapsed);
+    const kickNow = ctx.camera.kickEnv(ctx.camera.kick.elapsed);
     _fpQuat.multiply(
       _fpPitch.setFromAxisAngle(
         _fpAxis.set(1, 0, 0),
-        ctx.gazePitch + kickNow * ctx.KICK_PITCH,
+        ctx.camera.gazePitch + kickNow * ctx.camera.KICK_PITCH,
       ),
     );
 
-    ctx.radius = Math.max(3, Math.min(MAX_ZOOM, ctx.radius));
-    const sp = Math.sin(ctx.phi);
+    ctx.camera.radius = Math.max(3, Math.min(MAX_ZOOM, ctx.camera.radius));
+    const sp = Math.sin(ctx.camera.phi);
     _tmpOrb.set(
-      target.x + ctx.radius * sp * Math.sin(ctx.theta),
-      target.y + ctx.radius * Math.cos(ctx.phi),
-      target.z + ctx.radius * sp * Math.cos(ctx.theta),
+      target.x + ctx.camera.radius * sp * Math.sin(ctx.camera.theta),
+      target.y + ctx.camera.radius * Math.cos(ctx.camera.phi),
+      target.z + ctx.camera.radius * sp * Math.cos(ctx.camera.theta),
     );
     _orbQuat.setFromRotationMatrix(
       _lookAtM.lookAt(_tmpOrb, target, _fpAxis.set(0, 1, 0)),
@@ -679,11 +679,11 @@ export function buildMower(sim, ctx, env) {
     }
 
     // Advance (and apply) the blast camera kick.
-    ctx.kick.elapsed += dt * 1000;
-    const baseFov = parseFloat(ctx.fovSlider.value);
-    const kickFovNow = ctx.kickEnv(ctx.kick.elapsed);
+    ctx.camera.kick.elapsed += dt * 1000;
+    const baseFov = parseFloat(ctx.camera.fovSlider.value);
+    const kickFovNow = ctx.camera.kickEnv(ctx.camera.kick.elapsed);
     if (kickFovNow > 0) {
-      sim.camera.fov = baseFov + (ctx.KICK_TARGET_FOV - baseFov) * kickFovNow;
+      sim.camera.fov = baseFov + (ctx.camera.KICK_TARGET_FOV - baseFov) * kickFovNow;
       sim.camera.updateProjectionMatrix();
     }
   });
@@ -700,8 +700,8 @@ export function buildMower(sim, ctx, env) {
       cutValueEl.textContent = CUT_HEIGHT.toFixed(2) + "m";
     };
     const applyGrowRate = () => {
-      ctx.growRate = parseFloat(growSlider.value);
-      growValueEl.textContent = ctx.growRate.toFixed(3);
+      ctx.grass.growRate = parseFloat(growSlider.value);
+      growValueEl.textContent = ctx.grass.growRate.toFixed(3);
     };
     cutSlider.addEventListener("input", applyCutHeight);
     growSlider.addEventListener("input", applyGrowRate);

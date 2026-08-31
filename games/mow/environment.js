@@ -14,14 +14,14 @@ export function buildEnvironment(sim, ctx) {
   // overhead, lighting BOTH the moon surface and the Earth. Parallel rays,
   // so the moon's floor (all facing up) is fully lit while the Earth's lower
   // hemisphere falls to a crisp, real day/night terminator.
-  const SUN_INTENSITY = ctx.SUN_INTENSITY;
+  const SUN_INTENSITY = ctx.env.SUN_INTENSITY;
   const sunLight = new THREE.DirectionalLight(C.sun.color, SUN_INTENSITY);
   // Offset toward the horizon so the day/night terminator cuts across the
   // globe at an angle. Parked far away along that direction so rays are
   // effectively parallel.
-  const SUN_FLAT = ctx.SUN_FLAT;
-  const SUN_AZ = ctx.SUN_AZ;
-  const SUN_EL = ctx.SUN_EL;
+  const SUN_FLAT = ctx.env.SUN_FLAT;
+  const SUN_AZ = ctx.env.SUN_AZ;
+  const SUN_EL = ctx.env.SUN_EL;
   let sunAzimuth = SUN_AZ;
   let sunElevation = SUN_EL;
   // Solar declination for the current real-world day, tilting the Earth's
@@ -80,16 +80,16 @@ export function buildEnvironment(sim, ctx) {
   const domeAmbient = new THREE.HemisphereLight(0xbfe3ff, 0x7fb04a, 1.2);
   sim.scene.add(domeAmbient);
 
-  ctx.sunLight = sunLight;
-  ctx.sunAzimuth = sunAzimuth;
-  ctx.sunElevation = sunElevation;
-  ctx.updateSunDir = updateSunDir;
-  ctx.declinationDeg = declinationDeg;
-  ctx._sunDir0Base = _sunDir0Base;
-  ctx._sunDir0 = _sunDir0;
-  ctx.domeSun = domeSun;
-  ctx.domeAmbient = domeAmbient;
-  ctx.SUN_INTENSITY = SUN_INTENSITY;
+  ctx.env.sunLight = sunLight;
+  ctx.env.sunAzimuth = sunAzimuth;
+  ctx.env.sunElevation = sunElevation;
+  ctx.env.updateSunDir = updateSunDir;
+  ctx.env.declinationDeg = declinationDeg;
+  ctx.env._sunDir0Base = _sunDir0Base;
+  ctx.env._sunDir0 = _sunDir0;
+  ctx.env.domeSun = domeSun;
+  ctx.env.domeAmbient = domeAmbient;
+  ctx.env.SUN_INTENSITY = SUN_INTENSITY;
 
   // Dirt patch beneath the lawn (inside the fence): a dirt-brown rectangular
   // plane sitting just above the meadow ground, so the mowable patch reads as
@@ -213,7 +213,7 @@ export function buildEnvironment(sim, ctx) {
     radius: C.earth.radius,
     position: C.earth.position,
   });
-  ctx.earth = earth;
+  ctx.env.earth = earth;
 
   // Star field: tiny points on a huge fixed-radius dome beyond the Earth.
   const SKY_R = C.stars.skyRadius;
@@ -328,7 +328,7 @@ export function buildEnvironment(sim, ctx) {
   // Gentle breeze: sway lives in the vertex shader so it costs nothing on the
   // CPU. Bends in local space, anchored at the base, bound to each blade's
   // height so freshly-cut blades stand still.
-  const swayUniforms = ctx.swayUniforms;
+  const swayUniforms = ctx.grass.swayUniforms;
   bladeMat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = swayUniforms.uTime;
     shader.vertexShader = shader.vertexShader
@@ -518,10 +518,10 @@ export function buildEnvironment(sim, ctx) {
   });
 
   // Publish lawn geometry + grass + grid to the shared context.
-  ctx.lawnHalfW = lawnHalfW;
-  ctx.lawnHalfD = lawnHalfD;
-  ctx.margin = margin;
-  ctx.CELL = CELL;
+  ctx.env.lawnHalfW = lawnHalfW;
+  ctx.env.lawnHalfD = lawnHalfD;
+  ctx.env.margin = margin;
+  ctx.env.CELL = CELL;
   ctx.grass.mesh = grassMesh;
   ctx.grass.attr = growthAttr;
   ctx.grass.arr = growthArr;
@@ -530,7 +530,7 @@ export function buildEnvironment(sim, ctx) {
   ctx.grass.bladeGrowth = bladeGrowth;
   ctx.grass.half = BLADE_HALF;
   ctx.grass.total = total;
-  ctx.visitCutArea = visitCutArea;
+  ctx.env.visitCutArea = visitCutArea;
 
   return {
     sunLight,

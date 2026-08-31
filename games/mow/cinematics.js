@@ -7,12 +7,12 @@ import * as THREE from "three";
 import { CONFIG } from "./config.js";
 
 export function buildCinematics(sim, ctx, env) {
-  const isMobile = ctx.isMobile;
+  const isMobile = ctx.env.isMobile;
   const { COLS, ROWS } = ctx.density;
   const W = ctx.density.W;
   const D = ctx.density.D;
-  const lawnHalfW = ctx.lawnHalfW;
-  const lawnHalfD = ctx.lawnHalfD;
+  const lawnHalfW = ctx.env.lawnHalfW;
+  const lawnHalfD = ctx.env.lawnHalfD;
   const C = CONFIG;
   const dome = C.skyDome;
   const rev = C.reveal;
@@ -70,10 +70,10 @@ export function buildCinematics(sim, ctx, env) {
 
   // Reveal state machine flags (read by other modules via ctx).
   let curtainStarted = false; // reveal act fired once per night
-  let revealFired = ctx.revealFired;
+  let revealFired = ctx.flow.revealFired;
 
-  ctx.swaying = true;
-  ctx.gravityOn = true;
+  ctx.flow.swaying = true;
+  ctx.flow.gravityOn = true;
 
   // Paint the shared gradient palette into a given context.
   const paintGradient = (ctx2d) => {
@@ -86,7 +86,7 @@ export function buildCinematics(sim, ctx, env) {
       top = lerpC(SET_TOP, DUSK_TOP, d);
       hor = lerpC(SET_HOR, DUSK_HOR, d);
     }
-    if (ctx.introActive || wallsDawn < 1) {
+    if (ctx.flow.introActive || wallsDawn < 1) {
       top = lerpC(INTRO_GREY_TOP, top, wallsDawn);
       hor = lerpC(INTRO_GREY_HOR, hor, wallsDawn);
     }
@@ -103,7 +103,7 @@ export function buildCinematics(sim, ctx, env) {
   const paintWallText = () => {
     let msg,
       big = false;
-    if (ctx.introActive) {
+    if (ctx.flow.introActive) {
       if (introT >= COUNT_START) {
         const i = Math.floor(introT - COUNT_START);
         const labels = ["3", "2", "1", "MOW!"];
@@ -395,12 +395,12 @@ export function buildCinematics(sim, ctx, env) {
     return 1 - (el - KICK_RISE_MS - KICK_HOLD_MS) / KICK_FALL_MS;
   };
   const kickStart = () => {
-    ctx.kick.elapsed = 0;
+    ctx.camera.kick.elapsed = 0;
   };
   // Export kick to the shared context so the mower camera can read it.
-  ctx.kickEnv = kickEnv;
-  ctx.KICK_PITCH = KICK_PITCH;
-  ctx.KICK_TARGET_FOV = KICK_TARGET_FOV;
+  ctx.camera.kickEnv = kickEnv;
+  ctx.camera.KICK_PITCH = KICK_PITCH;
+  ctx.camera.KICK_TARGET_FOV = KICK_TARGET_FOV;
 
   // --- Fake dome sun + fill already created by environment; applySky drives
   // their intensity/color as the fake-sky time advances ---
@@ -426,32 +426,32 @@ export function buildCinematics(sim, ctx, env) {
     if (isNight) {
       if (!curtainStarted) {
         curtainStarted = true;
-        ctx.curtainStarted = true;
-        if (ctx.sunLight) ctx.sunLight.intensity = ctx.SUN_INTENSITY;
-        ctx.swaying = false;
-        ctx.gravityOn = false;
+        ctx.flow.curtainStarted = true;
+        if (ctx.env.sunLight) ctx.env.sunLight.intensity = ctx.env.SUN_INTENSITY;
+        ctx.flow.swaying = false;
+        ctx.flow.gravityOn = false;
         if (!revealFired) {
           revealFired = true;
-          ctx.revealFired = true;
+          ctx.flow.revealFired = true;
           positionEarth();
-          ctx.earth.globe.rotation.y = 0;
-          if (ctx.earth.children) {
-            for (const c of ctx.earth.children) {
-              if (c !== ctx.earth.globe) c.rotation.y = 0;
+          ctx.env.earth.globe.rotation.y = 0;
+          if (ctx.env.earth.children) {
+            for (const c of ctx.env.earth.children) {
+              if (c !== ctx.env.earth.globe) c.rotation.y = 0;
             }
           }
-          const cinematicSunDir = ctx._sunDir0
+          const cinematicSunDir = ctx.env._sunDir0
             .clone()
             .applyQuaternion(sim.camera.quaternion);
           cinematicSunDir.applyAxisAngle(
             _camFwd,
-            ctx.declinationDeg() * (Math.PI / 180),
+            ctx.env.declinationDeg() * (Math.PI / 180),
           );
-          ctx.sunLight.position
+          ctx.env.sunLight.position
             .copy(cinematicSunDir)
-            .multiplyScalar(ctx.SUN_FLAT);
-          ctx.sunLight.target.position.copy(sim.camera.position);
-          ctx.sunLight.target.updateMatrixWorld(true);
+            .multiplyScalar(ctx.env.SUN_FLAT);
+          ctx.env.sunLight.target.position.copy(sim.camera.position);
+          ctx.env.sunLight.target.updateMatrixWorld(true);
         }
         glassMat.transparent = false;
         glassMat.opacity = 1;
@@ -465,19 +465,19 @@ export function buildCinematics(sim, ctx, env) {
       glassMat.transparent = false;
       glassMat.opacity = 1;
       glassMat.depthWrite = true;
-      ctx.swaying = true;
-      ctx.gravityOn = true;
+      ctx.flow.swaying = true;
+      ctx.flow.gravityOn = true;
       revealFired = false;
-      ctx.revealFired = false;
-      if (ctx.firefliesReady) {
-        for (const f of ctx.fireflies)
+      ctx.flow.revealFired = false;
+      if (ctx.creatures.firefliesReady) {
+        for (const f of ctx.creatures.fireflies)
           f.group.visible =
-            ctx.creaturesEnabled && !f.sleeping && !ctx.revealFired;
+            ctx.flow.creaturesEnabled && !f.sleeping && !ctx.flow.revealFired;
       }
-      if (ctx.sunLight) ctx.sunLight.intensity = 0;
+      if (ctx.env.sunLight) ctx.env.sunLight.intensity = 0;
       if (curtainStarted) {
         curtainStarted = false;
-        ctx.curtainStarted = false;
+        ctx.flow.curtainStarted = false;
         newDay();
         resealSky();
         glassMat.transparent = false;
@@ -487,25 +487,25 @@ export function buildCinematics(sim, ctx, env) {
       }
     }
     const dayFactor = Math.max(0, 1 - phase / NIGHT_P);
-    ctx.domeSun.intensity = 2.0 * dayFactor;
+    ctx.env.domeSun.intensity = 2.0 * dayFactor;
     const heat = Math.min(1, phase);
-    ctx.domeSun.color.setRGB(
+    ctx.env.domeSun.color.setRGB(
       1,
       0.82 + 0.18 * (1 - heat),
       0.7 + 0.3 * (1 - heat),
     );
-    if (isNight) ctx.domeSun.intensity = 0;
-    ctx.domeAmbient.intensity = 1.2 * dayFactor;
-    if (isNight) ctx.domeAmbient.intensity = 0;
-    if (ctx.dandelionsReady) {
+    if (isNight) ctx.env.domeSun.intensity = 0;
+    ctx.env.domeAmbient.intensity = 1.2 * dayFactor;
+    if (isNight) ctx.env.domeAmbient.intensity = 0;
+    if (ctx.creatures.dandelionsReady) {
       const nastic = Math.max(0, Math.min(1, Math.min(phase, 1)));
-      for (const d of ctx.dandelions) d.ent.setNastic?.(nastic);
+      for (const d of ctx.creatures.dandelions) d.ent.setNastic?.(nastic);
     }
   };
-  ctx.dispatchDayNight = (hour) => {
+  ctx.time.dispatchDayNight = (hour) => {
     const prev = time.prevHour;
     time.prevHour = hour;
-    for (const fam of ctx.dayCycle) {
+    for (const fam of ctx.creatures.dayCycle) {
       const awake = (h) => {
         if (fam.wakeHour < fam.sleepHour)
           return h >= fam.wakeHour && h < fam.sleepHour;
@@ -522,7 +522,7 @@ export function buildCinematics(sim, ctx, env) {
   const setHour = (hour) => {
     time.hour = hour;
     applySky(hour);
-    ctx.dispatchDayNight(hour);
+    ctx.time.dispatchDayNight(hour);
     const hh = Math.floor(hour);
     const mm = Math.round((hour - hh) * 60);
     clockEl.textContent = `${String(hh % 24).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
@@ -532,25 +532,25 @@ export function buildCinematics(sim, ctx, env) {
   const sunAngleValueEl = document.getElementById("sun-az-value");
   const sunElSlider = document.getElementById("sun-el-slider");
   const sunElValueEl = document.getElementById("sun-el-value");
-  ctx.updateSunDir = () => {
-    const ce = Math.cos(ctx.sunElevation);
-    ctx._sunDir0Base
+  ctx.env.updateSunDir = () => {
+    const ce = Math.cos(ctx.env.sunElevation);
+    ctx.env._sunDir0Base
       .set(
-        ce * Math.sin(ctx.sunAzimuth),
-        Math.sin(ctx.sunElevation),
-        ce * Math.cos(ctx.sunAzimuth),
+        ce * Math.sin(ctx.env.sunAzimuth),
+        Math.sin(ctx.env.sunElevation),
+        ce * Math.cos(ctx.env.sunAzimuth),
       )
       .normalize();
   };
-  ctx.updateSunDir();
+  ctx.env.updateSunDir();
   const applySunAngle = () => {
-    ctx.sunAzimuth = parseFloat(sunAngleSlider.value) * (Math.PI / 180);
-    ctx.sunElevation = parseFloat(sunElSlider.value) * (Math.PI / 180);
-    ctx.updateSunDir();
-    ctx._sunDir0.copy(ctx._sunDir0Base);
-    ctx.sunLight.position.copy(ctx._sunDir0).multiplyScalar(ctx.SUN_FLAT);
-    ctx.sunLight.target.position.set(0, 0, 0);
-    ctx.sunLight.target.updateMatrixWorld(true);
+    ctx.env.sunAzimuth = parseFloat(sunAngleSlider.value) * (Math.PI / 180);
+    ctx.env.sunElevation = parseFloat(sunElSlider.value) * (Math.PI / 180);
+    ctx.env.updateSunDir();
+    ctx.env._sunDir0.copy(ctx.env._sunDir0Base);
+    ctx.env.sunLight.position.copy(ctx.env._sunDir0).multiplyScalar(ctx.env.SUN_FLAT);
+    ctx.env.sunLight.target.position.set(0, 0, 0);
+    ctx.env.sunLight.target.updateMatrixWorld(true);
     sunAngleValueEl.textContent = `${Math.round(sunAngleSlider.value)}°`;
     sunElValueEl.textContent = `${Math.round(sunElSlider.value)}°`;
   };
@@ -563,25 +563,25 @@ export function buildCinematics(sim, ctx, env) {
   const _fwdXZ = new THREE.Vector3();
   const positionEarth = () => {
     _camFwd.set(0, 0, -1).applyQuaternion(sim.camera.quaternion);
-    ctx.earth.mesh.position
+    ctx.env.earth.mesh.position
       .copy(sim.camera.position)
       .addScaledVector(
         _fwdXZ.copy(_camFwd).setY(0).normalize(),
-        ctx.earthDistance,
+        ctx.env.earthDistance,
       );
-    ctx.earth.mesh.position.y =
-      ctx.earthDistance * Math.tan(THREE.MathUtils.degToRad(ctx.earthAngleDeg));
+    ctx.env.earth.mesh.position.y =
+      ctx.env.earthDistance * Math.tan(THREE.MathUtils.degToRad(ctx.env.earthAngleDeg));
   };
   const earthAngleSlider = document.getElementById("earth-angle-slider");
   const earthAngleValueEl = document.getElementById("earth-angle-value");
   const earthDistSlider = document.getElementById("earth-dist-slider");
   const earthDistValueEl = document.getElementById("earth-dist-value");
   const applyEarthPlacement = () => {
-    ctx.earthAngleDeg = parseFloat(earthAngleSlider.value);
-    ctx.earthDistance = parseFloat(earthDistSlider.value);
-    earthAngleValueEl.textContent = `${Math.round(ctx.earthAngleDeg)}°`;
-    earthDistValueEl.textContent = String(Math.round(ctx.earthDistance));
-    if (ctx.revealFired) positionEarth();
+    ctx.env.earthAngleDeg = parseFloat(earthAngleSlider.value);
+    ctx.env.earthDistance = parseFloat(earthDistSlider.value);
+    earthAngleValueEl.textContent = `${Math.round(ctx.env.earthAngleDeg)}°`;
+    earthDistValueEl.textContent = String(Math.round(ctx.env.earthDistance));
+    if (ctx.flow.revealFired) positionEarth();
   };
   earthAngleSlider.addEventListener("input", applyEarthPlacement);
   earthDistSlider.addEventListener("input", applyEarthPlacement);
@@ -590,18 +590,18 @@ export function buildCinematics(sim, ctx, env) {
   // Copy current sun + earth config to the clipboard as TOML-ish text.
   const copyBtn = document.getElementById("copy-config");
   copyBtn.addEventListener("click", async () => {
-    const d = ctx._sunDir0;
-    const sunPos = d.clone().multiplyScalar(ctx.SUN_FLAT);
+    const d = ctx.env._sunDir0;
+    const sunPos = d.clone().multiplyScalar(ctx.env.SUN_FLAT);
     const text = [
       `[sun]`,
-      `azimuth = ${ctx.sunAzimuth * (180 / Math.PI)}`,
-      `elevation = ${ctx.sunElevation * (180 / Math.PI)}`,
+      `azimuth = ${ctx.env.sunAzimuth * (180 / Math.PI)}`,
+      `elevation = ${ctx.env.sunElevation * (180 / Math.PI)}`,
       `position = ${sunPos.x.toFixed(0)}, ${sunPos.y.toFixed(0)}, ${sunPos.z.toFixed(0)}`,
       `direction = ${d.x.toFixed(2)}, ${d.y.toFixed(2)}, ${d.z.toFixed(2)}`,
       ``,
       `[earth]`,
-      `angle_above_horizon = ${ctx.earthAngleDeg}`,
-      `distance = ${ctx.earthDistance}`,
+      `angle_above_horizon = ${ctx.env.earthAngleDeg}`,
+      `distance = ${ctx.env.earthDistance}`,
     ].join("\n");
     try {
       await navigator.clipboard.writeText(text);
@@ -615,9 +615,11 @@ export function buildCinematics(sim, ctx, env) {
     }
   });
 
-  // Manual time toggle.
+  // Manual time toggle. Not persisted by default, so force it off on load
+  // (browsers otherwise restore the prior checked state across a reload).
   const manualTimeCheckbox = document.getElementById("manual-time-checkbox");
   let manualTime = false;
+  manualTimeCheckbox.checked = false;
   sunSlider.disabled = !manualTime;
   manualTimeCheckbox.addEventListener("change", () => {
     manualTime = manualTimeCheckbox.checked;
@@ -640,13 +642,13 @@ export function buildCinematics(sim, ctx, env) {
     const rate = atNight(time.hour) ? dayRate * 2 : dayRate;
     let next = time.hour + rate;
     if (next >= 24) next -= 24;
-    if (!ctx.introActive) {
+    if (!ctx.flow.introActive) {
       if (!atNight(time.hour)) {
         const sTo = 30 * (NIGHT_START - time.hour);
         if (sTo <= 5 && sTo > 0) {
           breachActive = true;
           breachT += dt;
-          ctx.camBlendTarget = 0;
+          ctx.camera.camBlendTarget = 0;
         } else if (sTo <= 0) {
           breachActive = false;
         }
@@ -663,9 +665,9 @@ export function buildCinematics(sim, ctx, env) {
   const _sunDir = new THREE.Vector3();
   sim.addEntity(null, null, () => {
     if (sunPosEl && sunDirEl) {
-      const pp = ctx.sunLight.position;
+      const pp = ctx.env.sunLight.position;
       sunPosEl.textContent = `${pp.x.toFixed(0)}, ${pp.y.toFixed(0)}, ${pp.z.toFixed(0)}`;
-      const d = _sunDir.copy(ctx.sunLight.target.position).sub(pp).normalize();
+      const d = _sunDir.copy(ctx.env.sunLight.target.position).sub(pp).normalize();
       sunDirEl.textContent = `${d.x.toFixed(2)}, ${d.y.toFixed(2)}, ${d.z.toFixed(2)}`;
     }
   });
@@ -675,7 +677,7 @@ export function buildCinematics(sim, ctx, env) {
   const simRestart = () => {
     if (curtainStarted) {
       curtainStarted = false;
-      ctx.curtainStarted = false;
+      ctx.flow.curtainStarted = false;
       resealSky();
       glassMat.transparent = false;
       glassMat.opacity = 1;
@@ -692,11 +694,11 @@ export function buildCinematics(sim, ctx, env) {
     sim.camera.quaternion.set(0, 0, 0, 1);
     sim.camera.lookAt(0, 0, -1);
     sim.camera.updateProjectionMatrix();
-    ctx.theta = C.camera.defaultTheta;
-    ctx.phi = C.camera.defaultPhi;
-    ctx.radius = C.camera.defaultRadius;
-    ctx.camBlend = 0;
-    ctx.camBlendTarget = 0;
+    ctx.camera.theta = C.camera.defaultTheta;
+    ctx.camera.phi = C.camera.defaultPhi;
+    ctx.camera.radius = C.camera.defaultRadius;
+    ctx.camera.camBlend = 0;
+    ctx.camera.camBlendTarget = 0;
     setHour(8);
     startIntro();
   };
@@ -713,8 +715,8 @@ export function buildCinematics(sim, ctx, env) {
     FLOWER_DUR = introCfg.flowerDur;
   const DAWN_START = introCfg.dawnStart,
     DAWN_FADE = introCfg.dawnFade;
-  const flowerStarted = () => ctx.flowerStarted;
-  const popProgress = () => ctx.popProgress;
+  const flowerStarted = () => ctx.creatures.flowerStarted;
+  const popProgress = () => ctx.creatures.popProgress;
   let creaturesRevealed = false;
   const grass = ctx.grass;
   const startIntro = () => {
@@ -728,19 +730,19 @@ export function buildCinematics(sim, ctx, env) {
     grass.attr.needsUpdate = true;
     flowerStarted().fill(0);
     popProgress().fill(0);
-    for (const d of ctx.dandelions) {
+    for (const d of ctx.creatures.dandelions) {
       d.ent.mesh.visible = false;
       d.ent.mesh.position.y = -0.8;
       d.pop = 0;
     }
-    ctx.creaturesEnabled = false;
+    ctx.flow.creaturesEnabled = false;
     creaturesRevealed = false;
-    ctx.setMowerOpacity(0.0001);
+    ctx.mower.setOpacity(0.0001);
     breachActive = false;
     breachT = 0;
     introT = 0;
     wallsDawn = 0;
-    ctx.introActive = true;
+    ctx.flow.introActive = true;
     paintSky(p);
   };
   const completeInit = () => {
@@ -752,25 +754,25 @@ export function buildCinematics(sim, ctx, env) {
     }
     grass.mesh.instanceMatrix.needsUpdate = true;
     grass.attr.needsUpdate = true;
-    for (const d of ctx.dandelions) {
+    for (const d of ctx.creatures.dandelions) {
       d.ent.mesh.visible = true;
       d.ent.mesh.position.y = 0;
       d.pop = 1;
     }
-    ctx.creaturesEnabled = true;
+    ctx.flow.creaturesEnabled = true;
     creaturesRevealed = true;
-    ctx.setMowerOpacity(1);
+    ctx.mower.setOpacity(1);
     breachActive = false;
     breachT = 0;
     introT = INTRO_END;
     wallsDawn = 1;
-    ctx.introActive = false;
+    ctx.flow.introActive = false;
     paintSky(p);
   };
   sim.addEntity(null, null, (dt) => {
-    if (!ctx.introActive) return;
-    const fs = ctx.flowerStarted;
-    const pp = ctx.popProgress;
+    if (!ctx.flow.introActive) return;
+    const fs = ctx.creatures.flowerStarted;
+    const pp = ctx.creatures.popProgress;
     introT += dt;
     if (introT < FLOWER_START) {
       const g = Math.min(1, introT / FLOWER_START);
@@ -790,7 +792,7 @@ export function buildCinematics(sim, ctx, env) {
         Math.floor((t / FLOWER_DUR) * fs.length) + 1,
       );
       for (let i = 0; i < target; i++) {
-        const d = ctx.dandelions[i];
+        const d = ctx.creatures.dandelions[i];
         if (!fs[i]) {
           fs[i] = 1;
           d.ent.mesh.visible = true;
@@ -805,8 +807,8 @@ export function buildCinematics(sim, ctx, env) {
         for (let i = 0; i < fs.length; i++) {
           if (!fs[i]) {
             fs[i] = 1;
-            ctx.dandelions[i].ent.mesh.visible = true;
-            ctx.dandelions[i].ent.mesh.position.y = 0;
+            ctx.creatures.dandelions[i].ent.mesh.visible = true;
+            ctx.creatures.dandelions[i].ent.mesh.position.y = 0;
           }
         }
       }
@@ -816,18 +818,18 @@ export function buildCinematics(sim, ctx, env) {
     }
     if (introT >= CREATURE_T && !creaturesRevealed) {
       creaturesRevealed = true;
-      ctx.creaturesEnabled = true;
+      ctx.flow.creaturesEnabled = true;
     }
     if (introT >= CREATURE_T && introT < COUNT_START) {
       const k = (introT - CREATURE_T) / MOWER_FADE;
-      ctx.setMowerOpacity(0.0001 + k * 0.9999);
+      ctx.mower.setOpacity(0.0001 + k * 0.9999);
     }
     paintSky(p);
     if (introT >= INTRO_END) {
-      ctx.introActive = false;
+      ctx.flow.introActive = false;
       wallsDawn = 1;
       paintSky(p);
-      if (ctx.rearmMobileHint) ctx.rearmMobileHint();
+      if (ctx.mower.rearmMobileHint) ctx.mower.rearmMobileHint();
     }
   });
 

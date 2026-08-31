@@ -423,13 +423,13 @@
       };
       fovSlider.addEventListener("input", applyFov);
       applyFov();
-      ctx.fovSlider = fovSlider;
+      ctx.camera.fovSlider = fovSlider;
 
       // --- Gaze slider: first-person camera pitch (look down / look up) ---
       const gazeSlider = document.getElementById("gaze-slider");
       const gazeValueEl = document.getElementById("gaze-value");
       const applyGaze = () => {
-        ctx.gazePitch = parseFloat(gazeSlider.value) * (Math.PI / 180);
+        ctx.camera.gazePitch = parseFloat(gazeSlider.value) * (Math.PI / 180);
         gazeValueEl.textContent = `${Math.round(gazeSlider.value)}°`;
       };
       gazeSlider.addEventListener("input", applyGaze);
@@ -440,14 +440,14 @@
       const offsetSlider = document.getElementById("offset-slider");
       const offsetValueEl = document.getElementById("offset-value");
       const applyOffset = () => {
-        ctx.fwdOffset = parseFloat(offsetSlider.value);
-        offsetValueEl.textContent = ctx.fwdOffset.toFixed(2);
+        ctx.camera.fwdOffset = parseFloat(offsetSlider.value);
+        offsetValueEl.textContent = ctx.camera.fwdOffset.toFixed(2);
       };
       offsetSlider.addEventListener("input", applyOffset);
       applyOffset();
 
       // --- Mobile / desktop UI bootstrap ---
-      if (ctx.isMobile) {
+      if (ctx.env.isMobile) {
         const hint = document.getElementById("hint");
         hint.style.display = "none";
         hint.textContent = "Tap and drag to mow.";
@@ -473,7 +473,7 @@
       cin.completeInit();
       // On mobile the boot hint was hidden at setup; on first load (no intro)
       // show the "Tap and drag to mow" hint ready for the player.
-      if (ctx.isMobile && ctx.rearmMobileHint) ctx.rearmMobileHint();
+      if (ctx.env.isMobile && ctx.mower.rearmMobileHint) ctx.mower.rearmMobileHint();
 
       sim.start();
     </script>

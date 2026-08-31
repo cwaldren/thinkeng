@@ -8,11 +8,15 @@ import {
 } from "engine/components.js";
 
 export function buildUI(sim, ctx) {
-  const isMobile = ctx.isMobile;
+  const isMobile = ctx.env.isMobile;
 
-  // Sandbox checkbox: show/hide the sandbox control panel.
+  // Sandbox checkbox: show/hide the sandbox control panel. The checkbox is a
+  // debug toggle that should never persist across a reload, so reset it to
+  // off on load (browsers otherwise restore the prior checked state).
   const sandboxCheckbox = document.getElementById("sandbox-checkbox");
   const sandboxPanel = document.getElementById("sandbox-panel");
+  sandboxCheckbox.checked = false;
+  sandboxPanel.style.display = "none";
   sandboxCheckbox.addEventListener("change", () => {
     sandboxPanel.style.display = sandboxCheckbox.checked ? "" : "none";
   });

@@ -1,12 +1,11 @@
 // Shared game context for the Moasis game.
 //
 // The original monolithic setup(sim) relied on one giant closure scope to
-// share mutable state (reveal flags, grass arrays, mower, creatures, ...)
-// across every system. Splitting it into domain modules means each module gets
-// its own scope, so anything that crosses a module boundary is hoisted onto
-// this single shared `ctx` object. Values are assigned by whichever module
-// builds them, then read/mutated by others at call time (the same timing the
-// monolithic closures had).
+// share mutable state across every system. Splitting it into domain modules
+// means cross-module state is hoisted onto this single shared `ctx` object,
+// grouped by owner so it's easy to see where each value lives and who writes
+// it. A module reads another system's data via `ctx.<group>.<field>` at call
+// time (never captured at module load into a local).
 
 import * as THREE from "three";
 import { CONFIG } from "./config.js";
@@ -17,9 +16,7 @@ export function createContext(sim) {
   const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
   const cfg = CONFIG.density;
 
-  // Density config is editable in the UI; applied values persist and are
-  // consumed on the next load (Apply triggers a reload). Defaults come from
-  // CONFIG.density.
+  // Density config (already namespaced by name; defaults from CONFIG.density).
   const density = {
     COLS: Number(localStorage.getItem("mow-cols")) || cfg.cols,
     ROWS: Number(localStorage.getItem("mow-rows")) || cfg.rows,
@@ -35,43 +32,46 @@ export function createContext(sim) {
   density.total = density.COLS * density.ROWS * density.N;
 
   const ctx = {
+    // Engine + config basics (rarely edited).
     sim,
-    isMobile,
     density,
     clampInt,
 
-    // Lawn / fence geometry derived from density (set by the environment).
-    lawnHalfW: 0,
-    lawnHalfD: 0,
-    bx: 0,
-    bz: 0,
+    // ---- ctx.env: the physical world — lights, moon/Earth, sun, lawn bounds.
+    // Owned by environment.js (bootstraps), mutated by cinematics.js for the
+    // live sun/earth tuning. ----
+    env: {
+      isMobile,
+      sunLight: null,
+      domeSun: null,
+      domeAmbient: null,
+      earth: null,
+      lawnHalfW: 0,
+      lawnHalfD: 0,
+      margin: 0, // mower-stop inset from the lawn bounds
+      CELL: 0, // spatial-grid cell size
+      visitCutArea: null, // cut-area footprint iterator
+      declinationDeg: () => 0,
+      // Live sun/earth tuning (cinematics mutates these at runtime).
+      SUN_INTENSITY: CONFIG.sun.intensity,
+      SUN_FLAT: CONFIG.sun.distance,
+      SUN_AZ: CONFIG.sun.azimuth,
+      SUN_EL: CONFIG.sun.elevation,
+      sunAzimuth: CONFIG.sun.azimuth,
+      sunElevation: CONFIG.sun.elevation,
+      updateSunDir: null,
+      earthAngleDeg: CONFIG.earth.defaultAngleAboveHorizon,
+      earthDistance: CONFIG.earth.defaultDistance,
+      // Reusable temps for sun/earth math.
+      _sunDir0Base: new THREE.Vector3(),
+      _sunDir0: new THREE.Vector3(),
+      _sunDir: new THREE.Vector3(),
+      _camFwd: new THREE.Vector3(),
+      _fwdXZ: new THREE.Vector3(),
+    },
 
-    // ---- Sun / lighting shared by environment + cinematics ----
-    sunLight: null,
-    domeSun: null,
-    domeAmbient: null,
-    SUN_INTENSITY: CONFIG.sun.intensity,
-    SUN_FLAT: CONFIG.sun.distance, // "infinitely far" stand-in
-    SUN_AZ: CONFIG.sun.azimuth,
-    SUN_EL: CONFIG.sun.elevation,
-    sunAzimuth: CONFIG.sun.azimuth,
-    sunElevation: CONFIG.sun.elevation,
-    declinationDeg: () => 0,
-    updateSunDir: null,
-    earthAngleDeg: CONFIG.earth.defaultAngleAboveHorizon,
-    earthDistance: CONFIG.earth.defaultDistance,
-    _sunDir0Base: new THREE.Vector3(),
-    _sunDir0: new THREE.Vector3(),
-    _sunDir: new THREE.Vector3(),
-    _camFwd: new THREE.Vector3(),
-    _fwdXZ: new THREE.Vector3(),
-
-    // ---- Earth + reveal ----
-    earth: null,
-    revealFired: false,
-
-    // ---- Grass + sway (built by environment, grown/cut by mower, read by
-    // cinematics intro/completeInit) ----
+    // ---- ctx.grass: the grass lawn + its runtime growth state. Owned by
+    // environment.js (blades/sway shader), grown/cut by mower.js. ----
     grass: {
       mesh: null,
       attr: null,
@@ -81,75 +81,80 @@ export function createContext(sim) {
       bladeGrowth: null,
       half: 0,
       total: 0,
+      swayUniforms: { uTime: { value: 0 } },
+      growRate: CONFIG.grass.growRate,
+      grassDirty: false,
     },
-    swayUniforms: { uTime: { value: 0 } },
-    swaying: true, // grass wind-blows by day, freezes at the reveal
-    gravityOn: true, // clipping gravity: off after the reveal, back on at dawn
-    grassDirty: false,
-    growRate: CONFIG.grass.growRate,
 
-    // Spatial grid API over the lawn (built by environment, used by mower).
-    visitCutArea: null,
-
-    // Mower (built by mower module; cinematics restart touches it).
+    // ---- ctx.mower: the player's push lawnmower entity plus helper methods
+    // mower.js attaches. Stays a single object so `ctx.mower.mesh` is stable
+    // everywhere. ----
     mower: null,
-    setMowerOpacity: null,
 
-    // ---- Creatures + dandelions (built by creatures module) ----
-    creaturesEnabled: false,
-    creaturesRevealed: false,
-    mowerPos: new THREE.Vector3(),
-    dayCycle: [],
+    // ---- ctx.creatures: bugs + dandelions + daily sleep/wake. Owned by
+    // creatures.js. ----
+    creatures: {
+      dandelions: [],
+      fireflies: [],
+      dandelionsReady: false,
+      firefliesReady: false,
+      dayCycle: [],
+      mowerPos: new THREE.Vector3(),
+      bx: 0,
+      bz: 0,
+      mowedCount: 0,
+      mowedCountEl: null,
+      mowedLabelEl: null,
+      updateMowedLabel: null,
+      revealCounter: null,
+      bumpMowed: null,
+      flowerStarted: null,
+      popProgress: null,
+      FOLD_S: CONFIG.dandelions.foldS,
+      FOLD_ANGLE: CONFIG.dandelions.foldAngle,
+    },
+
+    // ---- ctx.flow: the state-machine flags that toggled across systems. All
+    // runtime flow, owned centrally so mutators are obvious. ----
+    flow: {
+      introActive: true,
+      swaying: true, // grass wind-blows by day, freezes at the reveal
+      gravityOn: true, // clipping gravity: off after the reveal, back on at dawn
+      curtainStarted: false, // reveal act fired once per night
+      revealFired: false,
+      creaturesEnabled: false,
+      creaturesRevealed: false,
+    },
+
+    // ---- ctx.camera: first-person + orbit camera state and the blast kick.
+    // Owned by mower.js (per-frame), reset by cinematics.js on restart. ----
+    camera: {
+      theta: 0,
+      phi: Math.PI / 6,
+      radius: 25,
+      camBlend: 0,
+      camBlendTarget: 0,
+      fwdOffset: -0.45,
+      gazePitch: -30 * (Math.PI / 180),
+      fovSlider: null,
+      // Camera kick (defined/mutated by cinematics, read by mower).
+      kick: { elapsed: Infinity },
+      kickEnv: null,
+      KICK_PITCH: 0,
+      KICK_TARGET_FOV: 70,
+    },
+
+    // ---- ctx.time: the shared day/night simulation clock. Owned by
+    // cinematics.js. ----
     time: {
       hour: null,
       prevHour: null,
+      dispatchDayNight: null,
     },
-    firefliesReady: false,
-    dandelionsReady: false,
-    fireflies: [],
-    dandelions: [],
-
-    // Dandelion bookkeeping shared by mower (mow triggers) + creatures (fold/
-    // regrow) + cinematics intro (pop-up).
-    mowedCount: 0,
-    mowedCountEl: null,
-    mowedLabelEl: null,
-    flowerStarted: null,
-    popProgress: null,
-    FOLD_S: CONFIG.dandelions.foldS,
-    FOLD_ANGLE: CONFIG.dandelions.foldAngle,
-    updateMowedLabel: null,
-    revealCounter: null,
-
-    // Day/night helpers shared by cinematics (dispatch) + creatures (register).
-    dispatchDayNight: null,
-
-    // Orbit-camera state (mower owns per-frame, cinematics restart resets).
-    theta: 0,
-    phi: Math.PI / 6,
-    radius: 25,
-    camBlend: 0,
-    camBlendTarget: 0,
-
-    // Camera kick (defined/mutated by cinematics, read by mower camera).
-    kick: { elapsed: Infinity },
-    kickEnv: null,
-    KICK_PITCH: 0,
-    KICK_TARGET_FOV: 70,
-
-    // First-person FOV slider (owned by mow.html; read by mower + cinematics).
-    fovSlider: null,
 
     // Shared action-based input manager (created in mow.html).
     input: null,
-
-    // Intro flag (cinematics owns, mower reads to lock movement).
-    introActive: true,
   };
-
-  // First-person camera slider state (used by mower camera + cinematics kick).
-  ctx.fwdOffset = -0.45;
-  ctx.gazePitch = -30 * (Math.PI / 180);
 
   return ctx;
 }
