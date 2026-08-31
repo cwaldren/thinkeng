@@ -1997,6 +1997,9 @@
               if (sTo <= 5 && sTo > 0) {
                 breachActive = true;
                 breachT += dt;
+                // If the player is in orbit view while the breach warning runs,
+                // lerp them back to first-person for the reveal drama.
+                camBlendTarget = 0;
                 paintSky(p); // keep repainting so the swap reads
               } else if (sTo <= 0) {
                 breachActive = false;
