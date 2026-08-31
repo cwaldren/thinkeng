@@ -1,0 +1,76 @@
+# Moasis (games/mow/) — notes for coding agents
+
+Each module builds one system and they share mutable
+state through a central `ctx` object. This file documents the module
+boundaries, the `ctx` contract, and the load-bearing build order so you can
+work here without reconstructing the whole graph.
+
+## Modules
+
+| File             | Builder                          | Responsibility                                                                                                                                     |
+| ---------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `config.js`      | `CONFIG` (plain object)          | **All tuning/feel constants**, grouped by domain. Tweak the game's feel here first — every builder reads from it.                                  |
+| `context.js`     | `createContext(sim)`             | Shared mutable `ctx` bag + `isMobile` + density (read from `localStorage`, defaulted from `CONFIG`).                                               |
+| `environment.js` | `buildEnvironment(sim, ctx)`     | Sun + dome lights, moon craters/albedo/heightfield, Earth, star field, grass instanced mesh + sway shader + spatial cut grid, fence.               |
+| `cinematics.js`  | `buildCinematics(sim, ctx, env)` | Glass sky dome + painting, shattering reveal, doom overlay, greeting, camera kick, day/night clock + reveal driver, boot intro, sun/earth sliders. |
+| `mower.js`       | `buildMower(sim, ctx, env)`      | Mower entity, cut/grow loop, grass-clipping particles, dandelion mowing, first-person/orbit camera, action registration.                           |
+| `creatures.js`   | `buildCreatures(sim, ctx, env)`  | All bugs (flies, butterflies, dragonflies, swarms, bees, fireflies) + dandelions + day/night registration.                                         |
+| `ui.js`          | `buildUI(sim, ctx)`              | `[stats]`/`[options]` buttons, FPS/GC/entity readouts, sandbox panel toggle.                                                                       |
+
+## The `ctx` object — the cross-module contract
+
+Everything that crosses a module boundary lives on the single shared `ctx`
+object. **Values are assigned by whichever module builds them, then read/mutated
+by others at call time** (the same timing the monolithic closures had).
+
+Watch out for ordering traps when referencing other modules' state:
+
+- **Capture lazily, not at module top.** Don't copy `ctx.flowerStarted` /
+  `ctx.popProgress` / `ctx.dandelions` into a local at module scope — those
+  arrays are built by `buildCreatures`, which may run after your module. Read
+  `ctx.<field>` at call time, or use a small accessor function, so you get the
+  post-build reference.
+- Every field you touch is assumed to exist on `ctx` in `context.js`. If you
+  add cross-module state, declare a default there.
+- Most fields are declared as `null`/`[]` defaults in `createContext`, then set
+  by a builder. There is no type system — a typo on `ctx.foo` fails silently.
+
+## Build & registration order
+
+Order is load-bearing (matches the original closure timing). From `mow.html`:
+
+```
+new Simulation({...})
+ctx = createContext(sim)
+ctx.input = new InputManager()        // engine/inputManager.js
+// fov/gaze/offset sliders + mobile UI bootstrap
+const env = buildEnvironment(sim, ctx)   // must run first (mower/grid depend)
+const cin = buildCinematics(sim, ctx, env)
+buildMower(sim, ctx, env)
+buildCreatures(sim, ctx, env)
+buildUI(sim, ctx)
+cin.completeInit()                       // first load: no boot cinematic
+sim.start()
+```
+
+- `buildEnvironment` must run first (grass/grid outputs feed the mower).
+- `buildCreatures` must run before anything _reads_ the creature arrays.
+- Per-frame `sim.addEntity(null, null, updateFn)` callbacks run in
+  registration order each frame. Don't rely on subtle cross-entity ordering.
+
+## Input
+
+`ctx.input` is the engine's action-based `InputManager`
+(`engine/inputManager.js`). The mower registers named actions/axes once in
+`mower.js` (`forward`, `turn`, `orbit`, `shift`) and queries by name (`axis`,
+`hasAction`, `pressed`, `released`). **Do not poll raw keys/touch in game code**
+— route new controls through the manager. Mouse-drag orbit + wheel zoom are
+the exception (intentionally kept as canvas UI interactions).
+
+## Testing
+
+- No headless browser: ask the human to reload `games/mow.html` and test.
+- `node --check <file>.js` is a valid quick syntax check.
+- ESM imports: `three` / `engine/*` resolve via the import map in `mow.html`;
+  sibling modules are `./config.js`, `./context.js`, etc.
+- Forward axis for the mower/player is **-Z** (see `games/AGENTS.md`).
