@@ -5,6 +5,7 @@
 import * as THREE from "three";
 import { createFence, createEarth } from "engine/components.js";
 import { CONFIG } from "./config.js";
+import { registerMaterial, registerObject } from "./reveal.js";
 
 export function buildEnvironment(sim, ctx) {
   const { COLS, ROWS, N, W, D, total } = ctx.density;
@@ -102,6 +103,11 @@ export function buildEnvironment(sim, ctx) {
   dirt.receiveShadow = true;
   dirt.castShadow = true;
   sim.scene.add(dirt);
+  // Boot reveal: the dirt/runnel patch starts black and lerps to its real
+  // color as the grass turns green. Driven by cinematics on the grass timing.
+  dirtMat.color.set(0x000000);
+  ctx.env.dirtColorRGB = C.moon.dirtColor;
+  ctx.env.dirtMat = dirtMat;
 
   // RADIAL BAND of crater centers outside the glass territory.
   const cubeR =
@@ -331,15 +337,17 @@ export function buildEnvironment(sim, ctx) {
   const swayUniforms = ctx.grass.swayUniforms;
   bladeMat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = swayUniforms.uTime;
+    shader.uniforms.uSway = swayUniforms.uSway;
     shader.vertexShader = shader.vertexShader
       .replace(
         "#include <common>",
-        "#include <common>\nuniform float uTime;\nattribute float aGrowth;",
+        "#include <common>\nuniform float uTime;\nuniform float uSway;\nattribute float aGrowth;\nattribute float aRevealPhase;\nvarying float vRevealPhase;",
       )
       .replace(
         "#include <begin_vertex>",
         `#include <begin_vertex>
-#ifdef USE_INSTANCING
+            vRevealPhase = aRevealPhase;
+#if defined( USE_INSTANCING )
             float h = clamp((transformed.y + 0.85) / 1.7, 0.0, 1.0);
             vec3 _base = instanceMatrix[3].xyz;
             float _ph = fract(sin(dot(_base.xz * 0.13, vec2(12.9898, 78.233))) * 43758.5453);
@@ -347,11 +355,18 @@ export function buildEnvironment(sim, ctx) {
                         + cos(_base.z * 1.4 + uTime * 1.2 + _ph * 6.2831);
             float _g = clamp(aGrowth, 0.0, 1.0);
             _g = pow(_g, 6.0);
-            transformed.x += _wave * h * h * ${C.grass.swayAmplitude} * _g;
+            transformed.x += _wave * h * h * ${C.grass.swayAmplitude} * _g * uSway;
 #endif
 `,
       );
+    // Per-blade grey->color reveal: enable the fragment path so each instance
+    // resolves at its own offset within the intro's reveal window.
+    shader.fragmentShader =
+      "#define USE_REVEAL_PHASE\n" + shader.fragmentShader;
   };
+  // Boot-intro reveal: the whole lawn rises as grey+shiny preview material,
+  // then flickers in to its real green. (Composes with the sway hook above.)
+  ctx.grass.bladeReveal = registerMaterial(bladeMat);
   const grassMesh = new THREE.InstancedMesh(bladeGeo, bladeMat, total);
   const growthAttr = new THREE.InstancedBufferAttribute(
     new Float32Array(total),
@@ -359,6 +374,12 @@ export function buildEnvironment(sim, ctx) {
   );
   bladeGeo.setAttribute("aGrowth", growthAttr);
   const growthArr = growthAttr.array;
+  const revealPhaseAttr = new THREE.InstancedBufferAttribute(
+    new Float32Array(total),
+    1,
+  );
+  bladeGeo.setAttribute("aRevealPhase", revealPhaseAttr);
+  const revealPhaseArr = revealPhaseAttr.array;
   grassMesh.castShadow = false;
   grassMesh.receiveShadow = true;
   const dummy = new THREE.Object3D();
@@ -380,6 +401,7 @@ export function buildEnvironment(sim, ctx) {
         bladeScale[idx] = s;
         bladeGrowth[idx] = 0; // boot cinematic: grass starts underground
         growthArr[idx] = 0;
+        revealPhaseArr[idx] = Math.random();
         bladePos[idx] = new THREE.Vector3(
           ox + Math.random() * W - hw,
           0,
@@ -406,6 +428,7 @@ export function buildEnvironment(sim, ctx) {
   }
   grassMesh.instanceMatrix.needsUpdate = true;
   growthAttr.needsUpdate = true;
+  revealPhaseAttr.needsUpdate = true;
   sim.scene.add(grassMesh);
 
   // Spatial grid over the lawn so cut checks only test blades near the mower
@@ -496,26 +519,56 @@ export function buildEnvironment(sim, ctx) {
       position,
       rotation,
     });
-  sideFence({
-    length: COLS * W,
-    position: [0, 0, lawnHalfD + gap],
-    rotation: [0, 0, 0],
-  });
-  sideFence({
-    length: COLS * W,
-    position: [0, 0, -lawnHalfD - gap],
-    rotation: [0, Math.PI, 0],
-  });
-  sideFence({
-    length: ROWS * D,
-    position: [lawnHalfW + gap, 0, 0],
-    rotation: [0, Math.PI / 2, 0],
-  });
-  sideFence({
-    length: ROWS * D,
-    position: [-lawnHalfW - gap, 0, 0],
-    rotation: [0, -Math.PI / 2, 0],
-  });
+  const fences = [
+    sideFence({
+      length: COLS * W,
+      position: [0, 0, lawnHalfD + gap],
+      rotation: [0, 0, 0],
+    }),
+    sideFence({
+      length: COLS * W,
+      position: [0, 0, -lawnHalfD - gap],
+      rotation: [0, Math.PI, 0],
+    }),
+    sideFence({
+      length: ROWS * D,
+      position: [lawnHalfW + gap, 0, 0],
+      rotation: [0, Math.PI / 2, 0],
+    }),
+    sideFence({
+      length: ROWS * D,
+      position: [-lawnHalfW - gap, 0, 0],
+      rotation: [0, -Math.PI / 2, 0],
+    }),
+  ];
+  // Fence reveals as transparent and sweeps in left-to-right after the grass
+// has fully resolved. The start time is set by cinematics (which reads the
+// config); each material's local position along its side determines its
+// staggered offset so sections render one after another in quick succession.
+  ctx.grass.fenceDrivers = [];
+  for (const f of fences) {
+    // Collect all child meshes and their local X (along the fence's length).
+    const meshes = [];
+    f.mesh.traverse((obj) => {
+      if (obj.isMesh) meshes.push(obj);
+    });
+    if (meshes.length === 0) continue;
+    let minX = Infinity,
+      maxX = -Infinity;
+    for (const m of meshes) {
+      const x = m.position.x;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+    }
+    const span = Math.max(1e-6, maxX - minX);
+    for (const m of meshes) {
+      const driver = registerMaterial(m.material, { mode: "fade" });
+      if (!driver) continue;
+      // 0..1 position along this fence side (left -> right in local space).
+      driver.revealOffset = (m.position.x - minX) / span;
+      ctx.grass.fenceDrivers.push(driver);
+    }
+  }
 
   // Publish lawn geometry + grass + grid to the shared context.
   ctx.env.lawnHalfW = lawnHalfW;

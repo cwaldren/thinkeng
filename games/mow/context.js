@@ -81,7 +81,7 @@ export function createContext(sim) {
       bladeGrowth: null,
       half: 0,
       total: 0,
-      swayUniforms: { uTime: { value: 0 } },
+      swayUniforms: { uTime: { value: 0 }, uSway: { value: 1 } },
       growRate: CONFIG.grass.growRate,
       grassDirty: false,
     },
@@ -124,6 +124,11 @@ export function createContext(sim) {
       revealFired: false,
       creaturesEnabled: false,
       creaturesRevealed: false,
+      // Movement of grass/insects/plants ramps from 0 (frozen) up to 1
+      // (realtime) during the intro countdown, hitting realtime at "MOW!".
+      // Driven by cinematics.js; read by mower/creatures.
+      motionScale: 0,
+      controlsUnlocked: false,
     },
 
     // ---- ctx.camera: first-person + orbit camera state and the blast kick.

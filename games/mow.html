@@ -468,9 +468,10 @@
       buildCreatures(sim, ctx, env);
       buildUI(sim, ctx);
 
-      // First load: start fully initialized (no boot cinematic) so a newcomer
-      // sees a plain mowing sim; the intro only replays on restart after doom.
-      cin.completeInit();
+      // Start the game from the very beginning of the boot cinematic on load,
+      // so the setup sequence (grass/fence/creatures revealing) always plays.
+      // Kicks off the intro at t=0.
+      cin.startIntro();
       // On mobile the boot hint was hidden at setup; on first load (no intro)
       // show the "Tap and drag to mow" hint ready for the player.
       if (ctx.env.isMobile && ctx.mower.rearmMobileHint) ctx.mower.rearmMobileHint();

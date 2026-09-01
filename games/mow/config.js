@@ -152,7 +152,7 @@ export const CONFIG = {
     flies: { desktop: 20, mobile: 8, color: 0x1a1a1a, size: 0.035, scareRadius: 4 },
     butterflies: { desktop: 6, mobile: 3, wingSat: 0.75, wingLight: 0.65 },
     dragonflies: 2,
-    swarms: 2,
+    swarms: 1,
     bees: { desktop: 6, mobile: 3, feedHeight: 0.7, speed: 3 },
     fireflies: { desktop: 16, mobile: 8 },
     day: { wake: 6, sleep: 20 }, // diurnal families
@@ -175,6 +175,12 @@ export const CONFIG = {
     duskHorizon: "#140a1e",
     introGreyTop: "#7c7c86",
     introGreyHorizon: "#b6b6be",
+    // Technical sim-rig grid on the wall faces during the setup intro (vector
+// lines, world units).
+    // Technical sim-rig grid drawn on the wall fabric during the setup intro.
+    gridCell: 0.08, // grid spacing as a fraction of the texture canvas
+    gridColor: "rgba(15,17,23,0.6)",
+    gridWidth: 0.0025, // line thickness as a fraction of the canvas
   },
 
   // ---- The reveal + doom + camera kick ----
@@ -196,13 +202,27 @@ export const CONFIG = {
 
   // ---- Boot cinematic (intro) timing ----
   intro: {
-    countStart: 10, // "3","2","1" countdown begins here
-    introEnd: 14, // "MOW!" -> controls unlock
+    countStart: 6, // "3","2","1" countdown begins here
+    introEnd: 9.5, // "MOW!" shows at 9, holds briefly, then controls unlock
     flowerStart: 3,
-    flowerDur: 5,
-    dawnStart: 8,
+    flowerDur: 2, // all flowers pop out of the ground within this window
+    dawnStart: 5, // walls dusk in as the flowers/fence finish
     dawnFade: 1,
-    creatureT: 9,
-    mowerFade: 1, // mower opacity fade duration
+    creatureT: 5, // insects surface right as the flowers finish
+    mowerFade: 1, // mower opacity fade duration (5s -> 6s)
+    // Untextured grey->color reveal: objects spawn as grey+shiny "model
+    // preview" materials and flicker to their real material as they appear.
+    reveal: {
+      grassT: 3, // lawn flickers green once fully grown
+      grassDur: 1, // all blades resolve within this 1s window (staggered)
+      fenceT: 3, // fence sweeps in concurrent with the flowers (same start)
+      fenceStagger: 2, // same span as flowerSpan so both finish together
+      fenceDur: 0.12, // each section's own flicker-in duration
+      flowerT: 3, // first dandelion resolves
+      flowerSpan: 2, // stagger across the pop sequence (matches fence stagger)
+      flowerDur: 0.25,
+      creatureT: 5, // insects resolve as they wake
+      creatureDur: 0.8,
+    },
   },
 };

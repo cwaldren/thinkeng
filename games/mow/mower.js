@@ -482,8 +482,14 @@ export function buildMower(sim, ctx, env) {
     clipMesh.instanceMatrix.needsUpdate = true;
 
     // ---- Grass: sway, then cut + grow ----
-    if (ctx.flow.swaying)
-      ctx.grass.swayUniforms.uTime.value = (ctx.grass.swayUniforms.uTime.value + dt) % 1000;
+    if (ctx.flow.swaying) {
+      // Slow-motion ramp: uTime advances scaled by motionScale (0 frozen during
+      // the countdown, easing to realtime by "MOW!").
+      ctx.grass.swayUniforms.uTime.value =
+        (ctx.grass.swayUniforms.uTime.value + dt * ctx.flow.motionScale) % 1000;
+    }
+    // Wind-blown sway only when the simulation is live (not at the reveal).
+    ctx.grass.swayUniforms.uSway.value = ctx.flow.swaying ? 1 : 0;
     ctx.grass.grassDirty = false;
     invMower.copy(mower.mesh.matrixWorld).invert();
     if (mowerForward) {
@@ -568,6 +574,20 @@ export function buildMower(sim, ctx, env) {
       if (d.grown) continue;
       d.regrowT -= dt;
       if (d.regrowT <= 0) {
+        // Respawn in a fresh random spot on the lawn (kept clear of the
+        // center where the mower starts).
+        const bx = ctx.creatures.bx;
+        const bz = ctx.creatures.bz;
+        const clearR = Math.min(bx, bz) * C.dandelions.minClearFraction;
+        let nx, nz;
+        do {
+          nx = (Math.random() * 2 - 1) * bx;
+          nz = (Math.random() * 2 - 1) * bz;
+        } while (Math.hypot(nx, nz) < clearR);
+        d.x = nx;
+        d.z = nz;
+        d.ent.mesh.position.x = nx;
+        d.ent.mesh.position.z = nz;
         d.ent.mesh.quaternion.setFromEuler(d.baseEuler);
         d.ent.mesh.visible = true;
         d.pop = 0;
@@ -579,7 +599,8 @@ export function buildMower(sim, ctx, env) {
       }
     }
 
-    // Dandelions wave in the wind like the grass.
+    // Dandelions wave in the wind like the grass. uTime advances scaled by
+// motionScale, so they stay still until the countdown's slow-motion ramp.
     if (ctx.flow.swaying) {
       const t = ctx.grass.swayUniforms.uTime.value;
       for (const d of ctx.creatures.dandelions) {

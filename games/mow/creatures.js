@@ -13,6 +13,7 @@ import {
   createFirefly,
   createDandelion,
 } from "engine/components.js";
+import { registerObject } from "./reveal.js";
 
 export function buildCreatures(sim, ctx, env) {
   const isMobile = ctx.env.isMobile;
@@ -135,6 +136,7 @@ export function buildCreatures(sim, ctx, env) {
   sim.addEntity(null, null, (dt) => {
     for (const b of butterflies) b.group.visible = ctx.flow.creaturesEnabled;
     if (!ctx.flow.creaturesEnabled) return;
+    dt *= ctx.flow.motionScale;
     mowerPos.copy(ctx.mower.mesh.position);
     for (const b of butterflies) {
       b.ent.setFlapSpeed(b.scatterT > 0 ? 42 : b.flapSpeed + b.flapBoost);
@@ -283,6 +285,7 @@ export function buildCreatures(sim, ctx, env) {
     for (const d of dragonflies)
       d.group.visible = ctx.flow.creaturesEnabled && !d.sleeping;
     if (!ctx.flow.creaturesEnabled) return;
+    dt *= ctx.flow.motionScale;
     for (const d of dragonflies) {
       if (d.sleeping) continue;
       if (d.state === "hover") {
@@ -369,6 +372,7 @@ export function buildCreatures(sim, ctx, env) {
     for (const s of flySwarms)
       s.mesh.visible = ctx.flow.creaturesEnabled && !s.sleeping;
     if (!ctx.flow.creaturesEnabled) return;
+    dt *= ctx.flow.motionScale;
     for (const s of flySwarms) {
       if (s.sleeping) continue;
       s.wanderT -= dt;
@@ -479,6 +483,7 @@ export function buildCreatures(sim, ctx, env) {
     for (const f of fireflies)
       f.group.visible = ctx.flow.creaturesEnabled && !f.sleeping && !ctx.flow.revealFired;
     if (!ctx.flow.creaturesEnabled) return;
+    dt *= ctx.flow.motionScale;
     for (const f of fireflies) {
       if (f.sleeping) continue;
       f.wanderT -= dt;
@@ -582,6 +587,54 @@ export function buildCreatures(sim, ctx, env) {
       f.group.visible = ctx.flow.creaturesEnabled && !f.sleeping && !ctx.flow.revealFired;
   };
   creaturesCheckbox.addEventListener("change", applyCreatures);
+
+  // --- Boot-intro material reveal ---
+  // Tag every living thing so the intro can present it as an untextured grey
+  // preview that flickers to its real material as it spawns in. (Grass is
+  // registered separately in environment.js.) Timing lives in CONFIG.intro.
+  const revealCfg = CONFIG.intro.reveal;
+  const tag = (root, revealT, revealDur = revealCfg.flowerDur) => {
+    for (const d of registerObject(root)) {
+      d.revealT = revealT;
+      d.revealDur = revealDur;
+    }
+  };
+  // Insects surface all at once when the creatures "wake" in the intro.
+  tag(flies.mesh, revealCfg.creatureT, revealCfg.creatureDur);
+  for (const b of butterflies) tag(b.group, revealCfg.creatureT, revealCfg.creatureDur);
+  for (const d of dragonflies) tag(d.group, revealCfg.creatureT, revealCfg.creatureDur);
+  for (const s of flySwarms) tag(s.mesh, revealCfg.creatureT, revealCfg.creatureDur);
+  for (const b of bees) tag(b.group, revealCfg.creatureT, revealCfg.creatureDur);
+  for (const f of fireflies) tag(f.group, revealCfg.creatureT, revealCfg.creatureDur);
+  // Dandelions pop one-by-one; reveal each flower as it pops up.
+  const N = dandelions.length;
+  for (let i = 0; i < N; i++) {
+    tag(
+      dandelions[i].ent.mesh,
+      revealCfg.flowerT + (i / N) * revealCfg.flowerSpan,
+      revealCfg.flowerDur,
+    );
+  }
+
+  // --- Slow-motion internal insect animators during the countdown ---
+  // Flies, gnat swarms and bumblebees animate entirely through their own
+  // internal sim entities. Wrap each `updateFn` so it consumes
+  // dt * ctx.flow.motionScale: 0 (frozen) before the countdown, easing to
+  // realtime by the time "MOW!" shows. Wing-flap internally-driven insects
+  // (butterflies/dragonflies/fireflies) are wrapped too so their flapping
+  // ramps in sync with their (creatures.js-scaled) drift.
+  const animatorEntities = [flies];
+  for (const b of bees) animatorEntities.push(b.ent);
+  for (const s of flySwarms) animatorEntities.push(s.ent);
+  for (const b of butterflies) animatorEntities.push(b.ent);
+  for (const d of dragonflies) animatorEntities.push(d.ent);
+  for (const f of fireflies) animatorEntities.push(f.ent);
+  for (const ent of animatorEntities) {
+    if (!ent || !ent.updateFn) continue;
+    const base = ent.updateFn;
+    ent._savedUpdateFn = base;
+    ent.updateFn = (dt, e, sim) => base(dt * ctx.flow.motionScale, e, sim);
+  }
 
   return { butterflies, dragonflies, flySwarms, bees, fireflies, flies, fliesSleeping };
 }

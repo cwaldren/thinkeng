@@ -5,6 +5,7 @@
 
 import * as THREE from "three";
 import { CONFIG } from "./config.js";
+import { drivers } from "./reveal.js";
 
 export function buildCinematics(sim, ctx, env) {
   const isMobile = ctx.env.isMobile;
@@ -98,6 +99,30 @@ export function buildCinematics(sim, ctx, env) {
     g.addColorStop(1, hor);
     ctx2d.fillStyle = g;
     ctx2d.fillRect(0, startRow, skyCvS, skyCvS);
+    // While the wall is still its setup grey, draw a dark sim-rig grid on the
+    // texture. Drawn at design resolution (grid cell in fractions of the canvas)
+    // and mipmapped when textures are auto-generated, so lines are soft but
+    // clearly legible as a technical grid.
+    if (ctx.flow.introActive || wallsDawn < 1) {
+      const cell = dome.gridCell; // spacing as a fraction of the canvas
+      const gridAlpha = 1 - wallsDawn; // fade out as the real sky paints in
+      ctx2d.strokeStyle = dome.gridColor;
+      ctx2d.globalAlpha = gridAlpha;
+      ctx2d.lineWidth = dome.gridWidth * skyCvS;
+      ctx2d.beginPath();
+      for (let x = cell; x < 1; x += cell) {
+        const px = Math.round(x * skyCvS) + 0.5;
+        ctx2d.moveTo(px, 0);
+        ctx2d.lineTo(px, skyCvS);
+      }
+      for (let y = cell; y < 1; y += cell) {
+        const py = Math.round(y * skyCvS) + 0.5;
+        ctx2d.moveTo(0, py);
+        ctx2d.lineTo(skyCvS, py);
+      }
+      ctx2d.stroke();
+      ctx2d.globalAlpha = 1;
+    }
   };
   // Draw the day-start / boot / breach message on the WALL fabric.
   const paintWallText = () => {
@@ -110,26 +135,7 @@ export function buildCinematics(sim, ctx, env) {
         msg = labels[Math.min(i, labels.length - 1)];
         big = true;
       } else {
-        const starting = Math.floor(introT / 2) % 2 === 0;
-        msg = starting
-          ? isMobile
-            ? ["STARTING", "SIMULATION.."]
-            : "STARTING SIMULATION.."
-          : "PLEASE WAIT..";
-        if (starting && isMobile) {
-          skyCtx.save();
-          skyCtx.translate(skyCvS / 2, 0);
-          skyCtx.scale(-1, 1);
-          skyCtx.translate(-skyCvS / 2, 0);
-          skyCtx.fillStyle = "#ffffff";
-          skyCtx.font = "bold 26px sans-serif";
-          skyCtx.textAlign = "center";
-          skyCtx.textBaseline = "middle";
-          skyCtx.fillText(msg[0], skyCvS / 2, skyCvS * 0.75);
-          skyCtx.fillText(msg[1], skyCvS / 2, skyCvS * 0.81);
-          skyCtx.restore();
-          return;
-        }
+        return;
       }
     } else if (breachActive) {
       msg =
@@ -715,6 +721,10 @@ export function buildCinematics(sim, ctx, env) {
     FLOWER_DUR = introCfg.flowerDur;
   const DAWN_START = introCfg.dawnStart,
     DAWN_FADE = introCfg.dawnFade;
+  // The countdown draws "3","2","1","MOW!" each second starting at
+  // COUNT_START; "MOW!" lands at COUNT_START + 3. Movement of grass, insects
+  // and plants stays frozen until that moment (see the intro update below).
+  const MOW_T = COUNT_START + 3;
   const flowerStarted = () => ctx.creatures.flowerStarted;
   const popProgress = () => ctx.creatures.popProgress;
   let creaturesRevealed = false;
@@ -736,6 +746,8 @@ export function buildCinematics(sim, ctx, env) {
       d.pop = 0;
     }
     ctx.flow.creaturesEnabled = false;
+    ctx.flow.controlsUnlocked = false;
+    ctx.flow.motionScale = 0;
     creaturesRevealed = false;
     ctx.mower.setOpacity(0.0001);
     breachActive = false;
@@ -762,6 +774,8 @@ export function buildCinematics(sim, ctx, env) {
     ctx.flow.creaturesEnabled = true;
     creaturesRevealed = true;
     ctx.mower.setOpacity(1);
+    ctx.flow.controlsUnlocked = true;
+    ctx.flow.motionScale = 1;
     breachActive = false;
     breachT = 0;
     introT = INTRO_END;
@@ -824,6 +838,19 @@ export function buildCinematics(sim, ctx, env) {
       const k = (introT - CREATURE_T) / MOWER_FADE;
       ctx.mower.setOpacity(0.0001 + k * 0.9999);
     }
+    // Slow-motion ramp: things begin moving (slowly) as the countdown starts
+    // and reach realtime dt exactly when "MOW!" is shown.
+    if (introT < COUNT_START) {
+      ctx.flow.motionScale = 0;
+    } else if (introT >= MOW_T) {
+      ctx.flow.controlsUnlocked = true;
+      ctx.flow.motionScale = 1;
+    } else {
+      const u = (introT - COUNT_START) / (MOW_T - COUNT_START);
+      // Exponential time-bend: things creep out of frame (near-frozen) for
+      // most of the countdown, then surge up to realtime right before "MOW!".
+      ctx.flow.motionScale = Math.min(1, Math.pow(u, 3.5));
+    }
     paintSky(p);
     if (introT >= INTRO_END) {
       ctx.flow.introActive = false;
@@ -833,10 +860,63 @@ export function buildCinematics(sim, ctx, env) {
     }
   });
 
+  // --- Grey->color material reveal driver ---
+  // Tags paired with timing in config; grass timing is set here (grass is
+  // registered in environment.js), the rest is set by buildCreatures.
+  const revealCfg = C.intro.reveal;
+  if (ctx.grass && ctx.grass.bladeReveal) {
+    ctx.grass.bladeReveal.revealT = revealCfg.grassT;
+    ctx.grass.bladeReveal.revealDur = revealCfg.grassDur;
+  }
+  // Fence sweeps in left-to-right after the grass is fully colored
+  // (grassT + grassDur). Each section's revealOffset defines its own start.
+  if (ctx.grass && ctx.grass.fenceDrivers) {
+    for (const d of ctx.grass.fenceDrivers) {
+      d.revealT = revealCfg.fenceT + (d.revealOffset || 0) * revealCfg.fenceStagger;
+      d.revealDur = revealCfg.fenceDur;
+    }
+  }
+  sim.addEntity(null, null, (dt) => {
+    if (!ctx.flow.introActive) {
+      for (const d of drivers) d.setProgress(1);
+      setDirtShade(1);
+      return;
+    }
+    // Dirt/runnel patch follows the grass color timing: black at t=0, lerping
+    // to its real color in lockstep with the grass turning green.
+    if (ctx.env && ctx.env.dirtMat) {
+      let k = (introT - revealCfg.grassT) / Math.max(0.001, revealCfg.grassDur);
+      setDirtShade(Math.max(0, Math.min(1, k)));
+    }
+    for (const d of drivers) {
+      if (d.revealT == null) {
+        d.setProgress(1);
+        continue;
+      }
+      let k = (introT - d.revealT) / Math.max(0.001, d.revealDur);
+      k = k <= 0 ? 0 : k >= 1 ? 1 : k;
+      if (k > 0 && k < 1 && d.cpuFlicker) {
+        k = Math.max(0, Math.min(1, k + (Math.random() * 2 - 1) * 0.22));
+      }
+      d.setProgress(k);
+    }
+  });
+
+  // Lerp the dirt patch's color from black to its real color by `t` (0..1).
+  const _dirtColor = new THREE.Color();
+  const setDirtShade = (t) => {
+    if (!ctx.env || !ctx.env.dirtMat) return;
+    _dirtColor.set(ctx.env.dirtColorRGB).multiplyScalar(Math.max(0, Math.min(1, t)));
+    ctx.env.dirtMat.color.copy(_dirtColor);
+  };
+
   // Bootstrap: apply the current sun/sky once, then snap the clock.
   applySky(parseFloat(sunSlider.value));
   time.prevHour = time.hour;
   setHour(time.hour);
+
+  // Dev trigger: replay the boot intro from playing (no reload needed).
+  window.startIntro = startIntro;
 
   return { setHour, startIntro, completeInit, applySky, paintSky };
 }
