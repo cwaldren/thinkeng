@@ -36,6 +36,12 @@ export function buildEnvironment(sim, ctx) {
     );
   };
   const _sunDir0Base = new THREE.Vector3();
+  // Keep the grass' facet-shading light running parallel to the sun direction
+  // (with a floor on elevation so the light/dark split never collapses).
+  const syncSunFace = (v) => {
+    const u = ctx.grass.swayUniforms.uSunDir.value;
+    u.set(v.x, Math.max(v.y, C.grass.facetSunFloor), v.z).normalize();
+  };
   const updateSunDir = () => {
     const ce = Math.cos(sunElevation);
     _sunDir0Base
@@ -45,6 +51,7 @@ export function buildEnvironment(sim, ctx) {
         ce * Math.cos(sunAzimuth),
       )
       .normalize();
+    syncSunFace(_sunDir0Base);
   };
   updateSunDir();
   const _sunDir0 = _sunDir0Base.clone();
@@ -85,6 +92,7 @@ export function buildEnvironment(sim, ctx) {
   ctx.env.sunAzimuth = sunAzimuth;
   ctx.env.sunElevation = sunElevation;
   ctx.env.updateSunDir = updateSunDir;
+  ctx.env.syncSunFace = syncSunFace;
   ctx.env.declinationDeg = declinationDeg;
   ctx.env._sunDir0Base = _sunDir0Base;
   ctx.env._sunDir0 = _sunDir0;
@@ -338,17 +346,23 @@ export function buildEnvironment(sim, ctx) {
   bladeMat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = swayUniforms.uTime;
     shader.uniforms.uSway = swayUniforms.uSway;
+    shader.uniforms.uSunDir = swayUniforms.uSunDir;
+    shader.uniforms.uFacetStrength = swayUniforms.uFacetStrength;
+    shader.uniforms.uGradBase = swayUniforms.uGradBase;
+    shader.uniforms.uGradTip = swayUniforms.uGradTip;
     shader.vertexShader = shader.vertexShader
       .replace(
         "#include <common>",
-        "#include <common>\nuniform float uTime;\nuniform float uSway;\nattribute float aGrowth;\nattribute float aRevealPhase;\nvarying float vRevealPhase;",
+        "#include <common>\nuniform float uTime;\nuniform float uSway;\nattribute float aGrowth;\nattribute float aRevealPhase;\nvarying float vRevealPhase;\nvarying vec3 vFaceN;\nvarying float vHeight;",
       )
       .replace(
         "#include <begin_vertex>",
         `#include <begin_vertex>
             vRevealPhase = aRevealPhase;
+            vHeight = 0.0;
 #if defined( USE_INSTANCING )
             float h = clamp((transformed.y + 0.85) / 1.7, 0.0, 1.0);
+            vHeight = h;
             vec3 _base = instanceMatrix[3].xyz;
             float _ph = fract(sin(dot(_base.xz * 0.13, vec2(12.9898, 78.233))) * 43758.5453);
             float _wave = sin(_base.x * 1.2 + uTime * 1.6 + _ph * 6.2831)
@@ -356,6 +370,10 @@ export function buildEnvironment(sim, ctx) {
             float _g = clamp(aGrowth, 0.0, 1.0);
             _g = pow(_g, 6.0);
             transformed.x += _wave * h * h * ${C.grass.swayAmplitude} * _g * uSway;
+            // Constant local-space face normal (rotated 45° so it points
+            // through a 4-sided blade's facet, not its edge), carried into the
+            // blade's transform for a crisp per-facet sun/shadow split.
+            vFaceN = transformDirection(vec3(0.7071, 0.0, 0.7071), instanceMatrix);
 #endif
 `,
       );
@@ -363,6 +381,32 @@ export function buildEnvironment(sim, ctx) {
     // resolves at its own offset within the intro's reveal window.
     shader.fragmentShader =
       "#define USE_REVEAL_PHASE\n" + shader.fragmentShader;
+
+    // Angle/normal-based facet shading: blades are 4-sided cones whose facet
+    // normals barely differ from vertical, so under flat sky lighting every
+    // side reads the same tone. Comparing each face against a sun-facing
+    // reference light lights the faces that tip toward the sun and darkens the
+    // opposite ones, giving every blade a two-tone split and the freshly-cut
+    // path a strong light/dark boundary against the taller surrounding blades.
+    shader.fragmentShader =
+      `uniform vec3 uSunDir;
+       uniform float uFacetStrength;
+       uniform float uGradBase;
+       uniform float uGradTip;
+       varying vec3 vFaceN;
+       varying float vHeight;
+` +
+      shader.fragmentShader;
+
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        "#include <color_fragment>",
+        `#include <color_fragment>
+         // Vertical gradient: dark at the sod, light at the tip.
+         float _h = clamp( vHeight, 0.0, 1.0 );
+         float _g = mix( uGradBase, uGradTip, smoothstep( 0.0, 1.0, _h ) );
+         diffuseColor.rgb *= _g * ( 1.0 + uFacetStrength * clamp( dot( uSunDir, normalize( vFaceN ) ), -1.0, 1.0 ) );`,
+      );
   };
   // Boot-intro reveal: the whole lawn rises as grey+shiny preview material,
   // then flickers in to its real green. (Composes with the sway hook above.)
@@ -584,6 +628,63 @@ export function buildEnvironment(sim, ctx) {
   ctx.grass.half = BLADE_HALF;
   ctx.grass.total = total;
   ctx.env.visitCutArea = visitCutArea;
+
+  // ---- Grass color/shading tweak sliders (sandbox panel) ----
+  {
+    const el = (id) => document.getElementById(id);
+
+    const colorEl = el("grass-color");
+    colorEl.value = "#" + bladeMat.color.getHexString();
+    colorEl.addEventListener("input", () => bladeMat.color.set(colorEl.value));
+
+    const roughEl = el("grass-roughness-slider");
+    const roughVal = el("grass-roughness-value");
+    const applyRoughness = () => {
+      bladeMat.roughness = parseFloat(roughEl.value);
+      roughVal.textContent = bladeMat.roughness.toFixed(2);
+    };
+    roughEl.addEventListener("input", applyRoughness);
+    applyRoughness();
+
+    const facetEl = el("grass-facet-slider");
+    const facetVal = el("grass-facet-value");
+    const applyFacet = () => {
+      swayUniforms.uFacetStrength.value = parseFloat(facetEl.value);
+      facetVal.textContent = swayUniforms.uFacetStrength.value.toFixed(2);
+    };
+    facetEl.addEventListener("input", applyFacet);
+    applyFacet();
+
+    // Facet sun floor feeds the live uSunDir via syncSunFace; lowering it lets
+    // the light/dark split survive even a high noon sun.
+    const floorEl = el("grass-facetsunfloor-slider");
+    const floorVal = el("grass-facetsunfloor-value");
+    const applyFloor = () => {
+      C.grass.facetSunFloor = parseFloat(floorEl.value);
+      ctx.env.syncSunFace(ctx.env._sunDir0);
+      floorVal.textContent = C.grass.facetSunFloor.toFixed(2);
+    };
+    floorEl.addEventListener("input", applyFloor);
+    applyFloor();
+
+    const gradBaseEl = el("grass-gradbase-slider");
+    const gradBaseVal = el("grass-gradbase-value");
+    const applyGradBase = () => {
+      swayUniforms.uGradBase.value = parseFloat(gradBaseEl.value);
+      gradBaseVal.textContent = swayUniforms.uGradBase.value.toFixed(2);
+    };
+    gradBaseEl.addEventListener("input", applyGradBase);
+    applyGradBase();
+
+    const gradTipEl = el("grass-gradtip-slider");
+    const gradTipVal = el("grass-gradtip-value");
+    const applyGradTip = () => {
+      swayUniforms.uGradTip.value = parseFloat(gradTipEl.value);
+      gradTipVal.textContent = swayUniforms.uGradTip.value.toFixed(2);
+    };
+    gradTipEl.addEventListener("input", applyGradTip);
+    applyGradTip();
+  }
 
   return {
     sunLight,

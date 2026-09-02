@@ -33,6 +33,10 @@ export const CONFIG = {
     growRate: 0.0025, // default growth/sec (sandbox slider overrides)
     swayAmplitude: 0.025, // vertex-shader sway strength on the X axis
     gridCell: 1.5, // spatial-grid cell size for cut checks (world units)
+    facetStrength: 0, // 0..1 gain on the sun-facing light/dark facet split
+    facetSunFloor: 0.35, // min up-component of the facet light dir (keeps the split at noon)
+    gradBase: 0, // multiplier on the blade color at the sod (dark green)
+    gradTip: 1.38, // multiplier on the blade color at the tip (light green)
   },
 
   // ---- Moon surface / craters / dirt ----

@@ -547,6 +547,7 @@ export function buildCinematics(sim, ctx, env) {
         ce * Math.cos(ctx.env.sunAzimuth),
       )
       .normalize();
+    ctx.env.syncSunFace(ctx.env._sunDir0Base);
   };
   ctx.env.updateSunDir();
   const applySunAngle = () => {
