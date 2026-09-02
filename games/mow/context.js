@@ -111,6 +111,7 @@ export function createContext(sim) {
       flowerStarted: null,
       popProgress: null,
       FOLD_S: CONFIG.dandelions.foldS,
+      FOLD_BACK_S: CONFIG.dandelions.foldBackS,
       FOLD_ANGLE: CONFIG.dandelions.foldAngle,
     },
 

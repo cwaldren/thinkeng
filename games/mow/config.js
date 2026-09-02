@@ -30,7 +30,7 @@ export const CONFIG = {
     roughness: 0.8,
     scaleMin: 0.6,
     scaleMax: 1.4,
-    growRate: 0.005, // default growth/sec (sandbox slider overrides)
+    growRate: 0.0025, // default growth/sec (sandbox slider overrides)
     swayAmplitude: 0.025, // vertex-shader sway strength on the X axis
     gridCell: 1.5, // spatial-grid cell size for cut checks (world units)
   },
@@ -139,6 +139,7 @@ export const CONFIG = {
     countMobile: 12,
     countDesktop: 40,
     foldS: 0.35, // seconds to fold flat then despawn
+    foldBackS: 1.6, // seconds to snap back up after a backward run-over bend
     foldAngle: Math.PI / 2,
     regrowMin: 3, // seconds before regrow
     regrowMax: 7,

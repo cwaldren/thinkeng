@@ -416,6 +416,10 @@ export function buildMower(sim, ctx, env) {
     if (mowerForward && hasCuttableGrass()) {
       clipAccum += dt * C.mower.clipEmitRate;
       const amt = sampleCutAmount();
+      // Scale the throw with how fast the reel is actually turning, so a slow
+      // crawl on a variable-speed stick lobs clippings gently instead of at
+      // full velocity. Floored so even a near-dead battery still kicks a bit.
+      const speedFrac = Math.max(0.15, -effectiveMove / C.mower.moveSpeed);
       while (clipAccum >= 1) {
         clipAccum -= 1;
         const p = clips[clipCursor];
@@ -425,16 +429,16 @@ export function buildMower(sim, ctx, env) {
         p.z = reelWorld.z + off * right.z;
         p.y = reelWorld.y + Math.random() * 0.1;
         const spread = 1.6;
-        p.vx = (Math.random() - 0.5) * spread;
-        p.vz = (Math.random() - 0.5) * spread;
-        p.vy = 1.2 + Math.random() * 1.6;
+        p.vx = (Math.random() - 0.5) * spread * speedFrac;
+        p.vz = (Math.random() - 0.5) * spread * speedFrac;
+        p.vy = (1.2 + Math.random() * 1.6) * speedFrac;
         p.scale = Math.max(0.08, amt * CLIP_SCALE);
         p.rx = Math.random() * Math.PI * 2;
         p.ry = Math.random() * Math.PI * 2;
         p.rz = Math.random() * Math.PI * 2;
-        p.wrx = (Math.random() - 0.5) * 14;
-        p.wry = (Math.random() - 0.5) * 14;
-        p.wrz = (Math.random() - 0.5) * 14;
+        p.wrx = (Math.random() - 0.5) * 14 * speedFrac;
+        p.wry = (Math.random() - 0.5) * 14 * speedFrac;
+        p.wrz = (Math.random() - 0.5) * 14 * speedFrac;
         p.life = 0;
         p.alive = true;
         p.hidden = false;
@@ -541,14 +545,14 @@ export function buildMower(sim, ctx, env) {
       }
     }
 
-    // ---- Mow dandelions under the reel + regrow after a delay ----
+    // ---- Mow/run-over dandelions under the reel + regrow after a delay ----
     const _foldBaseQ = new THREE.Quaternion();
     const _foldQ = new THREE.Quaternion();
     const _foldFwd = new THREE.Vector3();
     const _foldAxis = new THREE.Vector3();
     const _tmpCross = new THREE.Vector3();
     invMower.copy(mower.mesh.matrixWorld).invert();
-    if (mowerForward) {
+    if (mowerMoving) {
       for (const d of ctx.creatures.dandelions) {
         if (d.grown && !d.folding) {
           localPos.set(d.x, 0, d.z).applyMatrix4(invMower);
@@ -556,10 +560,16 @@ export function buildMower(sim, ctx, env) {
             Math.abs(localPos.x) < CUT_HALF_W &&
             Math.abs(localPos.z) < CUT_HALF_D
           ) {
+            // Backing over a flower bends it over backwards (no cut); mowing
+            // forward cuts it down. foldDir sign picks the bend direction.
+            const reversing = !mowerForward;
             if (!d.flower) d.shouldPuff = true;
-            ctx.creatures.bumpMowed();
+            if (!reversing) ctx.creatures.bumpMowed();
             d.folding = true;
             d.foldT = 0;
+            d.returning = false;
+            d.backBend = reversing;
+            d.foldDir = reversing ? -1 : 1;
             _foldFwd.set(0, 0, -1).applyQuaternion(mower.mesh.quaternion);
             _foldFwd.y = 0;
             if (_foldFwd.lengthSq() < 1e-6) _foldFwd.set(0, 0, -1);
@@ -604,7 +614,10 @@ export function buildMower(sim, ctx, env) {
     if (ctx.flow.swaying) {
       const t = ctx.grass.swayUniforms.uTime.value;
       for (const d of ctx.creatures.dandelions) {
-        if (!d.grown || d.folding) continue;
+        // Keep the stalks on the running wave phase even while a fold is in
+        // progress; otherwise a backward-bend that pops back up would skip
+        // into a far-ahead sway pose.
+        if (!d.grown) continue;
         for (let i = 0; i < d.waves.length; i++) {
           const w = d.waves[i];
           const stalk = d.ent.mesh.children[i];
@@ -615,26 +628,50 @@ export function buildMower(sim, ctx, env) {
       }
     }
 
-    // Fold-over: a mowed dandelion rotates flat then despawns.
+    // Fold-over: a mowed/run-over dandelion bends flat (forward = cut + puff +
+    // despawn; backward = bend over then snap back up slowly). Animation always
+    // begins from and returns to the exact base pose so the sway resumes without
+    // snapping to a further position.
     for (const d of ctx.creatures.dandelions) {
       if (!d.folding) continue;
-      d.foldT = Math.min(1, d.foldT + dt / ctx.creatures.FOLD_S);
+      const dur = d.returning
+        ? ctx.creatures.FOLD_BACK_S
+        : ctx.creatures.FOLD_S;
+      if (d.returning) {
+        d.foldT = Math.max(0, d.foldT - dt / dur);
+      } else {
+        d.foldT = Math.min(1, d.foldT + dt / dur);
+      }
       const e = 1 - (1 - d.foldT) * (1 - d.foldT);
       const ang = ctx.creatures.FOLD_ANGLE * e;
-      if (d.shouldPuff && !d.puffed && e >= 0.6) {
+      if (!d.returning && d.shouldPuff && !d.puffed && e >= 0.6) {
         d.puffed = true;
         d.ent.puff();
       }
       _foldBaseQ.setFromEuler(d.baseEuler);
       _foldQ.setFromAxisAngle(
         _tmpCross.copy(d.foldAxis).normalize(),
-        ang,
+        d.foldDir * ang,
       );
       d.ent.mesh.quaternion.copy(_foldQ).multiply(_foldBaseQ);
-      if (d.foldT >= 1) {
+      if (d.backBend && !d.returning && d.foldT >= 1) {
+        // Finshed bending over backwards; hold there, then snap back up slowly.
+        d.returning = true;
+        d.foldT = 1;
+      } else if (d.returning && d.foldT <= 0) {
+        // Fully back up: snap cleanly to the base pose so idle sway continues.
+        d.folding = false;
+        d.foldT = 0;
+        d.returning = false;
+        d.backBend = false;
+        d.ent.mesh.quaternion.setFromEuler(d.baseEuler);
+      } else if (!d.backBend && d.foldT >= 1) {
+        // Forward mow complete: despawn until regrow.
         d.ent.mesh.visible = false;
         d.folding = false;
         d.foldT = 0;
+        d.returning = false;
+        d.backBend = false;
         d.grown = false;
         d.regrowT = 3 + Math.random() * 7;
       }

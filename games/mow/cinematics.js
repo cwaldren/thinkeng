@@ -744,6 +744,12 @@ export function buildCinematics(sim, ctx, env) {
       d.ent.mesh.visible = false;
       d.ent.mesh.position.y = -0.8;
       d.pop = 0;
+      d.folding = false;
+      d.foldT = 0;
+      d.returning = false;
+      d.backBend = false;
+      d.puffed = false;
+      d.shouldPuff = false;
     }
     ctx.flow.creaturesEnabled = false;
     ctx.flow.controlsUnlocked = false;
@@ -770,6 +776,7 @@ export function buildCinematics(sim, ctx, env) {
       d.ent.mesh.visible = true;
       d.ent.mesh.position.y = 0;
       d.pop = 1;
+      d.ent.mesh.quaternion.setFromEuler(d.baseEuler);
     }
     ctx.flow.creaturesEnabled = true;
     creaturesRevealed = true;
